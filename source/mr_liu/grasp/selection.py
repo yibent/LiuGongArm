@@ -9,7 +9,7 @@ from typing import Sequence
 import numpy as np
 
 from mr_liu.grasp.contracts import GraspCandidate, MotionExecutor, RGBDObservation, SelectedGrasp
-from mr_liu.grasp.geometry import ObjectGeometry
+from mr_liu.grasp.geometry import ObjectGeometry, support_completed_center
 from mr_liu.grasp.policy import ExecutionPolicy
 from mr_liu.grasp.transforms import invert_transform, make_transform
 
@@ -53,7 +53,28 @@ def select_grasp(
         if candidate.width_m < config.min_width_m or candidate.width_m > config.max_width_m:
             rejected["gripper_width"] += 1
             continue
-        T_base_grasp = observation.T_base_camera @ candidate.T_camera_grasp
+        T_base_grasp_center = observation.T_base_camera @ candidate.T_camera_grasp
+        T_base_grasp = T_base_grasp_center
+        ee_pose_for_grasp = getattr(motion, "ee_pose_for_grasp", None)
+        if callable(ee_pose_for_grasp):
+            # Learned grasp networks use a symmetric two-finger centre frame.
+            # Some physical grippers (including SO-101) expose an EE frame near
+            # the fixed finger, so convert through the adapter's calibrated,
+            # width-dependent tool geometry before IK and execution.
+            T_base_grasp = np.asarray(
+                ee_pose_for_grasp(T_base_grasp_center, candidate.width_m), dtype=np.float64
+            )
+        if bool(candidate.metadata.get("support_surface_completion", False)):
+            approach_z = float(T_base_grasp[2, 2])
+            completed_center = support_completed_center(
+                geometry, table_height_m=config.table_height_m
+            )
+            if approach_z < -0.6 and completed_center[2] != geometry.T_base_object[2, 3]:
+                # Complete the occluded lower half of a table-supported object.
+                # Learned backends that predict the grasp centre do not set this
+                # fallback-only metadata flag and are therefore left untouched.
+                T_base_grasp = T_base_grasp.copy()
+                T_base_grasp[2, 3] = completed_center[2]
         if T_base_grasp[2, 3] < config.table_height_m + policy.required_table_clearance_m:
             rejected["table_clearance"] += 1
             continue
@@ -71,6 +92,10 @@ def select_grasp(
             T_base_grasp, margin_m=config.collision_margin_m, allow_target_contact=True
         ):
             rejected["grasp_collision"] += 1
+            continue
+        transition_check = getattr(motion, "is_grasp_transition_reachable", None)
+        if callable(transition_check) and not transition_check(T_base_pregrasp, T_base_grasp):
+            rejected["approach_disconnected"] += 1
             continue
         T_object_grasp = invert_transform(geometry.T_base_object) @ T_base_grasp
         distance_from_center = float(np.linalg.norm(T_object_grasp[:3, 3]))

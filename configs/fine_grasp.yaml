@@ -15,8 +15,14 @@ observation:
   depth_min_m: 0.025
   depth_max_m: 0.60
   depth_outlier_mad_scale: 4.0
-  self_mask_bottom_fraction: 0.34
+  # The target mask is already target-specific.  A fixed bottom crop is unsafe
+  # for an eye-in-hand camera because a correctly approached object naturally
+  # moves toward the lower image edge; use a calibrated robot-silhouette mask
+  # in the camera adapter when one is available instead.
+  self_mask_bottom_fraction: 0.0
   max_centroid_jump_m: 0.035
+  tracking_alpha: 0.25
+  tracking_max_step_m: 0.004
 
 gripper:
   min_width_m: 0.004
@@ -35,11 +41,11 @@ selection:
   max_candidates: 128
 
 loop:
-  max_total_s: 25.0
+  max_total_s: 45.0
   max_observation_failures: 5
   max_replans: 6
   model_period_s: 0.50
-  model_replan_translation_m: 0.012
+  model_replan_translation_m: 0.015
   model_replan_rotation_deg: 12.0
   servo_translation_tolerance_m: 0.004
   servo_rotation_tolerance_deg: 5.0
@@ -53,3 +59,12 @@ loop:
 debug:
   enabled: true
   output_dir: output/fine_grasp
+
+# Isaac Sim imports the compact SO-101's revolute drives with gains that leave
+# several degrees of gravity sag at the wrist.  These values model the robot's
+# internal position servos while keeping the URDF 10 N m effort limit intact.
+# They affect only the Isaac demo adapter, never a real robot driver.
+isaac_sim:
+  arm_drive_stiffness_nm_per_rad: 800.0
+  arm_drive_damping_nms_per_rad: 20.0
+  arm_drive_max_effort_nm: 10.0

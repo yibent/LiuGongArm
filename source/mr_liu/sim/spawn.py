@@ -47,7 +47,7 @@ def _find_so101_base(stage):
 
 def mount_so101_to_table() -> None:
     import omni.usd
-    from pxr import UsdPhysics
+    from pxr import Gf, Usd, UsdGeom, UsdPhysics
 
     stage = omni.usd.get_context().get_stage()
     base = _find_so101_base(stage)
@@ -63,9 +63,37 @@ def mount_so101_to_table() -> None:
     table = stage.GetPrimAtPath("/World/Table")
     if table.IsValid() and table.HasAPI(UsdPhysics.RigidBodyAPI):
         joint.CreateBody0Rel().SetTargets([table.GetPath()])
+        table_world = UsdGeom.Xformable(table).ComputeLocalToWorldTransform(
+            Usd.TimeCode.Default()
+        )
     else:
         joint.CreateBody0Rel().ClearTargets(True)
+        table_world = Gf.Matrix4d(1.0)
     joint.CreateBody1Rel().SetTargets([base.GetPath()])
+
+    # A fixed joint's local frames default to both body origins.  The table and
+    # robot base are intentionally disjoint in world space, so leaving those
+    # defaults makes PhysX snap the articulation and invalidates cuMotion FK.
+    # Anchor frame 1 at the base origin and express that same world frame in
+    # body 0 (or the world, if body0 is empty).
+    base_world = UsdGeom.Xformable(base).ComputeLocalToWorldTransform(
+        Usd.TimeCode.Default()
+    )
+    frame0 = base_world * table_world.GetInverse()
+    translation = frame0.ExtractTranslation()
+    rotation = frame0.ExtractRotationQuat()
+    imaginary = rotation.GetImaginary()
+    joint.CreateLocalPos0Attr().Set(
+        Gf.Vec3f(float(translation[0]), float(translation[1]), float(translation[2]))
+    )
+    joint.CreateLocalRot0Attr().Set(
+        Gf.Quatf(
+            float(rotation.GetReal()),
+            Gf.Vec3f(float(imaginary[0]), float(imaginary[1]), float(imaginary[2])),
+        )
+    )
+    joint.CreateLocalPos1Attr().Set(Gf.Vec3f(0.0, 0.0, 0.0))
+    joint.CreateLocalRot1Attr().Set(Gf.Quatf(1.0, Gf.Vec3f(0.0, 0.0, 0.0)))
     joint.CreateBreakForceAttr().Set(float("inf"))
     joint.CreateBreakTorqueAttr().Set(float("inf"))
     print(f"[mr_liu] Mounted {base.GetPath()} with {MOUNT_JOINT_PATH}")

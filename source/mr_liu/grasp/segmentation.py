@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from collections import deque
 
+import cv2
 import numpy as np
 
-from mr_liu.grasp.contracts import RGBDObservation, TargetSpec
+from mr_liu.grasp.contracts import RGBDObservation, TargetSegmenter, TargetSpec
 from mr_liu.grasp.transforms import invert_transform, transform_points
 
 
@@ -67,6 +68,86 @@ class SeededDepthSegmenter:
         yy, xx = np.ogrid[: K.height, : K.width]
         allowed &= (xx - u) ** 2 + (yy - v) ** 2 <= self.max_radius_px**2
         return _connected_component_from_nearest_seed(allowed, u, v, radius)
+
+
+class AppearanceDepthTrackerSegmenter:
+    """Bootstrap from current-pose depth, then track the target's appearance.
+
+    Camera-pose reprojection supplies only the first local seed. Subsequent
+    frames use the target appearance learned in that wrist view, which remains
+    useful during rapid camera motion and tolerates a renderer/pose timestamp
+    offset better than repeatedly trusting the upstream coarse point.
+    """
+
+    def __init__(
+        self,
+        seed_segmenter: TargetSegmenter | None = None,
+        *,
+        chromaticity_tolerance: float = 0.16,
+        min_component_pixels: int = 80,
+        morphology_kernel_px: int = 5,
+    ) -> None:
+        self.seed_segmenter = seed_segmenter or SeededDepthSegmenter()
+        self.chromaticity_tolerance = float(chromaticity_tolerance)
+        self.min_component_pixels = int(min_component_pixels)
+        self.kernel = np.ones((morphology_kernel_px, morphology_kernel_px), dtype=np.uint8)
+        self._object_id: str | None = None
+        self._reference_chromaticity: np.ndarray | None = None
+        self._last_center_uv: np.ndarray | None = None
+
+    def reset(self) -> None:
+        self._object_id = None
+        self._reference_chromaticity = None
+        self._last_center_uv = None
+
+    def segment(self, observation: RGBDObservation, target: TargetSpec) -> np.ndarray | None:
+        if target.object_id != self._object_id:
+            self.reset()
+            self._object_id = target.object_id
+        rgb = np.asarray(observation.rgb[:, :, :3], dtype=np.float32)
+        chromaticity = rgb / np.maximum(rgb.sum(axis=2, keepdims=True), 12.0)
+        if self._reference_chromaticity is None:
+            initial = self.seed_segmenter.segment(observation, target)
+            if initial is None or int(np.asarray(initial, dtype=bool).sum()) < self.min_component_pixels:
+                return None
+            mask = np.asarray(initial, dtype=bool)
+            self._update_reference(chromaticity, mask, replace=True)
+            return mask
+
+        distance = np.linalg.norm(chromaticity - self._reference_chromaticity.reshape(1, 1, 3), axis=2)
+        valid_depth = np.isfinite(observation.depth_m) & (observation.depth_m > 0)
+        allowed = (distance <= self.chromaticity_tolerance) & valid_depth & (rgb.sum(axis=2) > 30.0)
+        cleaned = cv2.morphologyEx(allowed.astype(np.uint8), cv2.MORPH_OPEN, self.kernel)
+        cleaned = cv2.morphologyEx(cleaned, cv2.MORPH_CLOSE, self.kernel)
+        count, labels, stats, centers = cv2.connectedComponentsWithStats(cleaned, connectivity=8)
+        candidates: list[tuple[float, int]] = []
+        diagonal = float(np.hypot(observation.intrinsics.width, observation.intrinsics.height))
+        for label in range(1, count):
+            area = int(stats[label, cv2.CC_STAT_AREA])
+            if area < self.min_component_pixels:
+                continue
+            center = centers[label]
+            travel = 0.0 if self._last_center_uv is None else float(np.linalg.norm(center - self._last_center_uv))
+            # Area supports large close-range targets; the soft travel term
+            # preserves identity without preventing large eye-in-hand motion.
+            score = np.log1p(area) - 1.5 * travel / max(diagonal, 1.0)
+            candidates.append((score, label))
+        if not candidates:
+            return None
+        selected_label = max(candidates)[1]
+        mask = labels == selected_label
+        self._update_reference(chromaticity, mask, replace=False)
+        return mask
+
+    def _update_reference(self, chromaticity: np.ndarray, mask: np.ndarray, *, replace: bool) -> None:
+        values = chromaticity[mask]
+        reference = np.median(values, axis=0)
+        if replace or self._reference_chromaticity is None:
+            self._reference_chromaticity = reference
+        else:
+            self._reference_chromaticity = 0.9 * self._reference_chromaticity + 0.1 * reference
+        rows, columns = np.nonzero(mask)
+        self._last_center_uv = np.asarray([np.median(columns), np.median(rows)], dtype=np.float64)
 
 
 def _connected_component_from_nearest_seed(

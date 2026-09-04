@@ -21,6 +21,8 @@ class ObservationSettings:
     depth_outlier_mad_scale: float
     self_mask_bottom_fraction: float
     max_centroid_jump_m: float
+    tracking_alpha: float
+    tracking_max_step_m: float
 
 
 @dataclass(frozen=True)
@@ -70,6 +72,8 @@ class FineGraspSettings:
                 depth_outlier_mad_scale=float(obs["depth_outlier_mad_scale"]),
                 self_mask_bottom_fraction=float(obs["self_mask_bottom_fraction"]),
                 max_centroid_jump_m=float(obs["max_centroid_jump_m"]),
+                tracking_alpha=float(obs.get("tracking_alpha", 0.25)),
+                tracking_max_step_m=float(obs.get("tracking_max_step_m", 0.004)),
             ),
             gripper=GripperSettings(
                 min_width_m=float(grip["min_width_m"]),

@@ -24,14 +24,17 @@ MaskProvider = Callable[[TargetSpec], np.ndarray | None]
 def T_world_opencv_from_ros_pose(
     position_world: np.ndarray, quaternion_world_ros_wxyz: np.ndarray
 ) -> np.ndarray:
-    """Convert Isaac's ROS camera pose (+Y up,+Z forward) to OpenCV optical axes.
+    """Build the OpenCV optical pose returned by Isaac's ``ros`` camera axes.
 
-    OpenCV point clouds use +X right, +Y down and +Z forward. Isaac's documented
-    ROS camera axes use +X left, +Y up and +Z forward, so both X and Y flip.
+    Isaac's implementation names this the ROS/computer-vision convention and
+    already converts USD's ``+X right, +Y up, -Z forward`` axes with
+    ``diag(1, -1, -1)``.  The result is the OpenCV optical convention used by
+    pinhole back-projection: ``+X right, +Y down, +Z forward``.  Applying a
+    second X/Y flip here mirrors image coordinates and breaks base-frame
+    reconstruction as soon as the wrist rotates away from its initial pose.
     """
     R_world_ros = quaternion_wxyz_to_matrix(quaternion_world_ros_wxyz)
-    R_ros_opencv = np.diag([-1.0, -1.0, 1.0])
-    return make_transform(R_world_ros @ R_ros_opencv, np.asarray(position_world).reshape(3))
+    return make_transform(R_world_ros, np.asarray(position_world).reshape(3))
 
 
 class IsaacWristCamera:
@@ -45,6 +48,7 @@ class IsaacWristCamera:
         clock: Callable[[], float] = time.monotonic,
         max_extrinsic_translation_drift_m: float = 0.001,
         max_extrinsic_rotation_drift: float = 0.002,
+        render_settle_frames: int = 2,
     ) -> None:
         if camera.which != "wrist":
             raise ValueError("IsaacWristCamera requires the configured wrist camera")
@@ -55,11 +59,17 @@ class IsaacWristCamera:
         self.clock = clock
         self.max_extrinsic_translation_drift_m = float(max_extrinsic_translation_drift_m)
         self.max_extrinsic_rotation_drift = float(max_extrinsic_rotation_drift)
+        self.render_settle_frames = max(int(render_settle_frames), 1)
         self._sequence = 0
         self._reference_T_ee_camera: np.ndarray | None = None
 
     def capture(self, target: TargetSpec) -> RGBDObservation | None:
-        self.advance_frame()
+        # RTX annotators are delivered one application update behind the
+        # articulation/USD pose on Isaac Sim 6.0.  Advancing twice pairs the
+        # image with the pose used to render it; a single update produced one
+        # large false object jump immediately after every robot motion.
+        for _ in range(self.render_settle_frames):
+            self.advance_frame()
         rgb = self.camera.rgb_rgba()
         depth = self.camera.depth_m()
         if rgb is None or depth is None:

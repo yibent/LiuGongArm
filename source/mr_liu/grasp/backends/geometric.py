@@ -31,14 +31,25 @@ class GeometricAntipodalBackend:
         T_camera_object, extents = estimate_object_frame(object_points_camera)
         axes = T_camera_object[:3, :3]
         center = T_camera_object[:3, 3]
-        order = np.argsort(extents)
         candidates: list[GraspCandidate] = []
 
-        # Close across each of the two thinner axes. Approach from the camera
-        # facing side, then provide a top/normal alternative.
-        for rank, closing_index in enumerate(order[:2]):
+        # A single depth view makes the unseen thickness axis look artificially
+        # tiny. Never close across an axis parallel to the viewing/approach ray;
+        # doing so would propose a vertical pinch against the support surface.
+        camera_approach = np.asarray([0.0, 0.0, 1.0])
+        lateral_axes = [
+            index for index in range(3) if abs(float(np.dot(axes[:, index], camera_approach))) < 0.72
+        ]
+        if not lateral_axes:
+            lateral_axes = list(np.argsort(extents)[-2:])
+        lateral_axes.sort(key=lambda index: float(extents[index]))
+        for rank, closing_index in enumerate(lateral_axes[:2]):
             closing = axes[:, closing_index]
-            approach_options = [np.asarray([0.0, 0.0, 1.0]), axes[:, order[2]]]
+            surface_normal_index = int(np.argmin(extents))
+            surface_normal = axes[:, surface_normal_index]
+            if float(np.dot(surface_normal, camera_approach)) < 0.0:
+                surface_normal *= -1.0
+            approach_options = [camera_approach, surface_normal]
             for approach_rank, raw_approach in enumerate(approach_options):
                 approach = raw_approach - closing * float(np.dot(raw_approach, closing))
                 norm = float(np.linalg.norm(approach))
@@ -60,7 +71,11 @@ class GeometricAntipodalBackend:
                         score=score,
                         observation_sequence=observation.sequence,
                         backend=self.name,
-                        metadata={"closing_extent_axis": int(closing_index), "fallback": True},
+                        metadata={
+                            "closing_extent_axis": int(closing_index),
+                            "fallback": True,
+                            "support_surface_completion": True,
+                        },
                     )
                 )
         return candidates

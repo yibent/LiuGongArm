@@ -46,14 +46,29 @@ def _robot_root_poses(articulation: Articulation):
 
 
 class FollowTargetController:
-    def __init__(self, articulation: Articulation, target: GeomPrim) -> None:
+    def __init__(
+        self,
+        articulation: Articulation,
+        target: GeomPrim,
+        *,
+        track_orientation: bool | None = None,
+        extra_exclude_prim_paths: list[str] | None = None,
+    ) -> None:
         self._articulation = articulation
         self._target = target
         self._cumotion_robot = load_so101_cumotion_robot()
-        self._world = bind_world(articulation, root_poses=_robot_root_poses(articulation))
+        self._world = bind_world(
+            articulation,
+            root_poses=_robot_root_poses(articulation),
+            extra_exclude_prim_paths=extra_exclude_prim_paths,
+        )
         cfg = robot_config()
         motion = motion_config()
-        self._track_orientation = bool(motion.get("track_orientation", False))
+        self._track_orientation = (
+            bool(motion.get("track_orientation", False))
+            if track_orientation is None
+            else bool(track_orientation)
+        )
         self._debug = bool(motion.get("debug_follow", False))
         rmp_path = repo_root() / cfg["robot_dir"] / cfg["rmp_flow"]
         site_space = self._cumotion_robot.robot_description.tool_frame_names()
@@ -72,6 +87,24 @@ class FollowTargetController:
             rmp_cfg.set_param(str(key), float(value))
         print(f"[mr_liu] follow-target orientation tracking: {self._track_orientation}")
 
+    @property
+    def cumotion_robot(self) -> CumotionRobot:
+        return self._cumotion_robot
+
+    @property
+    def world_binding(self):
+        return self._world
+
+    def set_track_orientation(self, enabled: bool) -> None:
+        """Choose full-pose or translation-only setpoints for the next reset."""
+        self._track_orientation = bool(enabled)
+
+    def synchronize_world(self) -> None:
+        self._world.get_world_interface().update_world_to_robot_root_transforms(
+            _robot_root_poses(self._articulation)
+        )
+        self._world.synchronize_transforms()
+
     def reset(self, t: float = 0.0) -> None:
         estimated = _estimated_state(self._articulation)
         setpoint = _setpoint_state(
@@ -81,8 +114,7 @@ class FollowTargetController:
             raise RuntimeError("RmpFlowController.reset failed for SO-101.")
 
     def step(self, t: float) -> None:
-        self._world.get_world_interface().update_world_to_robot_root_transforms(_robot_root_poses(self._articulation))
-        self._world.synchronize_transforms()
+        self.synchronize_world()
         estimated = _estimated_state(self._articulation)
         setpoint = _setpoint_state(
             self._cumotion_robot, self._target, track_orientation=self._track_orientation

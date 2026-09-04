@@ -13,10 +13,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "source"))
 
 from mr_liu.grasp.transforms import (  # noqa: E402
+    align_rotation_axis,
+    axis_alignment_error,
     compose,
     interpolate_pose_step,
     invert_transform,
     make_transform,
+    matrix_to_quaternion_wxyz,
     pose_error,
     quaternion_wxyz_to_matrix,
     transform_points,
@@ -24,6 +27,11 @@ from mr_liu.grasp.transforms import (  # noqa: E402
 
 
 class GraspTransformTests(unittest.TestCase):
+    def test_rotation_quaternion_roundtrip(self) -> None:
+        rotation = quaternion_wxyz_to_matrix(np.asarray([0.7303, 0.2109, -0.2266, 0.6081]))
+        quaternion = matrix_to_quaternion_wxyz(rotation)
+        np.testing.assert_allclose(quaternion_wxyz_to_matrix(quaternion), rotation, atol=1e-8)
+
     def test_eye_in_hand_chain_uses_current_camera_pose(self) -> None:
         T_base_ee = make_transform(translation=np.asarray([0.2, -0.1, 1.0]))
         T_ee_camera = make_transform(translation=np.asarray([0.05, 0.0, 0.02]))
@@ -54,6 +62,14 @@ class GraspTransformTests(unittest.TestCase):
         translation, rotation = pose_error(current, command)
         self.assertAlmostEqual(float(np.linalg.norm(translation)), 0.006, places=7)
         self.assertAlmostEqual(rotation, math.radians(3.0), places=7)
+
+    def test_axis_alignment_preserves_a_proper_rotation(self) -> None:
+        current = make_transform()[:3, :3]
+        target_axis = np.asarray([0.0, 1.0, 1.0])
+        aligned = align_rotation_axis(current, target_axis)
+        np.testing.assert_allclose(aligned.T @ aligned, np.eye(3), atol=1e-8)
+        self.assertGreater(np.linalg.det(aligned), 0.999999)
+        self.assertAlmostEqual(axis_alignment_error(aligned[:, 2], target_axis), 0.0, places=7)
 
 
 if __name__ == "__main__":

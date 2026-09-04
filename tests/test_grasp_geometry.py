@@ -12,7 +12,12 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "source"))
 
 from mr_liu.grasp.contracts import CameraIntrinsics, RGBDObservation, TargetSpec  # noqa: E402
-from mr_liu.grasp.geometry import deproject_depth, estimate_object_frame  # noqa: E402
+from mr_liu.grasp.geometry import (  # noqa: E402
+    ObjectGeometry,
+    deproject_depth,
+    estimate_object_frame,
+    support_completed_center,
+)
 from mr_liu.grasp.segmentation import SeededDepthSegmenter  # noqa: E402
 from mr_liu.grasp.transforms import make_transform  # noqa: E402
 
@@ -32,6 +37,23 @@ class GraspGeometryTests(unittest.TestCase):
         T, extents = estimate_object_frame(points)
         self.assertAlmostEqual(float(np.linalg.det(T[:3, :3])), 1.0, places=6)
         self.assertGreater(extents.max(), extents.min() * 2)
+
+    def test_support_completion_recovers_hidden_object_center(self) -> None:
+        points = np.asarray(
+            [[0.2, -0.1, z] for z in np.linspace(1.074, 1.086, 100)], dtype=np.float64
+        )
+        geometry = ObjectGeometry(
+            mask=np.ones((10, 10), dtype=bool),
+            points_camera=points.copy(),
+            points_base=points,
+            T_camera_object=make_transform(translation=np.asarray([0.2, -0.1, 1.080])),
+            T_base_object=make_transform(translation=np.asarray([0.2, -0.1, 1.080])),
+            valid_depth_ratio=1.0,
+            extents_m=np.asarray([0.03, 0.03, 0.012]),
+        )
+        center = support_completed_center(geometry, table_height_m=1.05)
+        self.assertAlmostEqual(center[2], (1.05 + np.percentile(points[:, 2], 95)) * 0.5)
+        np.testing.assert_allclose(center[:2], [0.2, -0.1])
 
     def test_seeded_segmenter_reprojects_base_hint_through_wrist_pose(self) -> None:
         intrinsics = CameraIntrinsics(width=40, height=30, fx=100, fy=100, cx=20, cy=15)

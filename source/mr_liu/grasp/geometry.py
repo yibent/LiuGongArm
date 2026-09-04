@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from mr_liu.grasp.contracts import CameraIntrinsics, RGBDObservation
-from mr_liu.grasp.transforms import make_transform, transform_points
+from mr_liu.grasp.transforms import invert_transform, make_transform, transform_points
 
 
 @dataclass(frozen=True)
@@ -19,6 +19,26 @@ class ObjectGeometry:
     T_base_object: np.ndarray
     valid_depth_ratio: float
     extents_m: np.ndarray
+
+
+def support_completed_center(
+    geometry: ObjectGeometry,
+    *,
+    table_height_m: float,
+) -> np.ndarray:
+    """Return a stable centre for a partially visible table-supported object.
+
+    A wrist view first sees mostly the top face and later exposes side faces.
+    The centroid of only visible points therefore drifts along the optical axis
+    even when the object is motionless.  The robust top height and known support
+    plane complete the hidden lower half without assuming a trained category.
+    """
+    center = np.asarray(geometry.T_base_object[:3, 3], dtype=np.float64).copy()
+    top_z = float(np.percentile(geometry.points_base[:, 2], 95.0))
+    height = top_z - float(table_height_m)
+    if 0.004 < height < 0.25:
+        center[2] = float(table_height_m) + 0.5 * height
+    return center
 
 
 def self_occlusion_mask(shape: tuple[int, int], bottom_fraction: float) -> np.ndarray:
@@ -110,6 +130,15 @@ def extract_object_geometry(
     T_camera_object, extents = estimate_object_frame(points_camera)
     T_base_object = observation.T_base_camera @ T_camera_object
     points_base = transform_points(observation.T_base_camera, points_camera)
+    # A surface median is strongly view-dependent: a wrist camera transitioning
+    # from a top view to a side view can shift it by several centimetres even
+    # when the object is perfectly static.  The midpoint of robust base-frame
+    # bounds is substantially more stable when multiple object faces are
+    # visible and keeps the tracking translation independent of camera axes.
+    lower, upper = np.percentile(points_base, [5.0, 95.0], axis=0)
+    T_base_object = T_base_object.copy()
+    T_base_object[:3, 3] = 0.5 * (lower + upper)
+    T_camera_object = invert_transform(observation.T_base_camera) @ T_base_object
     return ObjectGeometry(
         mask=valid,
         points_camera=points_camera,

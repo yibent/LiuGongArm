@@ -18,9 +18,9 @@ from mr_liu.grasp.transforms import make_transform  # noqa: E402
 
 
 class IsaacCameraAdapterTests(unittest.TestCase):
-    def test_ros_to_opencv_flips_image_x_and_y_only(self) -> None:
+    def test_isaac_ros_pose_is_already_opencv_optical(self) -> None:
         T = T_world_opencv_from_ros_pose(np.asarray([1, 2, 3]), np.asarray([1, 0, 0, 0]))
-        np.testing.assert_allclose(T[:3, :3], np.diag([-1.0, -1.0, 1.0]))
+        np.testing.assert_allclose(T[:3, :3], np.eye(3))
         self.assertAlmostEqual(float(np.linalg.det(T[:3, :3])), 1.0)
 
     def test_observation_rejects_inconsistent_hand_eye_chain(self) -> None:

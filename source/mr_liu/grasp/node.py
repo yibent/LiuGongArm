@@ -23,7 +23,11 @@ from mr_liu.grasp.contracts import (
     TargetSegmenter,
     WristCamera,
 )
-from mr_liu.grasp.geometry import ObjectGeometry, extract_object_geometry
+from mr_liu.grasp.geometry import (
+    ObjectGeometry,
+    extract_object_geometry,
+    support_completed_center,
+)
 from mr_liu.grasp.policy import ExecutionPolicy, policy_for_target
 from mr_liu.grasp.selection import SelectionResult, select_grasp
 from mr_liu.grasp.servo import PoseServo
@@ -134,6 +138,7 @@ class GeneralGraspNode:
                     score=selected.score,
                     width_m=selected.width_m,
                     backend=selected.backend,
+                    grasp_xyz_m=selected.T_base_grasp[:3, 3].tolist(),
                 )
                 if request.dry_run:
                     metrics["elapsed_s"] = self.clock() - started
@@ -144,6 +149,17 @@ class GeneralGraspNode:
                         message="Dry-run grasp proposal is feasible",
                         selected_grasp=selected,
                         metrics=metrics,
+                    )
+
+                prepare_grasp = getattr(self.motion, "prepare_grasp", None)
+                if callable(prepare_grasp) and not prepare_grasp(selected):
+                    return self._failure(
+                        request,
+                        FailureCode.IK_UNREACHABLE,
+                        "Motion backend could not retain the selected grasp branch",
+                        metrics,
+                        started,
+                        selected,
                     )
 
                 open_width = min(
@@ -168,8 +184,14 @@ class GeneralGraspNode:
                         selected,
                     )
 
-                servo = PoseServo(self.settings.servo)
-                previous_center = geometry.T_base_object[:3, 3].copy()
+                servo = PoseServo(
+                    self.settings.servo,
+                    track_orientation=bool(getattr(self.motion, "tracks_orientation", True)),
+                    orientation_mode=getattr(self.motion, "orientation_mode", None),
+                )
+                planned_center = self._tracking_center(geometry, selected)
+                tracked_center = planned_center.copy()
+                previous_raw_center = planned_center.copy()
                 replan_required = False
                 before_close: RGBDObservation | None = None
                 final_desired = selected.T_base_grasp
@@ -181,17 +203,33 @@ class GeneralGraspNode:
                     if isinstance(latest, FineGraspResult):
                         return self._with_elapsed(latest, started, metrics)
                     current_observation, current_geometry = latest
-                    center = current_geometry.T_base_object[:3, 3]
-                    jump = float(np.linalg.norm(center - previous_center))
+                    raw_center = self._tracking_center(current_geometry, selected)
+                    jump = float(np.linalg.norm(raw_center - previous_raw_center))
                     metrics["max_observed_centroid_jump_m"] = max(
                         float(metrics.get("max_observed_centroid_jump_m", 0.0)), jump
                     )
                     if jump > self.settings.observation.max_centroid_jump_m:
-                        self._emit(FineGraspPhase.OBSERVE, event="target_jump", jump_m=jump)
-                        replan_required = True
-                        break
-                    previous_center = center.copy()
-                    final_desired = current_geometry.T_base_object @ selected.T_object_grasp
+                        # A camera/render timestamp slip or newly exposed face can
+                        # move the visible-surface centre by centimetres for one
+                        # frame.  Reject that sample, but retain it as the next
+                        # consistency reference: a genuinely moved object will
+                        # be accepted on the following fresh observation.
+                        self._emit(FineGraspPhase.OBSERVE, event="center_outlier", jump_m=jump)
+                    else:
+                        innovation = raw_center - tracked_center
+                        innovation_norm = float(np.linalg.norm(innovation))
+                        if innovation_norm > self.settings.observation.tracking_max_step_m:
+                            innovation *= (
+                                self.settings.observation.tracking_max_step_m / innovation_norm
+                            )
+                        tracked_center += self.settings.observation.tracking_alpha * innovation
+                    previous_raw_center = raw_center.copy()
+                    # Keep the slow model's grasp orientation and contact offset,
+                    # while the fast loop tracks target translation from the newest
+                    # wrist frame. Re-applying a raw PCA object frame is unstable for
+                    # symmetric objects (axis permutations can move the grasp by cm).
+                    final_desired = selected.T_base_grasp.copy()
+                    final_desired[:3, 3] += tracked_center - planned_center
                     translation_from_plan, rotation_from_plan = pose_error(
                         selected.T_base_grasp, final_desired
                     )
@@ -222,6 +260,10 @@ class GeneralGraspNode:
                         translation_error_m=update.translation_error_m,
                         rotation_error_deg=math.degrees(update.rotation_error_rad),
                         observation_sequence=current_observation.sequence,
+                        planned_center_m=planned_center.tolist(),
+                        tracked_center_m=tracked_center.tolist(),
+                        desired_xyz_m=final_desired[:3, 3].tolist(),
+                        actual_xyz_m=state.T_base_ee[:3, 3].tolist(),
                     )
                     if update.aligned:
                         before_close = current_observation
@@ -280,10 +322,10 @@ class GeneralGraspNode:
                         started,
                         selected,
                     )
-                after_close_result = self._observe(request, metrics, allow_same_sequence=False)
+                after_close_result = self._capture_for_verification(request, metrics)
                 if isinstance(after_close_result, FineGraspResult):
                     return self._with_elapsed(after_close_result, started, metrics)
-                after_close, _ = after_close_result
+                after_close = after_close_result
                 close_check = self.verifier.verify_closed(
                     before_close, after_close, self.gripper.state()
                 )
@@ -314,10 +356,10 @@ class GeneralGraspNode:
                         started,
                         selected,
                     )
-                after_lift_result = self._observe(request, metrics, allow_same_sequence=False)
+                after_lift_result = self._capture_for_verification(request, metrics)
                 if isinstance(after_lift_result, FineGraspResult):
                     return self._with_elapsed(after_lift_result, started, metrics)
-                after_lift, _ = after_lift_result
+                after_lift = after_lift_result
                 lift_check = self.verifier.verify_lifted(
                     after_close, after_lift, self.gripper.state()
                 )
@@ -418,6 +460,14 @@ class GeneralGraspNode:
                     f"Target valid-depth ratio {geometry.valid_depth_ratio:.3f} is below threshold"
                 )
                 continue
+            self._emit(
+                FineGraspPhase.OBSERVE,
+                event="geometry",
+                observation_sequence=observation.sequence,
+                center_base_m=geometry.T_base_object[:3, 3].tolist(),
+                extents_m=geometry.extents_m.tolist(),
+                valid_depth_ratio=geometry.valid_depth_ratio,
+            )
             self._last_sequence = observation.sequence
             return synchronized, geometry
         return FineGraspResult(
@@ -428,6 +478,16 @@ class GeneralGraspNode:
             message=last_message,
             metrics=metrics,
         )
+
+    def _tracking_center(
+        self, geometry: ObjectGeometry, selected: SelectedGrasp
+    ) -> np.ndarray:
+        if bool(selected.metadata.get("support_surface_completion", False)):
+            return support_completed_center(
+                geometry,
+                table_height_m=self.settings.selection.table_height_m,
+            )
+        return np.asarray(geometry.T_base_object[:3, 3], dtype=np.float64).copy()
 
     def _terminal_check(
         self,
@@ -458,6 +518,40 @@ class GeneralGraspNode:
                 metrics=metrics,
             )
         return None
+
+    def _capture_for_verification(
+        self,
+        request: FineGraspRequest,
+        metrics: dict[str, float | int | str],
+    ) -> RGBDObservation | FineGraspResult:
+        """Capture a fresh frame but allow the held object to be fully occluded.
+
+        Close/lift verification combines vision with gripper contact and stall
+        evidence. Requiring a segmentable point cloud here would incorrectly
+        fail exactly when the fingers hide a successfully held small object.
+        """
+        for _ in range(self.settings.loop.max_observation_failures):
+            self._emit(FineGraspPhase.OBSERVE, event="verification_frame")
+            observation = self.camera.capture(request.target)
+            if observation is None:
+                continue
+            metrics["observations"] = int(metrics["observations"]) + 1
+            age = self.clock() - observation.timestamp_s
+            if age > self.settings.observation.max_age_s or observation.sequence <= self._last_sequence:
+                continue
+            mask = self.segmenter.segment(observation, request.target)
+            self._last_sequence = observation.sequence
+            if mask is None:
+                return observation
+            return replace(observation, target_mask=np.asarray(mask, dtype=bool))
+        return FineGraspResult(
+            success=False,
+            phase=FineGraspPhase.FAILED,
+            request_id=request.request_id,
+            failure=FailureCode.STALE_OBSERVATION,
+            message="No fresh wrist frame was available for grasp verification",
+            metrics=metrics,
+        )
 
     @staticmethod
     def _selection_failure(selection: SelectionResult) -> FailureCode:
