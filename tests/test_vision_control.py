@@ -12,10 +12,33 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "source"))
 
 from find_and_track import RuntimeConfig
-from mr_liu.vision.control import VisionControlServer, VisionRuntimeControl
+from mr_liu.vision.control import (
+    VisionControlServer,
+    VisionRuntimeControl,
+    execute_control_command,
+)
 
 
 class VisionControlTests(unittest.TestCase):
+    def test_semantic_commands_update_target_and_follow_state(self) -> None:
+        control = VisionRuntimeControl(RuntimeConfig(prompt="red cube"))
+        result = execute_control_command(
+            control,
+            "select_target",
+            {"category": "block", "attributes": {"color": "green"}},
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual(control.snapshot().prompt, "green block")
+        execute_control_command(control, "stop")
+        self.assertFalse(control.follow_enabled())
+        execute_control_command(control, "follow", {"enabled": True})
+        self.assertTrue(control.follow_enabled())
+
+    def test_unimplemented_physical_skill_is_rejected(self) -> None:
+        control = VisionRuntimeControl(RuntimeConfig())
+        with self.assertRaises(NotImplementedError):
+            execute_control_command(control, "grasp")
+
     def test_prompt_update_bumps_versions_for_both_view_pipelines(self) -> None:
         control = VisionRuntimeControl(RuntimeConfig(prompt="red cube"))
         before = control.snapshot()

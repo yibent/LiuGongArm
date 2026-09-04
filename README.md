@@ -17,6 +17,7 @@ liuGong/
 ├── assets/robots/so101/          # URDF / XRDF / rmp_flow.yaml
 ├── source/mr_liu/                # sim / robot / motion / vision / perception / app
 ├── source/find_and_track/        # Florence-2 FIND + YOLOE/CV TRACK + WebUI
+├── BusAgent/                     # 语音指令、任务规划与机器人控制总线
 ├── samples/                      # 视觉示例图/视频
 ├── scenes/world.usda
 ├── scripts/                      # 启动脚本（不含业务逻辑）
@@ -114,6 +115,11 @@ curl -X POST http://127.0.0.1:7861/api/find \
   -H 'Content-Type: application/json' -d '{}'
 
 curl http://127.0.0.1:7861/api/status
+
+# BusAgent 使用的统一语义控制接口
+curl -X POST http://127.0.0.1:7861/api/command \
+  -H 'Content-Type: application/json' \
+  -d '{"command_id":"demo-1","skill":"select_target","params":{"category":"power drill"}}'
 ```
 
 远程查看控制页可建立 SSH 隧道：`ssh -L 7861:127.0.0.1:7861 -p 30133 root@183.147.142.40`，然后打开 `http://127.0.0.1:7861`。接口还提供 `/api/frame/scene.jpg` 与 `/api/frame/wrist.jpg` 两路实时标注快照。
@@ -121,6 +127,10 @@ curl http://127.0.0.1:7861/api/status
 `--slow-interval 0` 表示只在首次检测、目标丢失、提示词变化或手动请求时
 运行 Florence；设置为正数则按相应帧数周期重新 FIND。`--no-follow` 只关闭
 检测框到机械臂目标的映射，物理仿真、双相机和推理仍正常运行。
+
+### 接入 BusAgent 语音控制
+
+先保持上述 `run_vision_follow.py` 运行，再启动 `BusAgent/backend` 和 Web 前端。BusAgent 会把“找红色方块”“跟踪电钻”“停一下”“现在什么状态”等语音指令转换为结构化技能，并通过 `/api/command` 下发。当前机械臂侧只实现目标识别与跟随；抓取和放置会明确返回未实现，详见 [BusAgent 说明](BusAgent/README.md)。
 
 ### 验证结果
 

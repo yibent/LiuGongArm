@@ -129,7 +129,7 @@ def main(
         fast_backend=fast,  # type: ignore[arg-type]
         slow_interval=max(0, int(slow_interval)),
     )
-    control = VisionRuntimeControl(vis_cfg)
+    control = VisionRuntimeControl(vis_cfg, follow_enabled=follow_target)
     server = VisionControlServer(control, host=control_host, port=control_port)
     host, port = server.start()
     print(f"[mr_liu] Runtime vision control: http://{host}:{port}")
@@ -186,12 +186,12 @@ def main(
 
                             scene_result = results["scene"]
                             detections = scene_result.fast or scene_result.slow
-                            if follow_target and detections:
+                            if control.follow_enabled() and detections:
                                 height, width = camera_frames["scene"].shape[:2]
                                 x, y = _bbox_to_table_xy(detections[0].xyxy, width, height)
                                 target_xform.set_world_poses(positions=[[x, y, table_z]])
                             vision_cycles += 1
-                    if follow_target:
+                    if control.follow_enabled():
                         controller.step(t)
                 frames += 1
                 if test_frames is not None and frames >= test_frames:

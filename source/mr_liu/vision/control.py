@@ -29,8 +29,9 @@ def _detection_dict(det: Detection) -> dict[str, Any]:
 class VisionRuntimeControl:
     """Own mutable vision settings without exposing them across threads."""
 
-    def __init__(self, config: RuntimeConfig) -> None:
+    def __init__(self, config: RuntimeConfig, *, follow_enabled: bool = True) -> None:
         self._config = replace(config)
+        self._follow_enabled = bool(follow_enabled)
         self._lock = threading.Lock()
         self._views: dict[str, dict[str, Any]] = {}
         self._frames: dict[str, bytes] = {}
@@ -55,6 +56,15 @@ class VisionRuntimeControl:
         with self._lock:
             self._config.find_epoch += 1
             return replace(self._config)
+
+    def set_follow_enabled(self, enabled: bool) -> bool:
+        with self._lock:
+            self._follow_enabled = bool(enabled)
+            return self._follow_enabled
+
+    def follow_enabled(self) -> bool:
+        with self._lock:
+            return self._follow_enabled
 
     def set_model_status(self, status: dict[str, Any]) -> None:
         with self._lock:
@@ -91,10 +101,47 @@ class VisionRuntimeControl:
                 "find_epoch": self._config.find_epoch,
                 "fast_backend": self._config.fast_backend,
                 "slow_interval": self._config.slow_interval,
+                "follow_enabled": self._follow_enabled,
                 "models": self._models,
                 "views": dict(self._views),
                 "error": self._error,
             }
+
+
+def execute_control_command(
+    control: VisionRuntimeControl,
+    skill: str,
+    params: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Execute one BusAgent semantic skill against the live vision loop."""
+    values = params or {}
+    if skill == "select_target":
+        category = str(values.get("category") or values.get("prompt") or "").strip()
+        if not category:
+            raise ValueError("select_target requires category")
+        attributes = values.get("attributes")
+        if isinstance(attributes, dict):
+            color = str(attributes.get("color") or "").strip()
+            prompt = f"{color} {category}".strip()
+        else:
+            prompt = category
+        cfg = control.set_prompt(prompt)
+        return {"ok": True, "message": f"target set to {prompt}", "prompt": cfg.prompt}
+    if skill == "perceive":
+        cfg = control.force_find()
+        return {"ok": True, "message": "new perception requested", "find_epoch": cfg.find_epoch}
+    if skill == "follow":
+        enabled = control.set_follow_enabled(bool(values.get("enabled", True)))
+        return {"ok": True, "message": "following enabled" if enabled else "following disabled"}
+    if skill in {"hold", "stop"}:
+        control.set_follow_enabled(False)
+        message = "robot following held" if skill == "hold" else "robot following stopped"
+        return {"ok": True, "message": message}
+    if skill == "status":
+        return {"ok": True, "message": "status returned", "status": control.status()}
+    raise NotImplementedError(
+        f"skill {skill!r} is not implemented by the current follow-target controller"
+    )
 
 
 _CONTROL_HTML = """<!doctype html>
@@ -187,7 +234,22 @@ class VisionControlServer:
                         cfg = control.force_find()
                         self._json({"message": "FIND requested for both views", "find_epoch": cfg.find_epoch})
                         return
+                    if path == "/api/follow":
+                        enabled = control.set_follow_enabled(bool(body.get("enabled", True)))
+                        self._json({"message": "follow state updated", "follow_enabled": enabled})
+                        return
+                    if path == "/api/command":
+                        skill = str(body.get("skill", "")).strip()
+                        params = body.get("params", {})
+                        if not isinstance(params, dict):
+                            raise ValueError("command params must be an object")
+                        result = execute_control_command(control, skill, params)
+                        result["command_id"] = body.get("command_id")
+                        self._json(result)
+                        return
                     self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
+                except NotImplementedError as exc:
+                    self._json({"ok": False, "error": str(exc)}, HTTPStatus.NOT_IMPLEMENTED)
                 except (ValueError, json.JSONDecodeError) as exc:
                     self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
 
