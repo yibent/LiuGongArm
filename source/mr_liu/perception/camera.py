@@ -104,10 +104,47 @@ class SceneCamera:
             return None
         return frame
 
-    def world_pose(self) -> tuple[np.ndarray, np.ndarray]:
+    def world_pose(self, camera_axes: str = "world") -> tuple[np.ndarray, np.ndarray]:
         if self._cam is None:
             raise RuntimeError(f"Camera {self.which!r} has not been spawned")
-        return self._cam.get_world_pose(camera_axes="world")
+        return self._cam.get_world_pose(camera_axes=camera_axes)
+
+    def intrinsics_matrix(self) -> np.ndarray:
+        if self._cam is None:
+            raise RuntimeError(f"Camera {self.which!r} has not been spawned")
+        return np.asarray(self._cam.get_intrinsics_matrix(device="cpu"), dtype=np.float64)
+
+    def enable_instance_segmentation(self) -> None:
+        """Attach a non-colorized ground-truth instance annotator for sim tests."""
+        if self._cam is None:
+            raise RuntimeError(f"Camera {self.which!r} has not been spawned")
+        self._cam.add_instance_segmentation_to_frame({"colorize": False})
+
+    def instance_mask(self, object_id: str) -> np.ndarray | None:
+        """Return the synchronized simulator mask whose label/path matches ``object_id``."""
+        if self._cam is None:
+            return None
+        payload = self._cam.get_current_frame().get("instance_segmentation_fast")
+        if not isinstance(payload, dict):
+            return None
+        data = np.asarray(payload.get("data"))
+        if data.ndim == 3 and data.shape[2] == 1:
+            data = data[:, :, 0]
+        if data.ndim != 2:
+            return None
+        labels = (payload.get("info") or {}).get("idToLabels") or {}
+        matching: list[int] = []
+        needle = str(object_id).casefold()
+        for raw_id, value in labels.items():
+            text = str(value).casefold()
+            if needle in text:
+                try:
+                    matching.append(int(raw_id))
+                except (TypeError, ValueError):
+                    continue
+        if not matching:
+            return None
+        return np.isin(data, matching)
 
     def rgb_bgr(self) -> np.ndarray | None:
         if self._cam is None:

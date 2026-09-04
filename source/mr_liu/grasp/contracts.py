@@ -24,6 +24,7 @@ class FailureCode(str, Enum):
     TARGET_NOT_VISIBLE = "target_not_visible"
     INCONSISTENT_OBSERVATION = "inconsistent_observation"
     INSUFFICIENT_DEPTH = "insufficient_depth"
+    CALIBRATION_INVALID = "calibration_invalid"
     NO_GRASP_CANDIDATES = "no_grasp_candidates"
     GRIPPER_WIDTH_INFEASIBLE = "gripper_width_infeasible"
     TABLE_CLEARANCE = "table_clearance"
@@ -103,6 +104,8 @@ class RGBDObservation:
     depth_m: np.ndarray
     intrinsics: CameraIntrinsics
     T_base_camera: Matrix4
+    T_base_ee: Matrix4 | None = None
+    T_ee_camera: Matrix4 | None = None
     camera_frame: str = "wrist_camera"
     base_frame: str = "base"
     target_mask: np.ndarray | None = None
@@ -119,6 +122,14 @@ class RGBDObservation:
             raise ValueError("Target mask shape does not match depth")
         if np.asarray(self.T_base_camera).shape != (4, 4):
             raise ValueError("T_base_camera must be 4x4")
+        if (self.T_base_ee is None) != (self.T_ee_camera is None):
+            raise ValueError("T_base_ee and T_ee_camera must be supplied together")
+        if self.T_base_ee is not None and self.T_ee_camera is not None:
+            if np.asarray(self.T_base_ee).shape != (4, 4) or np.asarray(self.T_ee_camera).shape != (4, 4):
+                raise ValueError("T_base_ee and T_ee_camera must be 4x4")
+            chained = np.asarray(self.T_base_ee) @ np.asarray(self.T_ee_camera)
+            if not np.allclose(chained, self.T_base_camera, atol=2e-4):
+                raise ValueError("T_base_camera != T_base_ee @ T_ee_camera")
 
 
 @dataclass(frozen=True)

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import numpy as np
 from isaacsim.core.experimental.prims import Articulation
+from isaacsim.core.experimental.prims import XformPrim
 
 from mr_liu.config import robot_config
+from mr_liu.grasp.transforms import make_transform, quaternion_wxyz_to_matrix, rpy_to_matrix
 from mr_liu.robot.joints import assert_joint_mapping
 
 
@@ -55,3 +58,23 @@ class So101Arm:
         self.articulation.set_dof_positions(positions)
         self.articulation.set_dof_position_targets(positions)
         print(f"[mr_liu] Applied default pose: {dict(zip(names, positions))}")
+
+    def T_base_ee(self) -> np.ndarray:
+        """World/base pose of the configured URDF planning tool frame."""
+        cfg = robot_config()
+        parent = XformPrim(str(cfg["tool_parent_prim_path"]))
+        positions, orientations = parent.get_world_poses()
+        position = _first_numpy(positions)
+        orientation = _first_numpy(orientations)
+        T_base_parent = make_transform(quaternion_wxyz_to_matrix(orientation), position)
+        T_parent_ee = make_transform(
+            rpy_to_matrix(np.asarray(cfg["tool_from_parent_rpy"], dtype=np.float64)),
+            np.asarray(cfg["tool_from_parent_translation"], dtype=np.float64),
+        )
+        return T_base_parent @ T_parent_ee
+
+
+def _first_numpy(value) -> np.ndarray:
+    array = value.numpy() if hasattr(value, "numpy") else np.asarray(value)
+    result = np.asarray(array, dtype=np.float64)
+    return result[0] if result.ndim > 1 else result

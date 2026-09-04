@@ -70,6 +70,18 @@ def quaternion_wxyz_to_matrix(quaternion_wxyz: np.ndarray) -> np.ndarray:
     )
 
 
+def rpy_to_matrix(rpy: np.ndarray) -> np.ndarray:
+    """URDF fixed-axis roll/pitch/yaw rotation matrix (Rz @ Ry @ Rx)."""
+    roll, pitch, yaw = np.asarray(rpy, dtype=np.float64).reshape(3)
+    cr, sr = math.cos(roll), math.sin(roll)
+    cp, sp = math.cos(pitch), math.sin(pitch)
+    cy, sy = math.cos(yaw), math.sin(yaw)
+    Rx = np.asarray([[1, 0, 0], [0, cr, -sr], [0, sr, cr]], dtype=np.float64)
+    Ry = np.asarray([[cp, 0, sp], [0, 1, 0], [-sp, 0, cp]], dtype=np.float64)
+    Rz = np.asarray([[cy, -sy, 0], [sy, cy, 0], [0, 0, 1]], dtype=np.float64)
+    return Rz @ Ry @ Rx
+
+
 def rotation_angle_rad(R_a: np.ndarray, R_b: np.ndarray) -> float:
     relative = np.asarray(R_a, dtype=np.float64).T @ np.asarray(R_b, dtype=np.float64)
     cosine = float(np.clip((np.trace(relative) - 1.0) * 0.5, -1.0, 1.0))
