@@ -1,0 +1,10 @@
+# Phase 2. Scene RGBD and optional wrist camera.
+enabled: false
+scene:
+  prim_path: /World/Cameras/Scene
+  resolution: [640, 480]
+  annotators: [rgb, distance_to_image_plane]
+wrist:
+  prim_path: /World/SO101/gripper/WristCamera
+  resolution: [320, 240]
+  annotators: [rgb]

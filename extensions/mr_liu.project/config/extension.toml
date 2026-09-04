@@ -1,0 +1,17 @@
+[package]
+title = "MR Liu Project"
+version = "0.1.0"
+description = "Starter Kit extension for the MR Liu Isaac Sim project."
+category = "Simulation"
+authors = ["MR Liu"]
+repository = ""
+keywords = ["isaac", "project", "mr_liu"]
+changelog = "docs/CHANGELOG.md"
+readme = "docs/README.md"
+
+[dependencies]
+"omni.kit.uiapp" = {}
+"omni.usd" = {}
+
+[[python.module]]
+name = "mr_liu_ext"

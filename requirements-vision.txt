@@ -1,0 +1,8 @@
+transformers>=4.56
+accelerate
+huggingface_hub
+safetensors
+fastapi
+uvicorn[standard]
+python-multipart
+lap>=0.5.12

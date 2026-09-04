@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Find & Track · Florence-2 × YOLOE-26x</title>
+  <style>
+    :root {
+      --bg: #0a0d12;
+      --panel: #12171f;
+      --panel-2: #181e28;
+      --line: #273140;
+      --text: #e7edf4;
+      --muted: #8b98a8;
+      --slow: #ff8a3d;
+      --fast: #7dffb3;
+      --lost: #ff6b81;
+      --accent: #7aa2ff;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); }
+    body {
+      font-family: "Segoe UI Variable", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      display: grid;
+      grid-template-rows: 56px 1fr;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(90deg, #12171f, #0f141c 55%, #15120e);
+    }
+    .brand { display: flex; gap: 12px; align-items: baseline; }
+    .brand b { letter-spacing: 0.08em; font-size: 14px; }
+    .brand span { color: var(--muted); font-size: 12px; }
+    .chips { display: flex; gap: 8px; }
+    .chip {
+      font-family: Consolas, "IBM Plex Mono", monospace;
+      font-size: 11px;
+      padding: 4px 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+    }
+    .chip.on-slow { color: var(--slow); border-color: #5a3a22; }
+    .chip.on-fast { color: var(--fast); border-color: #1e4a34; }
+    .chip.on-lost { color: var(--lost); border-color: #5a2230; }
+    main {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      min-height: 0;
+    }
+    aside {
+      border-right: 1px solid var(--line);
+      padding: 16px;
+      overflow: auto;
+      background: var(--panel);
+    }
+    label { display: block; font-size: 11px; color: var(--muted); letter-spacing: 0.08em; margin: 14px 0 6px; text-transform: uppercase; }
+    textarea, input, select, button {
+      width: 100%;
+      background: var(--panel-2);
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font: inherit;
+    }
+    textarea { min-height: 76px; resize: vertical; }
+    textarea:focus, input:focus, select:focus { outline: 1px solid #3a4d68; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
+    button { cursor: pointer; }
+    button.primary { background: #1e3a2a; border-color: #2e5a40; color: var(--fast); font-weight: 600; }
+    button.danger { background: #2a151a; border-color: #5a2230; color: var(--lost); }
+    button.ghost { background: transparent; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    .drop {
+      border: 1px dashed #3a4a5c;
+      border-radius: 10px;
+      padding: 16px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+      background: #10151c;
+    }
+    .drop.hot { border-color: var(--accent); color: var(--text); }
+    .file-name { margin-top: 8px; font-size: 12px; color: var(--accent); word-break: break-all; }
+    .hint { font-size: 12px; color: var(--muted); line-height: 1.45; margin-top: 8px; }
+    stage, .stage {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: 1fr 160px;
+    }
+    .viewport {
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(1200px 400px at 70% 0%, #182033 0%, transparent 50%),
+        repeating-linear-gradient(0deg, transparent 0 27px, #141a22 28px),
+        repeating-linear-gradient(90deg, transparent 0 27px, #141a22 28px);
+      overflow: hidden;
+      position: relative;
+    }
+    .viewport img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      background: #000;
+      box-shadow: 0 20px 80px rgba(0,0,0,.45);
+    }
+    .placeholder {
+      color: var(--muted);
+      text-align: center;
+      padding: 24px;
+    }
+    .placeholder kbd {
+      font-family: Consolas, monospace;
+      border: 1px solid var(--line);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .overlay-load {
+      position: absolute; inset: 0;
+      display: none;
+      place-items: center;
+      background: rgba(8,10,14,.72);
+      color: var(--text);
+      font-size: 14px;
+    }
+    .overlay-load.show { display: grid; }
+    .log {
+      border-top: 1px solid var(--line);
+      background: #0d1117;
+      overflow: auto;
+      font-family: Consolas, "IBM Plex Mono", monospace;
+      font-size: 12px;
+      padding: 10px 14px;
+    }
+    .log table { width: 100%; border-collapse: collapse; }
+    .log th, .log td { text-align: left; padding: 4px 8px; color: var(--muted); }
+    .log td { color: var(--text); }
+    .log .slow { color: var(--slow); }
+    .log .fast { color: var(--fast); }
+    input[type=range] { padding: 0; height: 6px; accent-color: var(--fast); }
+    .val { float: right; color: var(--text); font-family: Consolas, monospace; }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px;
+      background: #666;
+    }
+    .status-dot.ok { background: var(--fast); }
+    .status-dot.bad { background: var(--lost); }
+    .status-dot.busy { background: var(--slow); }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <b>FIND & TRACK</b>
+      <span>slow Florence-2-large · fast YOLOE-26x / CV</span>
+    </div>
+    <div class="chips">
+      <div class="chip" id="chipLoad"><span class="status-dot" id="loadDot"></span><span id="loadText">models</span></div>
+      <div class="chip" id="chipPath">IDLE</div>
+      <div class="chip" id="chipFps">FPS --</div>
+    </div>
+  </header>
+  <main>
+    <aside>
+      <label>语言提示（可运行时修改）</label>
+      <textarea id="prompt" placeholder="例如：yellow helmet；或多目标：red car; person with backpack">person</textarea>
+      <div class="btns">
+        <button class="primary" id="applyBtn" type="button">应用提示</button>
+        <button class="ghost" id="findBtn" type="button">立即 FIND</button>
+      </div>
+      <p class="hint">多个目标用分号分隔。应用后慢环会用新描述重新定位，快环接着跟踪。</p>
+
+      <label>测试文件</label>
+      <div class="drop" id="drop">拖入视频 / 图片，或点击选择
+        <input id="file" type="file" accept="image/*,video/*" hidden />
+        <div class="file-name" id="fileName">未选择</div>
+      </div>
+      <div class="btns">
+        <button class="ghost" id="sampleBtn" type="button">示例图片</button>
+        <button class="ghost" id="clearBtn" type="button">清除</button>
+      </div>
+
+      <label>快环后端</label>
+      <select id="backend">
+        <option value="yoloe">YOLOE-26x 视觉提示</option>
+        <option value="cv">传统 CV（光流 / ORB / MIL）</option>
+      </select>
+
+      <label>慢环间隔（帧） <span class="val" id="intervalVal">45</span></label>
+      <input id="interval" type="range" min="0" max="120" step="1" value="45" />
+      <p class="hint">0 表示仅在提示变化、跟丢或手动 FIND 时走慢环。</p>
+
+      <label>快环置信度 <span class="val" id="confVal">0.25</span></label>
+      <input id="conf" type="range" min="0.05" max="0.8" step="0.01" value="0.25" />
+
+      <label>YOLOE 输入尺寸 <span class="val" id="imgszVal">640</span></label>
+      <input id="imgsz" type="range" min="320" max="1280" step="32" value="640" />
+
+      <div class="btns">
+        <button class="primary" id="startBtn" type="button">开始</button>
+        <button class="danger" id="stopBtn" type="button">停止</button>
+      </div>
+      <p class="hint" id="msg"></p>
+    </aside>
+    <div class="stage">
+      <div class="viewport">
+        <div class="placeholder" id="placeholder">上传视频或图片，填写提示，然后点 <kbd>开始</kbd></div>
+        <img id="view" alt="stream" hidden />
+        <div class="overlay-load" id="loading">正在加载 Florence-2-large 与 YOLOE-26x…</div>
+      </div>
+      <div class="log">
+        <table>
+          <thead>
+            <tr><th>source</th><th>id</th><th>label</th><th>score</th><th>xyxy</th></tr>
+          </thead>
+          <tbody id="rows">
+            <tr><td colspan="5">等待运行</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const state = { source: null, streaming: false };
+
+    function bindRange(id, label, fmt) {
+      const el = $(id);
+      const lab = $(label);
+      const sync = () => lab.textContent = fmt ? fmt(el.value) : el.value;
+      el.addEventListener("input", sync);
+      sync();
+    }
+    bindRange("interval", "intervalVal");
+    bindRange("conf", "confVal", v => Number(v).toFixed(2));
+    bindRange("imgsz", "imgszVal");
+
+    const drop = $("drop");
+    const file = $("file");
+    drop.addEventListener("click", () => file.click());
+    drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("hot"); });
+    drop.addEventListener("dragleave", () => drop.classList.remove("hot"));
+    drop.addEventListener("drop", async (e) => {
+      e.preventDefault(); drop.classList.remove("hot");
+      if (e.dataTransfer.files[0]) await upload(e.dataTransfer.files[0]);
+    });
+    file.addEventListener("change", async () => {
+      if (file.files[0]) await upload(file.files[0]);
+    });
+
+    async function upload(f) {
+      const fd = new FormData();
+      fd.append("file", f);
+      $("fileName").textContent = "上传中… " + f.name;
+      const res = await fetch("/api/upload", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) { $("msg").textContent = data.detail || "上传失败"; return; }
+      state.source = data.path;
+      $("fileName").textContent = data.name + "  (" + data.kind + ")";
+      $("msg").textContent = "已就绪，可以开始。";
+    }
+
+    $("sampleBtn").onclick = async () => {
+      const res = await fetch("/api/sample", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) { $("msg").textContent = data.detail || "示例加载失败"; return; }
+      state.source = data.path;
+      $("fileName").textContent = data.name + "  (image)";
+      $("msg").textContent = "已加载示例 bus.jpg";
+    };
+    $("clearBtn").onclick = () => {
+      state.source = null;
+      file.value = "";
+      $("fileName").textContent = "未选择";
+    };
+
+    function configBody(extra) {
+      return Object.assign({
+        prompt: $("prompt").value,
+        fast_backend: $("backend").value,
+        slow_interval: Number($("interval").value),
+        conf: Number($("conf").value),
+        imgsz: Number($("imgsz").value),
+      }, extra || {});
+    }
+
+    $("applyBtn").onclick = async () => {
+      const res = await fetch("/api/prompt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(configBody()),
+      });
+      const data = await res.json();
+      $("msg").textContent = data.message || "提示已更新，下一帧将重新 FIND。";
+    };
+    $("findBtn").onclick = async () => {
+      await fetch("/api/find", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(configBody()) });
+      $("msg").textContent = "已请求立即 FIND。";
+    };
+    $("startBtn").onclick = async () => {
+      const res = await fetch("/api/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(configBody()),
+      });
+      const data = await res.json();
+      if (!res.ok) { $("msg").textContent = data.detail || "无法开始"; return; }
+      $("placeholder").hidden = true;
+      $("view").hidden = false;
+      $("view").src = "/api/stream?t=" + Date.now();
+      state.streaming = true;
+      $("msg").textContent = "运行中。可随时改提示并点「应用提示」。";
+    };
+    $("stopBtn").onclick = async () => {
+      await fetch("/api/stop", { method: "POST" });
+      $("msg").textContent = "已停止。";
+    };
+
+    function renderDets(dets) {
+      const rows = $("rows");
+      if (!dets || !dets.length) {
+        rows.innerHTML = "<tr><td colspan='5'>无检测</td></tr>";
+        return;
+      }
+      rows.innerHTML = dets.map(d => {
+        const box = (d.xyxy || []).map(x => Number(x).toFixed(0)).join(",");
+        return `<tr>
+          <td class="${d.source}">${d.source}</td>
+          <td>${d.track_id ?? "-"}</td>
+          <td>${d.label}</td>
+          <td>${Number(d.score).toFixed(2)}</td>
+          <td>${box}</td>
+        </tr>`;
+      }).join("");
+    }
+
+    async function poll() {
+      try {
+        const s = await (await fetch("/api/status")).json();
+        const dot = $("loadDot");
+        const loadText = $("loadText");
+        const loading = $("loading");
+        if (s.load_error) {
+          dot.className = "status-dot bad";
+          loadText.textContent = "load error";
+          loading.classList.add("show");
+          loading.textContent = "加载失败：" + s.load_error;
+        } else if (!s.loaded) {
+          dot.className = "status-dot busy";
+          loadText.textContent = "loading";
+          loading.classList.add("show");
+        } else {
+          dot.className = "status-dot ok";
+          loadText.textContent = (s.florence_id || "florence") + " + yoloe";
+          loading.classList.remove("show");
+        }
+        const path = (s.stats && s.stats.path) || (s.running ? "run" : "idle");
+        const chip = $("chipPath");
+        chip.textContent = (s.stats && s.stats.lost) ? "LOST" : path.toUpperCase();
+        chip.className = "chip " + ((s.stats && s.stats.lost) ? "on-lost" : path === "slow" ? "on-slow" : path === "fast" ? "on-fast" : "");
+        $("chipFps").textContent = "FPS " + ((s.stats && s.stats.fps) ? Number(s.stats.fps).toFixed(1) : "--");
+        if (s.stats && s.stats.message) $("msg").textContent = s.stats.message;
+        renderDets(s.detections || []);
+        if (s.running && $("view").hidden) {
+          $("placeholder").hidden = true;
+          $("view").hidden = false;
+          $("view").src = "/api/stream?t=" + Date.now();
+        }
+      } catch (err) {
+        $("loadText").textContent = "ui offline";
+      }
+    }
+    setInterval(poll, 400);
+    poll();
+  </script>
+</body>
+</html>

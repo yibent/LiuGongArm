@@ -1,0 +1,31 @@
+backend: rmpflow
+device: cuda
+physics_dt: 0.0166666667
+
+# Follow-target: track cube position only. Identity cube orientation does not
+# match the SO-101 gripper frame, so orientation tracking makes the arm wander.
+track_orientation: true
+
+# Keep collision low for follow-target. Table/ground are excluded so the EE
+# can reach a cube sitting above the desktop.
+cspace_target_metric_scalar: 1.0
+collision_metric_scalar: 50.0
+
+# Extra RMPflow knobs (slash path as in rmp_flow.yaml).
+# Increase target_rmp/*_p_gain if the EE lags; decrease if it oscillates.
+rmp_overrides:
+  axis_target_rmp/metric_scalar: 0.0
+  axis_target_rmp/accel_p_gain: 0.0
+  target_rmp/accel_p_gain: 130.0
+  target_rmp/accel_d_gain: 120.0
+  target_rmp/max_metric_scalar: 12000.0
+  joint_velocity_cap_rmp/max_velocity: 1.6
+
+obstacle_obb_margin: 0.02
+exclude_from_obstacles:
+  - /World/SO101
+  - /World/TargetCube
+  - /World/Table
+  - /World/GroundPlane
+
+debug_follow: false

@@ -1,0 +1,14 @@
+table_usd_rel: /Isaac/Props/Mounts/SeattleLabTable/table_instanceable.usd
+hdri_rel: /NVIDIA/Assets/Skies/Studio/photo_studio_01_4k.hdr
+
+table_pos: [0.5, 0.0, 1.05]
+table_orient_wxyz: [0.70710678, 0.0, 0.0, 0.70710678]
+robot_pos: [0.2, 0.0, 1.02]
+
+dome_intensity: 1000
+distant_intensity: 1200
+
+target:
+  prim_path: /World/TargetCube
+  position: [0.20, -0.20, 1.05]
+  size: 0.04

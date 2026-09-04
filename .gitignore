@@ -1,0 +1,45 @@
+# Upstream clones at repo root only (do not use MR_Liu/ — Windows git is
+# case-insensitive and would also ignore source/mr_liu/)
+/MR_Liu/
+/yoloe/
+
+# Isaac Sim engine (binary install, do not version)
+isaac_sim/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Isaac Sim / Omniverse local state
+*.log
+*.log.*
+.nvidia-omniverse/
+kit-logs/
+ov-cache/
+_build/
+_compiler/
+.cache/
+
+# Vision weights / runs
+*.pt
+*.ts
+runs/
+
+# Editor / OS
+.vscode/
+.idea/
+*.suo
+*.user
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Generated captures
+output/
+captures/
+*.png.bak

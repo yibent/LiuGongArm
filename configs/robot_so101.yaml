@@ -1,0 +1,45 @@
+name: so101
+usd_prim_path: /World/SO101
+articulation_prim_path: /World/SO101/root_joint
+usd_asset_rel: /Isaac/Robots/RobotStudio/so101_new_calib/so101_new_calib.usd
+tool_frame: gripper_frame_link
+gripper_joint: gripper
+
+# cuMotion files (kinematics-only URDF; spheres live in XRDF)
+robot_dir: assets/robots/so101
+urdf: robot.urdf
+xrdf: robot.xrdf
+rmp_flow: rmp_flow.yaml
+
+# Must match USD PhysicsRevoluteJoint names and URDF <joint name>
+controlled_joints:
+  - shoulder_pan
+  - shoulder_lift
+  - elbow_flex
+  - wrist_flex
+  - wrist_roll
+
+all_joints:
+  - shoulder_pan
+  - shoulder_lift
+  - elbow_flex
+  - wrist_flex
+  - wrist_roll
+  - gripper
+
+usd_to_urdf_links:
+  base: base_link
+  shoulder: shoulder_link
+  upper_arm: upper_arm_link
+  lower_arm: lower_arm_link
+  wrist: wrist_link
+  gripper: gripper_link
+  moving_jaw_so101_v1: moving_jaw_so101_v1_link
+
+default_joint_positions:
+  shoulder_pan: 0.0
+  shoulder_lift: -1.2
+  elbow_flex: 1.3
+  wrist_flex: 1.2
+  wrist_roll: 0.0
+  gripper: 0.0

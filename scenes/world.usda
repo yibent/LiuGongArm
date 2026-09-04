@@ -1,0 +1,103 @@
+#usda 1.0
+(
+    customLayerData = {
+        dictionary cameraSettings = {
+            dictionary Front = {
+                double3 position = (5, 0, 1.05)
+                double radius = 5
+            }
+            dictionary Perspective = {
+                double3 position = (1.9, 1.7, 1.85)
+                double3 target = (0.25, 0, 1.15)
+            }
+            dictionary Right = {
+                double3 position = (0, -5, 1.05)
+                double radius = 5
+            }
+            dictionary Top = {
+                double3 position = (0, 0, 5)
+                double radius = 5
+            }
+            string boundCamera = "/OmniverseKit_Persp"
+        }
+    }
+    defaultPrim = "World"
+    endTimeCode = 100000
+    metersPerUnit = 1
+    startTimeCode = 0
+    timeCodesPerSecond = 60
+    upAxis = "Z"
+    kilogramsPerUnit = 1
+)
+
+def Xform "World"
+{
+    def PhysicsScene "physicsScene"
+    {
+        vector3f physics:gravityDirection = (0, 0, -1)
+        float physics:gravityMagnitude = 9.81
+    }
+
+    def DistantLight "DistantLight"
+    {
+        float inputs:angle = 1
+        float inputs:intensity = 1200
+        float3 xformOp:rotateXYZ = (315, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:rotateXYZ"]
+    }
+
+    def DomeLight "DomeLight"
+    {
+        float inputs:intensity = 1000
+        bool inputs:normalize = 1
+        asset inputs:texture:file = @https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.0/NVIDIA/Assets/Skies/Studio/photo_studio_01_4k.hdr@
+        token inputs:texture:format = "latlong"
+        bool visibleInPrimaryRay = 1
+    }
+
+    def Mesh "GroundPlane" (
+        prepend apiSchemas = ["PhysicsCollisionAPI", "PhysicsRigidBodyAPI", "PhysicsMeshCollisionAPI"]
+    )
+    {
+        uniform bool physics:kinematicEnabled = 1
+        uniform bool physics:rigidBodyEnabled = 1
+        uniform token physics:approximation = "none"
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        normal3f[] normals = [(0, 0, 1), (0, 0, 1), (0, 0, 1), (0, 0, 1)] (
+            interpolation = "faceVarying"
+        )
+        point3f[] points = [(-10, -10, 0), (10, -10, 0), (10, 10, 0), (-10, 10, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "faceVarying"
+        )
+        uniform token subdivisionScheme = "none"
+        color3f[] primvars:displayColor = [(0.35, 0.35, 0.35)]
+    }
+
+    def Xform "Table" (
+        prepend references = @https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.0/Isaac/Props/Mounts/SeattleLabTable/table_instanceable.usd@
+    )
+    {
+        quatf xformOp:orient = (0.70710678, 0, 0, 0.70710678)
+        double3 xformOp:translate = (0.5, 0, 1.05)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
+    }
+
+    def Xform "SO101" (
+        prepend references = @https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.0/Isaac/Robots/RobotStudio/so101_new_calib/so101_new_calib.usd@
+    )
+    {
+        double3 xformOp:translate = (0, 0, 1.05)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    # World-fixed weld at the tabletop pose. Table is a static collider, so this
+    # is the same as clamping the arm to the desk. Body0 omitted = world.
+    def PhysicsFixedJoint "SO101Mount"
+    {
+        rel physics:body1 = </World/SO101/base>
+        float physics:breakForce = inf
+        float physics:breakTorque = inf
+    }
+}
