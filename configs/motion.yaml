@@ -27,5 +27,9 @@ exclude_from_obstacles:
   - /World/TargetCube
   - /World/Table
   - /World/GroundPlane
+  # The tabletop objects are candidate manipulation targets, so they must not
+  # be baked into the static avoidance world. This also avoids WorldBinding's
+  # non-unity ancestor-scale restriction for referenced YCB/block assets.
+  - /World/TabletopProps
 
 debug_follow: false

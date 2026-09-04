@@ -1,4 +1,4 @@
-"""USD scene authoring: table, SO-101, mount joint, HDRI."""
+"""USD scene authoring: table, SO-101, loose tabletop props, and HDRI."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ from mr_liu.config import robot_config, scene_config
 from mr_liu.sim.assets import resolve_isaac_asset
 
 MOUNT_JOINT_PATH = "/World/SO101Mount"
+TABLETOP_PROPS_ROOT = "/World/TabletopProps"
 
 
 def apply_environment_map() -> None:
@@ -71,6 +72,145 @@ def mount_so101_to_table() -> None:
     print(f"[mr_liu] Mounted {base.GetPath()} with {MOUNT_JOINT_PATH}")
 
 
+def _subtree_prims(root):
+    """Yield a root and its composed descendants, including instance proxies."""
+    from pxr import Usd
+
+    return Usd.PrimRange(root, Usd.TraverseInstanceProxies())
+
+
+def _ensure_dynamic_rigid_body(stage, prim_path: str, mass: float) -> tuple[int, int]:
+    """Ensure a referenced prop has a rigid body, colliders, and explicit mass."""
+    from pxr import PhysxSchema, UsdGeom, UsdPhysics
+
+    root = stage.GetPrimAtPath(prim_path)
+    if not root.IsValid():
+        raise RuntimeError(f"Tabletop prop did not compose: {prim_path}")
+
+    prims = list(_subtree_prims(root))
+    rigid_bodies = [prim for prim in prims if prim.HasAPI(UsdPhysics.RigidBodyAPI)]
+    colliders = [prim for prim in prims if prim.HasAPI(UsdPhysics.CollisionAPI)]
+
+    if not rigid_bodies:
+        UsdPhysics.RigidBodyAPI.Apply(root)
+        rigid_bodies = [root]
+
+    if not colliders:
+        for prim in prims:
+            if not prim.IsA(UsdGeom.Gprim):
+                continue
+            UsdPhysics.CollisionAPI.Apply(prim)
+            if prim.IsA(UsdGeom.Mesh):
+                UsdPhysics.MeshCollisionAPI.Apply(prim).CreateApproximationAttr("convexHull")
+            colliders.append(prim)
+
+    # Factory task assets may be authored as one-body articulations.  A loose
+    # tabletop prop should instead participate as a regular gravity-driven body.
+    for prim in prims:
+        if prim.IsA(UsdPhysics.Joint):
+            prim.SetActive(False)
+        if prim.HasAPI(UsdPhysics.ArticulationRootAPI):
+            prim.RemoveAPI(UsdPhysics.ArticulationRootAPI)
+        if prim.HasAPI(PhysxSchema.PhysxArticulationAPI):
+            prim.RemoveAPI(PhysxSchema.PhysxArticulationAPI)
+    for prim in rigid_bodies:
+        UsdPhysics.RigidBodyAPI(prim).CreateKinematicEnabledAttr(False).Set(False)
+        PhysxSchema.PhysxRigidBodyAPI.Apply(prim).CreateDisableGravityAttr(False).Set(False)
+
+    mass_api = UsdPhysics.MassAPI.Apply(rigid_bodies[0])
+    mass_api.CreateMassAttr(float(mass))
+    return len(rigid_bodies), len(colliders)
+
+
+def _set_display_color(gprim, color=(0.32, 0.34, 0.38)) -> None:
+    from pxr import Gf
+
+    gprim.CreateDisplayColorAttr([Gf.Vec3f(*color)])
+
+
+def _spawn_procedural_wrench(stage, prop: dict) -> None:
+    """Author a compact compound rigid-body wrench when no library asset exists."""
+    from pxr import Gf, UsdGeom, UsdPhysics
+
+    prim_path = str(prop["prim_path"])
+    root = UsdGeom.Xform.Define(stage, prim_path).GetPrim()
+
+    def cube(name: str, translation, size, angle_deg: float = 0.0) -> None:
+        geom = UsdGeom.Cube.Define(stage, f"{prim_path}/{name}")
+        geom.CreateSizeAttr(1.0)
+        _set_display_color(geom)
+        xform = UsdGeom.Xformable(geom)
+        xform.AddTranslateOp().Set(Gf.Vec3d(*translation))
+        if angle_deg:
+            xform.AddRotateZOp().Set(float(angle_deg))
+        xform.AddScaleOp().Set(Gf.Vec3d(*size))
+        UsdPhysics.CollisionAPI.Apply(geom.GetPrim())
+
+    # 130 mm long, low-profile wrench sized for the SO-101 gripper.
+    cube("Handle", (-0.005, 0.0, 0.0), (0.090, 0.014, 0.008))
+    cube("JawUpper", (0.047, 0.014, 0.0), (0.040, 0.012, 0.008), 28.0)
+    cube("JawLower", (0.047, -0.014, 0.0), (0.040, 0.012, 0.008), -28.0)
+    cylinder = UsdGeom.Cylinder.Define(stage, f"{prim_path}/RingEnd")
+    cylinder.CreateAxisAttr("Z")
+    cylinder.CreateRadiusAttr(0.018)
+    cylinder.CreateHeightAttr(0.008)
+    _set_display_color(cylinder)
+    UsdGeom.Xformable(cylinder).AddTranslateOp().Set(Gf.Vec3d(-0.058, 0.0, 0.0))
+    UsdPhysics.CollisionAPI.Apply(cylinder.GetPrim())
+
+    UsdPhysics.RigidBodyAPI.Apply(root).CreateKinematicEnabledAttr(False)
+    UsdPhysics.MassAPI.Apply(root).CreateMassAttr(float(prop["mass"]))
+
+
+def spawn_tabletop_props() -> list[str]:
+    """Spawn configured loose objects as dynamic, labelled tabletop props."""
+    import isaacsim.core.experimental.utils.stage as stage_utils
+    import omni.usd
+    from isaacsim.core.experimental.prims import XformPrim
+    from pxr import Semantics, UsdGeom
+
+    stage = omni.usd.get_context().get_stage()
+    UsdGeom.Xform.Define(stage, TABLETOP_PROPS_ROOT)
+    spawned: list[str] = []
+
+    for prop in scene_config().get("tabletop_props", []):
+        name = str(prop["name"])
+        kind = str(prop.get("kind", "asset"))
+        prim_path = str(prop["prim_path"])
+        print(f"[mr_liu] Loading prop {name} ({kind}) at {prim_path}")
+        if kind == "asset":
+            asset_path = resolve_isaac_asset(str(prop["asset_rel"]))
+            stage_utils.add_reference_to_stage(usd_path=asset_path, path=prim_path)
+        elif kind == "procedural_wrench":
+            asset_path = "procedural compound rigid body"
+            _spawn_procedural_wrench(stage, prop)
+        else:
+            raise ValueError(f"Unsupported tabletop prop kind {kind!r} for {name!r}")
+
+        xform_kwargs = {
+            "positions": [prop["position"]],
+            "orientations": [prop.get("orientation_wxyz", [1.0, 0.0, 0.0, 0.0])],
+            "reset_xform_op_properties": True,
+        }
+        if "scale" in prop:
+            xform_kwargs["scales"] = [prop["scale"]]
+        XformPrim(prim_path, **xform_kwargs)
+
+        rigid_count, collider_count = _ensure_dynamic_rigid_body(
+            stage, prim_path, float(prop["mass"])
+        )
+        root = stage.GetPrimAtPath(prim_path)
+        semantics = Semantics.SemanticsAPI.Apply(root, "Semantics")
+        semantics.CreateSemanticTypeAttr().Set("class")
+        semantics.CreateSemanticDataAttr().Set(str(prop.get("semantic_label", name)))
+        spawned.append(prim_path)
+        print(
+            f"[mr_liu] Prop {name}: {asset_path} at {prim_path} "
+            f"rigid_bodies={rigid_count} colliders={collider_count}"
+        )
+    return spawned
+
+
 def spawn_table_and_so101() -> None:
     import isaacsim.core.experimental.utils.stage as stage_utils
     from isaacsim.core.experimental.prims import XformPrim
@@ -93,8 +233,10 @@ def spawn_table_and_so101() -> None:
     XformPrim(
         robot["usd_prim_path"],
         positions=[scene["robot_pos"]],
+        orientations=[scene.get("robot_orient_wxyz", [1.0, 0.0, 0.0, 0.0])],
         reset_xform_op_properties=True,
     )
     print(f"[mr_liu] Table: {table_usd}")
     print(f"[mr_liu] SO-101: {so101_usd}")
     mount_so101_to_table()
+    spawn_tabletop_props()

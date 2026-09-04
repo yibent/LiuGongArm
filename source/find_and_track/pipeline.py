@@ -33,9 +33,12 @@ class FindTrackPipeline:
         yoloe_weights: str | Path,
         florence_id: str | None = None,
         device: str | None = None,
+        *,
+        finder: FlorenceFinder | None = None,
+        yoloe_tracker: YoloeVisualTracker | None = None,
     ):
-        self.florence = FlorenceFinder(model_id=florence_id, device=device)
-        self.yoloe = YoloeVisualTracker(weights=yoloe_weights, device=device)
+        self.florence = finder or FlorenceFinder(model_id=florence_id, device=device)
+        self.yoloe = yoloe_tracker or YoloeVisualTracker(weights=yoloe_weights, device=device)
         self.cv = CvFeatureTracker()
         self._frame_idx = 0
         self._seen_version = -1

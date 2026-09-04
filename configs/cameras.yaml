@@ -17,9 +17,10 @@ wrist:
   resolution: [640, 480]
   frequency: 30
   # Side-mounted to keep the gripper body out of the optical centre.
-  translation: [0.060, 0.0, -0.030]
-  # Aim from the side mount toward the tool tip at approximately [0, 0, -0.16].
-  orientation_wxyz: [0.53895, 0.0, 0.84234, 0.0]
-  focal_length: 1.8
+  translation: [0.150, 0.0, -0.100]
+  # With the configured home pose this composes to a world-down view. The wide
+  # focal length covers the tabletop workspace used by the loose props.
+  orientation_wxyz: [0.0, 0.0, 1.0, 0.0]
+  focal_length: 1.0
   clipping_range: [0.01, 3.0]
   annotators: [rgb, distance_to_image_plane]
