@@ -29,6 +29,12 @@ _compiler/
 *.pt
 *.ts
 runs/
+/_models/
+/_vendor/
+
+# Fine-grasp local benchmark artifacts
+/benchmarks/artifacts/
+/output/
 
 # Editor / OS
 .vscode/
