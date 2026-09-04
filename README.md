@@ -1,6 +1,6 @@
 # MR Liu + YOLOE
 
-机械臂仿真工程：Isaac Sim 桌面 SO-101 + cuMotion follow-target，接入 Florence-2 FIND 与 YOLOE / OpenCV TRACK。
+机械臂仿真工程：Isaac Sim 桌面 SO-101 + cuMotion follow-target，接入 Florence-2 FIND 与 YOLOE / OpenCV TRACK，并提供桌面顶视 RGB 与腕部 RGBD 相机。
 
 合并自：
 
@@ -58,6 +58,12 @@ D:\isaac\env_isaacsim60\python.exe -m pip install -r requirements-vision.txt
 | 独立视觉 WebUI（不开仿真，默认 :7860） | `scripts\run_yoloe_webui.bat` |
 | 关节名自检（无 GUI） | `scripts\run_tests.bat` |
 
+相机运行时验证（Linux）：
+
+```bash
+PYTHONEXE="$PWD/.venv/bin/python" /root/isaacsim/python.sh scripts/verify_cameras.py
+```
+
 Play 之后拖动 `/World/TargetCube`，SO-101 用 cuMotion RMPflow 跟随。Stop/Play 会重置控制器。
 
 独立视觉 CLI：
@@ -83,3 +89,6 @@ D:\isaac\env_isaacsim60\python.exe vision_main.py --webui --host 127.0.0.1 --por
 | `configs/robot_so101.yaml` | 关节名 / 初始姿态 |
 | `configs/motion.yaml` | physics dt、device、RMPflow |
 | `configs/cameras.yaml` | 场景相机 / 腕部相机 |
+
+相机 rig 默认启用：`/World/Cameras/TableTopRGB` 位于桌面正上方并输出 RGB；
+`/World/SO101/gripper/WristRGBD` 挂载在夹爪节点下，随机械臂运动并输出 RGB 与米制深度。

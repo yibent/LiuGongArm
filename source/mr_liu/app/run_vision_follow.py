@@ -13,7 +13,7 @@ from isaacsim.core.utils.viewports import set_camera_view
 from mr_liu.config import motion_config, scene_config
 from mr_liu.motion.follow import FollowTargetController
 from mr_liu.paths import repo_root
-from mr_liu.perception.camera import SceneCamera
+from mr_liu.perception.camera import SceneCamera, spawn_configured_cameras
 from mr_liu.robot.so101 import So101Arm
 from mr_liu.sim.spawn import spawn_table_and_so101
 from mr_liu.vision import FindTrackPipeline, RuntimeConfig
@@ -49,8 +49,8 @@ def setup(app) -> tuple[FollowTargetController, So101Arm, GeomPrim, SceneCamera]
     app.update()
     set_camera_view(eye=[1.6, 1.4, 1.7], target=[0.15, 0.0, 1.15], camera_prim_path="/OmniverseKit_Persp")
 
-    camera = SceneCamera("scene")
-    camera.spawn(position=[1.35, 0.0, 1.65], target=[0.25, 0.0, 1.10])
+    cameras = spawn_configured_cameras()
+    camera = cameras["scene"]
     app.update()
 
     arm = So101Arm()

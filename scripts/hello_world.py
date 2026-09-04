@@ -16,12 +16,15 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "source"))
 
 from mr_liu.config import scene_config
+from mr_liu.perception.camera import spawn_configured_cameras
 from mr_liu.sim.spawn import spawn_table_and_so101
 
 stage_utils.create_new_stage()
 GroundPlane("/World/GroundPlane", positions=[0, 0, 0])
 DistantLight("/World/DistantLight").set_intensities(float(scene_config()["distant_intensity"]))
 spawn_table_and_so101()
+simulation_app.update()
+spawn_configured_cameras()
 
 SimulationManager.set_physics_dt(1.0 / 60.0)
 app_utils.play()
