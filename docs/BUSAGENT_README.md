@@ -15,12 +15,16 @@
 
 本文是当前交接入口；历史单次成功不能代替最新基线结果。
 
+合并后的实时接入见 [BusAgent 抓取运行说明](BUSAGENT_GRASP_RUNTIME.md)：现有场景已经增加
+HTTP `grasp`、机械臂队列占用、中断及阶段反馈。下文模型评估数字仍是抓取分支的历史基线，
+不代表新运行入口已通过 GPU 实测。
+
 ## 1. 我们开发了什么
 
 | 组件 | 已完成的工作 | 当前边界 |
 |---|---|---|
-| BusAgent 接口 | `FineGraspSkill` 包装 `GeneralGraspNode`，统一请求、结果、取消接口 | Python 进程内接口；尚无 BusAgent 自动注册器、HTTP/ROS 服务 |
-| 抓取模型 | GraspGenX 本地权重推理、独立 ZMQ 服务、候选转换与筛选、几何 fallback | 工程选定 primary，不是已证明优于所有模型 |
+| BusAgent 接口 | `FineGraspSkill` 包装 `GeneralGraspNode`；实时入口增加 HTTP `grasp` 调度 | 新入口待 GPU 验证；无 ROS 服务 |
+| 抓取模型 | GraspGenX 本地权重推理、独立 ZMQ 服务、候选转换与筛选；在线禁止几何回退 | 工程选定 primary，不是已证明优于所有模型 |
 | 腕部闭环 | 同帧 RGB-D/渲染位姿、手眼坐标链、逐步重新观察、目标平移跟踪、pose servo | 姿态突变检测、长遮挡跟踪和时延控制仍需增强 |
 | 执行约束 | IK、world collision、桌面间隙、夹爪开口和接近检查 | SO-101 指尖/扫掠体含近似，不能视为完备碰撞保证 |
 | 属性策略 | 易损品限力限速、薄件间隙检查、反光物体小深度孔洞恢复 | 规则策略，不是逐物体训练；真机力值必须标定 |
@@ -85,7 +89,7 @@ scripts\run_fine_grasp_demo.bat -Backend geometric -Perception single
 
 demo 会创建仿真场景并移动**仿真**机械臂，不会自动连接真机。默认 headless，
 需要窗口加 `-NoHeadless`。wrapper 默认使用 GraspGenX，直接运行 Python runner
-或只读取 `configs/fine_grasp.yaml` 则默认 geometric，接入时必须显式选择后端。
+时应显式指定后端；`configs/fine_grasp.yaml` 与 BusAgent 在线服务默认 GraspGenX，禁止自动几何回退。
 
 wrapper 会在 `127.0.0.1:5556` 没有服务时启动本仓库 `serve_graspgenx.py`，
 warmup 后运行 Isaac，结束时只关闭自己创建的服务。复用现有端口时需自行确认
@@ -223,7 +227,7 @@ skill 名为 `fine_grasp`，aliases 是 `general_grasp`、`grasp`；BusAgent 需
   **不能在调用返回后把它当作永久有效的位姿再次开环执行**。
 - 构造函数的 `backend` 或 `metrics.backend` 不等于实际选中候选来源。请看
   `selected_grasp.backend`、`metadata.branch`、`metadata.fallback_reason`；
-  需要禁止几何降级时将 `backends.graspgenx.fallback_backend` 设为 `none`。
+  `backends.graspgenx.fallback_backend` 默认是 `none`，BusAgent 在线会话也强制禁止几何降级。
 
 ## 5. 相机、机器人和模型的替换边界
 

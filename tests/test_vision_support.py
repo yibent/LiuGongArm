@@ -92,6 +92,7 @@ class VisionSupportTests(unittest.TestCase):
         pipe.cv.update.return_value = [self.det]
         pipe.yoloe = Mock()
         pipe.yoloe.detect.return_value = [self.det]
+        pipe.yoloe.set_text_prompt.side_effect = RuntimeError("text encoder unavailable")
         cfg = RuntimeConfig(prompt="part", fast_backend="cv", slow_interval=0)
         pipe.process_frame(self.frame, cfg)
         cfg.fast_backend = "yoloe"
@@ -99,7 +100,22 @@ class VisionSupportTests(unittest.TestCase):
         pipe.process_frame(current, cfg)
         self.assertEqual(pipe.florence.find.call_count, 2)
         self.assertIs(pipe.yoloe.set_visual_prompt.call_args.args[0], current)
-        self.assertEqual(pipe.cv.init.call_count, 1)
+        self.assertEqual(pipe.cv.init.call_count, 2)
+
+    def test_backend_switch_uses_new_yolo_text_bootstrap_on_latest_frame(self):
+        pipe = FindTrackPipeline(device="cpu")
+        pipe.florence, pipe.cv, pipe.yoloe = Mock(), Mock(), Mock()
+        pipe.florence.find.return_value = pipe.cv.update.return_value = [self.det]
+        pipe.yoloe.detect.return_value = [self.det]
+        cfg = RuntimeConfig(prompt="part", fast_backend="cv", slow_interval=0)
+        pipe.process_frame(self.frame, cfg)
+        current = self.frame.copy()
+        cfg.fast_backend = "yoloe"
+        pipe.process_frame(current, cfg)
+        pipe.yoloe.set_text_prompt.assert_called_once_with(["part"])
+        self.assertIs(pipe.yoloe.detect.call_args.args[0], current)
+        self.assertEqual(pipe.florence.find.call_count, 1)
+        self.assertEqual(pipe.cv.init.call_count, 2)
 
     def test_closing_video_generator_releases_camera(self):
         pipe = FindTrackPipeline(device="cpu")

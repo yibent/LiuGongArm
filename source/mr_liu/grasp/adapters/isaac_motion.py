@@ -132,6 +132,8 @@ class IsaacCumotionExecutor:
         self._active_waypoints: list[np.ndarray] = []
         self._active_waypoint_index = 0
         self._fk_reported = False
+        self.last_plan_diagnostic = {}
+        self.last_collision_reason = None
 
         stage = stage_utils.get_current_stage()
         if not stage.GetPrimAtPath(target_prim_path).IsValid():
@@ -374,6 +376,30 @@ class IsaacCumotionExecutor:
     def is_reachable(self, T_base_ee: np.ndarray) -> bool:
         return self._plan(T_base_ee) is not None
 
+    def initial_pose_proposal(self):
+        """Check the configured arm home, retaining the current gripper opening."""
+        self.controller.synchronize_world()
+        q = self._arm_values(self.articulation.get_dof_positions)
+        names = self.controller.cumotion_robot.controlled_joint_names
+        defaults = robot_config()["default_joint_positions"]
+        goal = np.array([defaults[name] for name in names], dtype=float)
+        if np.max(np.abs(q-goal)) < .05:
+            return None  # Already at home: do not prescribe a pointless reset.
+        if self._linear_cspace_path(q, goal) is None:
+            return None
+        return dict(name="初始准备姿态", joints_deg=dict(zip(names, np.rad2deg(goal).tolist())),
+                    gripper="保持当前开度", path_checked=True, auto_grasp=False)
+
+    def move_to_initial_pose(self):
+        """Recheck from actual joints after confirmation, never reuse an old path."""
+        self._stopped = False
+        self.controller.synchronize_world()
+        q = self._arm_values(self.articulation.get_dof_positions)
+        names = self.controller.cumotion_robot.controlled_joint_names
+        goal = np.array([robot_config()["default_joint_positions"][n] for n in names])
+        path = self._linear_cspace_path(q, goal)
+        return path is not None and self._execute_plan(path, speed_scale=.6, max_steps=self.max_move_steps)
+
     def is_collision_free(
         self,
         T_base_ee: np.ndarray,
@@ -578,6 +604,7 @@ class IsaacCumotionExecutor:
         FK/Jacobians and performs the collision-aware graph plan; the small
         least-squares solve avoids pretending that a sixth wrist DOF exists.
         """
+        self.last_plan_diagnostic = {"reason": "ik_no_solution"}
         self.controller.synchronize_world()
         base_position, base_orientation = (
             self.controller.world_binding.get_world_interface().get_world_to_robot_base_transform()
@@ -662,10 +689,12 @@ class IsaacCumotionExecutor:
             self._ik_seed_cache.items(),
             key=lambda item: np.linalg.norm(np.asarray(item[0]).reshape(4, 4)[:3, 3] - target[:3, 3]),
         )
-        seeds = [q, *(seed for _key, seed in cached_seeds[:6])]
         self.last_axis_ik_diagnostics = []
         self._observation_pose_suggestions = []
         self._observation_suggestion_key = target_key
+        defaults = robot_config()["default_joint_positions"]
+        home_seed = np.array([defaults[name] for name in self.controller.cumotion_robot.controlled_joint_names])
+        seeds = [q, *(seed for _key, seed in cached_seeds[:6]), home_seed]
         for seed in seeds:
             result = least_squares(
                 residual,
@@ -688,6 +717,10 @@ class IsaacCumotionExecutor:
             if (np.linalg.norm(goal_position - position_base) <= .003
                     and axis_alignment_error(goal_axis, approach_axis_base) <= np.deg2rad(15)):
                 self._observation_pose_suggestions.append(self._world_ee_pose_from_joints(q_goal))
+            position_error = float(np.linalg.norm(goal_position-position_base))
+            axis_error = float(axis_alignment_error(goal_axis, approach_axis_base))
+            self.last_plan_diagnostic = dict(reason="ik_tolerance", position_error_mm=position_error*1000,
+                                             axis_error_deg=float(np.rad2deg(axis_error)))
             if (
                 float(np.linalg.norm(goal_position - position_base)) > 0.003
                 or axis_alignment_error(goal_axis, approach_axis_base) > np.deg2rad(5.0)
@@ -695,10 +728,12 @@ class IsaacCumotionExecutor:
                 continue
             path = self._linear_cspace_path(q, q_goal)
             if path is not None:
+                self.last_plan_diagnostic["reason"] = "reachable"
                 self._ik_seed_cache[target_key] = q_goal
                 if len(self._ik_seed_cache) > 64:
                     self._ik_seed_cache.pop(next(iter(self._ik_seed_cache)))
                 return path
+            self.last_plan_diagnostic["reason"] = self.last_collision_reason or "path_blocked"
         return None
 
     def propose_observation_pose(self, requested):
@@ -732,6 +767,7 @@ class IsaacCumotionExecutor:
         different candidate can be tried by the model-independent selector.
         """
         q0 = np.asarray(q_initial, dtype=np.float64).reshape(-1)
+        self.last_collision_reason = None
         q1 = np.asarray(q_final, dtype=np.float64).reshape(-1)
         max_delta = float(np.max(np.abs(q1 - q0)))
         collision_samples = max(1, int(np.ceil(max_delta / collision_step_rad)))
@@ -739,8 +775,10 @@ class IsaacCumotionExecutor:
             alpha = index / collision_samples
             q = q0 + alpha * (q1 - q0)
             if self._collision_inspector.in_self_collision(q):
+                self.last_collision_reason = "self_collision"
                 return None
             if self._collision_inspector.in_collision_with_obstacle(q):
+                self.last_collision_reason = "obstacle_collision"
                 return None
         waypoint_count = max(1, int(np.ceil(max_delta / waypoint_step_rad)))
         return _JointWaypointPath(

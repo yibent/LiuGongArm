@@ -1,6 +1,6 @@
 # Model-independent FineGrasp safety and closed-loop parameters.
 # Distances are metres, angles are degrees and time values are seconds.
-backend: geometric
+backend: graspgenx
 # Baseline: eye-in-hand servo only. Multi-view remains explicit opt-in through
 # --perception multiview; the overhead RGB-D stream is not a control input yet.
 fusion:
@@ -42,8 +42,9 @@ backends:
     # so off-centre compound geometry cannot put SO-101's fixed jaw inside the
     # target during a top-down insertion.
     width_margin_m: 0.010
-    fallback_backend: geometric
-    fallback_on_empty: true
+    # Production requests must fail explicitly if the neural service fails.
+    fallback_backend: none
+    fallback_on_empty: false
     stability:
       cluster_translation_m: 0.025
       cluster_rotation_deg: 25.0

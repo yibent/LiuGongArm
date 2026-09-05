@@ -4,14 +4,14 @@ scene:
   # Keep the existing prim path for consumers; this camera now outputs RGB-D.
   prim_path: /World/Cameras/TableTopRGB
   resolution: [640, 480]
-  frequency: 30
+  frequency: 15
   position: [0.50, 0.0, 2.30]
   # Camera convention is +X forward. A +90 degree Y rotation looks down -Z.
   orientation_wxyz: [0.70710678, 0.0, 0.70710678, 0.0]
   target: [0.50, 0.0, 1.05]
   focal_length: 1.8
   clipping_range: [0.01, 10.0]
-  annotators: [rgb, distance_to_image_plane]
+  annotators: [rgb, distance_to_image_plane, semantic_segmentation]
   # Optional fixed observer overlooking the work area from outside arm reach.
   # This is a camera-mount experiment, not an object-specific viewpoint.
   recovery_oblique:
@@ -21,11 +21,12 @@ wrist:
   parent_prim_path: /World/SO101/gripper
   prim_path: /World/SO101/gripper/WristRGBD
   resolution: [640, 480]
-  frequency: 30
+  frequency: 15
   # Side-mounted to keep the gripper body out of the optical centre.
-  translation: [0.060, 0.0, -0.030]
-  # Aim from the side mount toward the tool tip at approximately [0, 0, -0.16].
-  orientation_wxyz: [0.53895, 0.0, 0.84234, 0.0]
-  focal_length: 1.8
+  translation: [0.150, 0.0, -0.100]
+  # With the configured home pose this composes to a world-down view. The wide
+  # focal length covers the tabletop workspace used by the loose props.
+  orientation_wxyz: [0.0, 0.0, 1.0, 0.0]
+  focal_length: 1.0
   clipping_range: [0.01, 3.0]
   annotators: [rgb, distance_to_image_plane]

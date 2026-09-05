@@ -5,9 +5,9 @@ from __future__ import annotations
 import numpy as np
 from isaacsim.core.experimental.prims import Articulation
 from isaacsim.core.experimental.prims import XformPrim
+from isaacsim.core.experimental.utils.backend import use_backend
 
 from mr_liu.config import robot_config
-from mr_liu.grasp.transforms import make_transform, quaternion_wxyz_to_matrix, rpy_to_matrix
 from mr_liu.robot.joints import assert_joint_mapping
 
 
@@ -59,11 +59,34 @@ class So101Arm:
         self.articulation.set_dof_position_targets(positions)
         print(f"[mr_liu] Applied default pose: {dict(zip(names, positions))}")
 
+    def configure_drives(self) -> dict:
+        """Call after physics warm-up; preserve stiffness and explicit force limits."""
+        cfg = robot_config()
+        values = cfg.get("drive_damping")
+        if values:
+            self.articulation.set_dof_gains(dampings=[[float(values[name]) for name in self.dof_names]])
+        self.articulation.set_dof_velocity_targets([[0.] * len(self.dof_names)])
+        stiffness, damping = self.articulation.get_dof_gains()
+        info = {name: {"stiffness_nm_rad": float(k), "damping_nm_s_rad": float(d)}
+                for name, k, d in zip(self.dof_names, stiffness.numpy().reshape(-1), damping.numpy().reshape(-1))}
+        print(f"[mr_liu] Runtime joint gains: {info}")
+        return info
+
     def T_base_ee(self) -> np.ndarray:
         """World/base pose of the configured URDF planning tool frame."""
+        # Keep the basic arm/follow-target entry points independent of the
+        # optional grasp package and its perception dependencies.
+        from mr_liu.grasp.transforms import make_transform, quaternion_wxyz_to_matrix, rpy_to_matrix
+
         cfg = robot_config()
-        parent = XformPrim(str(cfg["tool_parent_prim_path"]))
-        positions, orientations = parent.get_world_poses()
+        parent = getattr(self, "_tool_parent", None)
+        if parent is None:
+            parent = XformPrim(str(cfg["tool_parent_prim_path"]), reset_xform_op_properties=False)
+            self._tool_parent = parent
+        # GPU/Fabric simulation does not write moving link poses back to USD.
+        # Never use the authored startup transform for online grasp feedback.
+        with use_backend("fabric", raise_on_fallback=True):
+            positions, orientations = parent.get_world_poses()
         position = _first_numpy(positions)
         orientation = _first_numpy(orientations)
         T_base_parent = make_transform(quaternion_wxyz_to_matrix(orientation), position)

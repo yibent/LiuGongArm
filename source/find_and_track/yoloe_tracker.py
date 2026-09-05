@@ -92,6 +92,28 @@ class YoloeVisualTracker:
         self.model.predictor = None
         LOGGER.info("YOLOE visual prompt set: %s (%d boxes)", names, len(detections))
 
+    def set_image_prompt(self, image_bgr: np.ndarray, label: str, conf: float | None = None) -> None:
+        """Use a remembered crop as a visual prompt without running Florence."""
+        h, w = image_bgr.shape[:2]
+        self.set_visual_prompt(
+            image_bgr,
+            [Detection(np.asarray([0, 0, w, h], dtype=np.float32), label=label)],
+            conf=conf,
+        )
+
+    def set_text_prompt(self, labels: list[str]) -> None:
+        """Bind YOLOE's text vocabulary for a fast first attempt."""
+        labels = [str(label).strip() for label in labels if str(label).strip()]
+        if not labels:
+            return
+        if not self.ready:
+            self.load()
+        self.model.predictor = None
+        embeddings = self.model.get_text_pe(labels)
+        self.model.set_classes(labels, embeddings)
+        self.class_names = labels
+        self.has_prompt = True
+
     def track(self, frame_bgr: np.ndarray, conf: float | None = None, persist: bool = True) -> list[Detection]:
         if not self.has_prompt or not self.ready:
             return []

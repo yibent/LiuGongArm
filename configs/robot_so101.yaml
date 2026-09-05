@@ -10,6 +10,20 @@ tool_from_parent_translation: [-0.0079, -0.000218121, -0.0981274]
 tool_from_parent_rpy: [0.0, 3.141592653589793, 0.0]
 gripper_joint: gripper
 
+# Runtime tensor API units: Nm/rad and Nm*s/rad (NOT USD's per-degree values).
+# Retain the imported stiffness; tune damping explicitly for endpoint settling.
+drive_damping:
+  shoulder_pan: 1.2
+  shoulder_lift: 3.75
+  elbow_flex: 3.0
+  wrist_flex: 1.95
+  wrist_roll: 0.525
+  gripper: 0.12
+drive_max_velocity_deg_s: 120
+gripper_max_velocity_deg_s: 180
+solver_position_iterations: 64
+solver_velocity_iterations: 4
+
 # cuMotion files (kinematics-only URDF; spheres live in XRDF)
 robot_dir: assets/robots/so101
 urdf: robot.urdf

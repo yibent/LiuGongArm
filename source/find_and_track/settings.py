@@ -17,7 +17,11 @@ YOLOE_SHA256 = "d08d390a08f98195f7c87807839fe4ff93a5491645fef1bc3bf0700efafdd639
 
 def default_florence() -> str:
     # A local default fails clearly if setup has not run; no implicit download.
-    return os.environ.get("BUSAGENT_FLORENCE_MODEL") or str(FLORENCE_DIR)
+    if override := os.environ.get("BUSAGENT_FLORENCE_MODEL"):
+        return override
+    legacy = ROOT / ".cache" / "huggingface" / "Florence-2-large"
+    return str(legacy if (legacy / "model.safetensors").is_file()
+               and not (FLORENCE_DIR / "model.safetensors").is_file() else FLORENCE_DIR)
 
 
 def default_yoloe() -> Path:

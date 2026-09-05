@@ -54,6 +54,8 @@ def main() -> int:
         )
     finally:
         transport.close()
+    if not len(poses) or not len(scores) or not np.isfinite(scores).all():
+        raise RuntimeError("GraspGenX warmup returned no valid scored candidates")
     print(
         json.dumps(
             {

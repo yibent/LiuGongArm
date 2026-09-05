@@ -261,6 +261,19 @@ class GraspGenXBackendTests(unittest.TestCase):
         self.assertEqual(protocol_context.exception.failure, FailureCode.MODEL_PROTOCOL_ERROR)
         self.assertFalse(protocol_context.exception.retryable)
 
+    def test_default_factory_propagates_model_failure_without_fallback(self) -> None:
+        omitted_defaults = fine_grasp_config()
+        omitted_defaults.pop("backend")
+        omitted_defaults["backends"]["graspgenx"].pop("fallback_backend")
+        for config in (fine_grasp_config(), omitted_defaults):
+            direct = create_grasp_backend(
+                config, graspgenx_transport=QueueTransport([TimeoutError("offline")])
+            )
+            self.assertIsInstance(direct, GraspGenXBackend)
+            with self.assertRaises(GraspBackendError) as context:
+                direct.generate(observation(), object_points(), self.target)
+            self.assertEqual(context.exception.failure, FailureCode.MODEL_TIMEOUT)
+
     def test_factory_can_disable_or_enable_geometric_failover(self) -> None:
         config = fine_grasp_config()
         config["backend"] = "graspgenx"

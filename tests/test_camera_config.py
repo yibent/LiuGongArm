@@ -19,9 +19,17 @@ class CameraConfigTests(unittest.TestCase):
     def test_rig_is_enabled(self) -> None:
         self.assertTrue(self.cfg["enabled"])
 
-    def test_tabletop_camera_is_rgbd_and_above_table(self) -> None:
+    def test_merge_keeps_live_camera_timing_and_optional_recovery_mount(self) -> None:
+        for name in ("scene", "wrist"):
+            self.assertEqual(self.cfg[name]["frequency"], 15)
+        self.assertEqual(self.cfg["wrist"]["translation"], [0.150, 0.0, -0.100])
+        oblique = self.cfg["scene"]["recovery_oblique"]
+        self.assertEqual(oblique["position"], [0.65, -0.65, 1.75])
+        self.assertEqual(oblique["target"], [0.35, -0.15, 1.08])
+
+    def test_tabletop_camera_provides_rgbd_semantics_and_is_above_table(self) -> None:
         scene = self.cfg["scene"]
-        self.assertEqual(set(scene["annotators"]), {"rgb", "distance_to_image_plane"})
+        self.assertEqual(set(scene["annotators"]), {"rgb", "distance_to_image_plane", "semantic_segmentation"})
         self.assertEqual(scene["prim_path"], "/World/Cameras/TableTopRGB")
         self.assertGreater(float(scene["position"][2]), float(scene["target"][2]))
         self.assertEqual(scene["position"][:2], scene["target"][:2])

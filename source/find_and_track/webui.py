@@ -14,6 +14,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from .pipeline import IMAGE_EXTS, VIDEO_EXTS, FindTrackPipeline
+from .memory import ObjectMemoryStore
 from .types import Detection, RuntimeConfig
 
 LOGGER = logging.getLogger("find_and_track.webui")
@@ -31,12 +32,16 @@ class ConfigIn(BaseModel):
     slow_interval: int = 45
     conf: float = Field(0.25, ge=0.01, le=1.0)
     imgsz: int = Field(640, ge=320, le=1280)
+    memory_id: str | None = None
+    memory_view: str | None = None
 
 
 class AppState:
     def __init__(self, weights: Path, *, florence_id: str | None = None,
                  device: str | None = None, config: RuntimeConfig | None = None):
-        self.pipeline = FindTrackPipeline(yoloe_weights=weights, florence_id=florence_id, device=device)
+        self.memory_store = ObjectMemoryStore(RUNS / "memories")
+        self.pipeline = FindTrackPipeline(yoloe_weights=weights, florence_id=florence_id,
+                                          device=device, memory_store=self.memory_store)
         self.cfg = config if config is not None else RuntimeConfig()
         self.lock = threading.Lock()
         self.worker: threading.Thread | None = None
@@ -82,6 +87,8 @@ def _apply_config(body: ConfigIn, bump_prompt: bool = False, force_find: bool = 
         STATE.cfg.slow_interval = int(body.slow_interval)
         STATE.cfg.conf = float(body.conf)
         STATE.cfg.imgsz = int(body.imgsz)
+        STATE.cfg.memory_id = body.memory_id
+        STATE.cfg.memory_view = body.memory_view
         if bump_prompt:
             STATE.cfg.prompt_version += 1
         if force_find or bump_prompt or STATE.cfg.prompt != prev:
@@ -160,6 +167,9 @@ def create_app(weights: str | Path, *, florence_id: str | None = None,
             "loaded": STATE.pipeline.loaded,
             "florence": STATE.pipeline.florence.ready,
             "florence_id": STATE.pipeline.florence.loaded_id,
+            "device": str(STATE.pipeline.florence.device),
+            "config": asdict(STATE.cfg),
+            "yoloe_available": Path(weights).is_file(),
             "yoloe": STATE.pipeline.yoloe.ready,
             "load_error": STATE.load_error,
             "running": STATE.running,
@@ -172,6 +182,7 @@ def create_app(weights: str | Path, *, florence_id: str | None = None,
             "config": {key: getattr(STATE.cfg, key) for key in ("prompt", "fast_backend", "slow_interval", "conf", "imgsz")},
             "output": STATE.output_path,
             "has_frame": STATE.latest_jpeg is not None,
+            "memories": STATE.memory_store.list(),
         }
 
     @app.post("/api/upload")
@@ -232,6 +243,33 @@ def create_app(weights: str | Path, *, florence_id: str | None = None,
         assert STATE is not None
         STATE.cfg.stop = True
         return {"message": "stopping"}
+
+    @app.post("/api/recall")
+    def recall(body: dict):
+        assert STATE is not None
+        memory_id = str(body.get("memory_id") or "").strip()
+        memory = STATE.memory_store.get(memory_id)
+        if memory is None:
+            raise HTTPException(404, "memory not found")
+        STATE.cfg.prompt = memory.label
+        STATE.cfg.memory_id = memory_id
+        STATE.cfg.memory_view = body.get("view")
+        STATE.cfg.prompt_version += 1
+        STATE.cfg.find_epoch += 1
+        STATE.pipeline.reset()
+        return {"message": "memory prompt armed", "memory_id": memory_id, "prompt": memory.label}
+
+    @app.get("/api/memories")
+    def memories():
+        assert STATE is not None
+        return {"memories": STATE.memory_store.list()}
+
+    @app.delete("/api/memories/{memory_id}")
+    def forget(memory_id: str):
+        assert STATE is not None
+        if not STATE.memory_store.delete(memory_id):
+            raise HTTPException(404, "memory not found")
+        return {"message": "memory deleted", "memory_id": memory_id}
 
     @app.get("/api/snapshot.jpg")
     def snapshot():

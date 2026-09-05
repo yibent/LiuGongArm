@@ -230,7 +230,7 @@
   </main>
   <script>
     const $ = (id) => document.getElementById(id);
-    const state = { source: null, streaming: false };
+    const state = { source: null, streaming: false, configLoaded: false };
 
     function bindRange(id, label, fmt) {
       const el = $(id);
@@ -342,18 +342,19 @@
       }).join("");
     }
 
-    let configInitialized = false;
     async function poll() {
       try {
         const s = await (await fetch("/api/status")).json();
-        if (!configInitialized && s.config) {
+        if (!state.configLoaded && s.config) {
           $("prompt").value = s.config.prompt;
           $("backend").value = s.config.fast_backend;
-          $("interval").value = s.config.slow_interval;
-          $("conf").value = s.config.conf;
-          $("imgsz").value = s.config.imgsz;
-          configInitialized = true;
+          for (const [id, key] of [["interval", "slow_interval"], ["conf", "conf"], ["imgsz", "imgsz"]]) {
+            $(id).value = s.config[key];
+            $(id).dispatchEvent(new Event("input"));
+          }
+          state.configLoaded = true;
         }
+        $("backend").querySelector('option[value="yoloe"]').disabled = !s.yoloe_available;
         const dot = $("loadDot");
         const loadText = $("loadText");
         const loading = $("loading");
@@ -366,9 +367,11 @@
           dot.className = "status-dot busy";
           loadText.textContent = "loading";
           loading.classList.add("show");
+          loading.textContent = "Loading Florence-2" + (s.config?.fast_backend === "yoloe" ? " + YOLOE" : "");
         } else {
           dot.className = "status-dot ok";
-          loadText.textContent = (s.florence_id || "florence") + " + " + (s.config?.fast_backend || "yoloe");
+          const modelName = (s.florence_id || "Florence").split(/[\\/]/).pop();
+          loadText.textContent = modelName + " + " + (s.config?.fast_backend || "cv").toUpperCase();
           loading.classList.remove("show");
         }
         const path = (s.stats && s.stats.path) || (s.running ? "run" : "idle");
@@ -378,7 +381,7 @@
         $("chipFps").textContent = "FPS " + ((s.stats && s.stats.fps) ? Number(s.stats.fps).toFixed(1) : "--");
         if (s.stats && s.stats.message) $("msg").textContent = s.stats.message;
         renderDets(s.detections || []);
-        if (s.running && $("view").hidden) {
+        if ((s.running || s.has_frame) && $("view").hidden) {
           $("placeholder").hidden = true;
           $("view").hidden = false;
           $("view").src = "/api/stream?t=" + Date.now();

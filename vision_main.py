@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "source"))
 from find_and_track.settings import default_florence, default_yoloe
+os.environ.setdefault("HF_HOME", str(ROOT / ".cache" / "huggingface"))
 
 
 def parse_args() -> argparse.Namespace:
@@ -27,21 +29,31 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--weights", type=str, default=str(default_yoloe()))
     parser.add_argument("--florence", type=str, default=default_florence(), help="本地 Florence 模型目录（先运行 setup_vision.ps1）")
     parser.add_argument("--device", default=None, help="例如 cuda:0 或 cpu；默认自动选择")
+    parser.add_argument("--memory-id", type=str, help="回放 runs/memories 中的对象记忆")
+    parser.add_argument("--memory-view", choices=["scene", "wrist"], help="回放记忆时优先使用的相机视角")
     return parser.parse_args()
 
 
 def run_cli(args: argparse.Namespace) -> int:
+    from find_and_track.memory import ObjectMemoryStore
     from find_and_track.pipeline import FindTrackPipeline
     from find_and_track.types import RuntimeConfig
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    pipe = FindTrackPipeline(yoloe_weights=args.weights, florence_id=args.florence, device=args.device)
+    pipe = FindTrackPipeline(
+        yoloe_weights=args.weights,
+        florence_id=args.florence,
+        device=args.device,
+        memory_store=ObjectMemoryStore(ROOT / "runs" / "memories"),
+    )
     cfg = RuntimeConfig(
         prompt=args.prompt,
         fast_backend=args.fast,
         slow_interval=args.interval,
         conf=args.conf,
         imgsz=args.imgsz,
+        memory_id=args.memory_id,
+        memory_view=args.memory_view,
     )
     print(f"Loading models… prompt={args.prompt!r} fast={args.fast}", flush=True)
     pipe.load(cfg.fast_backend)
@@ -70,14 +82,15 @@ def main() -> int:
     if args.source and not args.webui:
         return run_cli(args)
     from find_and_track.webui import serve
-
     from find_and_track.types import RuntimeConfig
 
     serve(
-        host=args.host, port=args.port, weights=weights,
-        florence_id=args.florence, device=args.device,
-        config=RuntimeConfig(prompt=args.prompt, fast_backend=args.fast,
-                             slow_interval=args.interval, conf=args.conf, imgsz=args.imgsz),
+        host=args.host, port=args.port, weights=weights, florence_id=args.florence, device=args.device,
+        config=RuntimeConfig(
+            prompt=args.prompt, fast_backend=args.fast, slow_interval=args.interval,
+            conf=args.conf, imgsz=args.imgsz,
+            memory_id=args.memory_id, memory_view=args.memory_view,
+        ),
     )
     return 0
 
