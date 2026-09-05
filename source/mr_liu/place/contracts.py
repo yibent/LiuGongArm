@@ -62,6 +62,7 @@ class HeldObject:
 @dataclass(frozen=True)
 class PlaceSettings:
     max_age_s: float = .35
+    stationary_release_max_age_s: float = .35
     timeout_s: float = 120.
     max_step_m: float = .006
     max_fine_travel_m: float = .12
@@ -89,6 +90,8 @@ class PlaceSettings:
             raise ValueError("Fine-place steps/release gap exceed bounded V1 envelope")
         if self.settle_frames < 3 or self.max_iterations < 1:
             raise ValueError("Insufficient verification/iteration budget")
+        if not self.max_age_s <= self.stationary_release_max_age_s <= 1.:
+            raise ValueError("Stationary release age must be between max_age_s and 1 second")
 
 
 @dataclass

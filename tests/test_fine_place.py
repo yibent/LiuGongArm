@@ -57,6 +57,39 @@ class Rig:
 
 
 class FinePlaceTests(unittest.TestCase):
+    def test_stationary_release_budget_allows_slow_check_only_when_still(self):
+        r=Rig();opening=r.opening_safe
+        r.robot_state=lambda:SimpleNamespace(T_base_ee=r.pose.copy(),timestamp_s=r.t,
+                                             joint_positions={'joint':0.})
+        def slow(*args):
+            ok=opening(*args);r.t+=.5;return ok
+        r.opening_safe=slow
+        node=r.node();node.settings=PlaceSettings(stationary_release_max_age_s=1.)
+        result=node.execute(PlaceRequest('region'),r.held)
+        self.assertTrue(result.success,result)
+        self.assertEqual(result.metrics['release_age_policy'],'stationary_bounded')
+        self.assertGreater(result.metrics['release_observation_age_s'],.35)
+
+    def test_extended_release_rejects_motion_and_missing_proprioception(self):
+        from mr_liu.place.release import stationary_release_state
+        before=SimpleNamespace(T_base_ee=np.eye(4),timestamp_s=9.5,joint_positions={'j':0.})
+        after=SimpleNamespace(T_base_ee=np.eye(4),timestamp_s=10.,joint_positions={'j':0.})
+        grip=GripperState(10.,.036)
+        check=lambda:stationary_release_state(before,after,grip,grip,now=10.,max_age_s=.35)
+        self.assertTrue(check())
+        after.T_base_ee[0,3]=.001;self.assertFalse(check())
+        after.T_base_ee=np.eye(4);after.joint_positions={'j':.01};self.assertFalse(check())
+        after.joint_positions={};self.assertFalse(check())
+        after.joint_positions={'j':0.};after.timestamp_s=9.;self.assertFalse(check())
+
+    def test_release_budget_does_not_relax_acquisition_or_allow_unbounded_age(self):
+        r=Rig();r.stale=True
+        node=r.node();node.settings=PlaceSettings(stationary_release_max_age_s=1.)
+        self.assertEqual(node.execute(PlaceRequest('region'),r.held).failure,'stale_observation')
+        self.assertFalse(r.opened)
+        with self.assertRaises(ValueError):PlaceSettings(stationary_release_max_age_s=2.)
+        with self.assertRaises(ValueError):PlaceSettings(stationary_release_max_age_s=.1)
+
     def test_tracked_contour_collision_requires_new_model_and_full_preflight(self):
         obs=SimpleNamespace(timestamp_s=10.)
         e=SimpleNamespace(observation=obs,center_base_m=np.zeros(3))

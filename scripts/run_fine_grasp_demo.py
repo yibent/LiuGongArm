@@ -37,6 +37,9 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument('--anyplace-url',default='http://127.0.0.1:5590')
     parser.add_argument("--place-fixture", choices=("region","tray"), default="region")
     parser.add_argument("--place-relation", choices=("on","inside"), default="on")
+    parser.add_argument('--release-max-age-s',type=float,default=.35)
+    parser.add_argument('--place-fixture-x',type=float,default=.25)
+    parser.add_argument('--place-fixture-y',type=float,default=-.198)
     parser.add_argument("--wrist-camera-profile", choices=("fine_grasp", "tabletop_wide"), default="fine_grasp")
     parser.add_argument("--test-coarse-shift-m", type=float, default=0.,
                         help="Simulation-only world-X perturbation during label coarse transit (<=5 cm)")
@@ -60,6 +63,10 @@ def _parse_args() -> argparse.Namespace:
         help="Per-run output directory (default: output/fine_grasp_demo)",
     )
     args = parser.parse_args()
+    if not .35 <= args.release_max_age_s <= 1.:
+        parser.error('--release-max-age-s must be in [0.35,1.0]')
+    if not (.20 <= args.place_fixture_x <= .30 and -.24 <= args.place_fixture_y <= -.15):
+        parser.error('Placement fixture outside bounded development workspace')
     if args.coarse_only and not args.label:
         parser.error("--coarse-only requires --label")
     if args.place_label and (args.coarse_only or args.dry_run):
@@ -225,7 +232,7 @@ def main() -> int:
     place_obstacle_paths = []
     if ARGS.place_label:
         from mr_liu.place.isaac_session import spawn_place_fixture
-        place_obstacle_paths = spawn_place_fixture(ARGS.place_fixture)
+        place_obstacle_paths = spawn_place_fixture(ARGS.place_fixture,x=ARGS.place_fixture_x,y=ARGS.place_fixture_y)
     target_rigid = _spawn_target()
     simulation_app.update()
     # Keep large/tall benchmark objects out of the arm's startup sweep.  They
@@ -676,6 +683,8 @@ def main() -> int:
     if ARGS.place_label and result.success:
         from mr_liu.place.isaac_session import run_place_after_grasp
         from mr_liu.place.contracts import PlaceResult
+        from mr_liu.place.contracts import PlaceSettings
+        place_settings=PlaceSettings(stationary_release_max_age_s=ARGS.release_max_age_s)
         place_scene = IsaacSceneCamera(cameras["scene"],T_base_world=np.eye(4),advance_frame=advance_observation_frame,
             robot_mask_provider=lambda:cameras["scene"].instance_mask("/World/SO101",leaf_paths=True))
         try:
@@ -684,7 +693,7 @@ def main() -> int:
                 gripper=gripper,port=ARGS.locator_port,label=ARGS.place_label,relation=ARGS.place_relation,
                 output=OUTPUT/"place",trace=trace_event,stable_base_asserted=CASE.shape=="cube",
                 grasp_attachment_ee=grasp_attachment_ee,graspgenx_port=ARGS.graspgenx_port,
-                place_backend=ARGS.place_backend,anyplace_url=ARGS.anyplace_url)
+                place_backend=ARGS.place_backend,anyplace_url=ARGS.anyplace_url,settings=place_settings)
         except Exception as exc:
             executor.stop()
             place_result = PlaceResult(False,"handoff","isaac-fine-place",
@@ -700,7 +709,8 @@ def main() -> int:
                 for p in sorted((ROOT/"source/mr_liu/place").rglob("*.py")))).hexdigest(),
             "grasp_source_sha256":report["provenance"]["source_sha256"],
             "destination_label":ARGS.place_label,"relation":ARGS.place_relation,
-            "settings":_jsonable(PlaceSettings()),
+            "settings":_jsonable(place_settings),
+            "fixture":{"kind":ARGS.place_fixture,"x":ARGS.place_fixture_x,"y":ARGS.place_fixture_y},
             "simulation_truth_is_control_input":False,
         }
         (OUTPUT/"place_report.json").write_text(json.dumps(placement_report,indent=2),encoding="utf-8")

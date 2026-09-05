@@ -8,7 +8,10 @@ param(
     [switch]$NoHeadless,
     [int]$LocatorPort = 5570,
     [ValidateSet('geometric','anyplace')][string]$PlaceBackend='geometric',
-    [int]$AnyPlacePort=5590
+    [int]$AnyPlacePort=5590,
+    [ValidateRange(0.35,1.0)][double]$ReleaseMaxAgeS=0.35,
+    [ValidateRange(0.20,0.30)][double]$FixtureX=0.25,
+    [ValidateRange(-0.24,-0.15)][double]$FixtureY=-0.198
 )
 $ErrorActionPreference='Stop'
 $placeRoot=Split-Path -Parent $PSScriptRoot
@@ -58,7 +61,8 @@ try {
         '-Label',$GraspLabel,'-LocalizationMode','florence',
         '-SceneView','oblique','-PlaceLabel',$Destination,'-PlaceFixture',$Fixture,'-PlaceRelation',$Relation,
         '-LocatorPort',"$LocatorPort",'-Output',$Output,
-        '-PlaceBackend',$PlaceBackend,'-AnyPlaceUrl',"http://127.0.0.1:$AnyPlacePort")
+        '-PlaceBackend',$PlaceBackend,'-AnyPlaceUrl',"http://127.0.0.1:$AnyPlacePort",
+        '-ReleaseMaxAgeS',"$ReleaseMaxAgeS",'-PlaceFixtureX',"$FixtureX",'-PlaceFixtureY',"$FixtureY")
     if ($RecordVideo) {$placeArgs+='-RecordVideo'}
     if ($NoHeadless) {$placeArgs+='-NoHeadless'}
     # Do not hold an inherited native pipe open through orphaned model helpers

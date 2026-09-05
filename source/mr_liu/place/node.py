@@ -5,6 +5,7 @@ import numpy as np
 from mr_liu.grasp.transforms import invert_transform, transform_points
 from .contracts import PlaceError, PlaceResult, PlaceSettings
 from .geometry import box_corners, select_site, footprint_supported
+from .release import stationary_release_state
 
 
 class GeneralPlaceNode:
@@ -181,6 +182,8 @@ class GeneralPlaceNode:
             # A slow check can be retried only by acquiring new evidence, never
             # by refreshing its timestamp or skipping geometry/held-state checks.
             for release_attempt in range(3):
+                release_state = self.motion.robot_state()
+                release_grip = self.gripper.state()
                 latest = self.perception.destination(request)
                 fresh(latest.observation)
                 if np.linalg.norm(latest.center_base_m-anchor) > cfg.max_destination_shift_m:
@@ -201,8 +204,18 @@ class GeneralPlaceNode:
                     raise PlaceError("cancelled")
                 if not self.motion.opening_safe(held,latest):
                     raise PlaceError("release_space_changed",getattr(self.motion,"last_failure","") or "")
-                if max(self.clock()-payload.observation.timestamp_s,
-                       self.clock()-latest.observation.timestamp_s) <= cfg.max_age_s:
+                age = max(self.clock()-payload.observation.timestamp_s,
+                          self.clock()-latest.observation.timestamp_s)
+                if age <= cfg.max_age_s:
+                    metrics['release_observation_age_s'] = age
+                    metrics['release_age_policy'] = 'fresh'
+                    break
+                if age <= cfg.stationary_release_max_age_s:
+                    if not stationary_release_state(release_state,self.motion.robot_state(),
+                            release_grip,self.gripper.state(),now=self.clock(),max_age_s=cfg.max_age_s):
+                        raise PlaceError('release_not_stationary')
+                    metrics['release_observation_age_s'] = age
+                    metrics['release_age_policy'] = 'stationary_bounded'
                     break
                 event("place_release_reobserve",attempt=release_attempt+1)
             else:

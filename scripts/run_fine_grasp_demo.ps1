@@ -11,6 +11,9 @@ param(
     [string]$AnyPlaceUrl = 'http://127.0.0.1:5590',
     [ValidateSet('region','tray')][string]$PlaceFixture = 'region',
     [ValidateSet('on','inside')][string]$PlaceRelation = 'on',
+    [ValidateRange(0.35,1.0)][double]$ReleaseMaxAgeS=0.35,
+    [ValidateRange(0.20,0.30)][double]$PlaceFixtureX=0.25,
+    [ValidateRange(-0.24,-0.15)][double]$PlaceFixtureY=-0.198,
     [int]$LocatorPort = 5570,
     [ValidateSet("florence", "florence_yoloe")]
     [string]$LocalizationMode = "florence_yoloe",
@@ -187,7 +190,9 @@ try {
         $DemoArgs += @('--place-backend',$PlaceBackend,'--anyplace-url',$AnyPlaceUrl)
         if ($Benchmark) { throw 'Placement is not part of the grasp-only benchmark' }
         $DemoArgs += @('--place-label', $PlaceLabel, '--locator-port', "$LocatorPort",
-                      '--place-fixture', $PlaceFixture, '--place-relation', $PlaceRelation)
+                      '--place-fixture', $PlaceFixture, '--place-relation', $PlaceRelation,
+                      '--release-max-age-s',"$ReleaseMaxAgeS",'--place-fixture-x',"$PlaceFixtureX",
+                      '--place-fixture-y',"$PlaceFixtureY")
     }
     if (-not $Benchmark) { $DemoArgs += @("--wrist-camera-profile", $WristCameraProfile) }
     if ($TestCoarseShiftM -ne 0) { $DemoArgs += @("--test-coarse-shift-m", "$TestCoarseShiftM") }
