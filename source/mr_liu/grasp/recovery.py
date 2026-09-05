@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+import math
 import time
 import numpy as np
 
@@ -16,11 +17,15 @@ class RecoveryConfig:
     retreat_m: float = 0.04
     speed_scale: float = 0.25
     empty_width_m: float = 0.001
+    max_state_age_s: float = 0.25
 
     def __post_init__(self):
         if not 1 <= self.max_attempts <= 3 or not 0 < self.retreat_m <= 0.06:
             raise ValueError("Invalid bounded recovery configuration")
-        if self.max_total_s <= 0 or not 0 < self.speed_scale <= 0.4 or self.empty_width_m < 0:
+        if (not all(math.isfinite(v) for v in (self.max_total_s, self.retreat_m, self.speed_scale,
+                                              self.empty_width_m, self.max_state_age_s))
+                or self.max_total_s <= 0 or not 0 < self.speed_scale <= 0.4
+                or self.empty_width_m < 0 or self.max_state_age_s <= 0):
             raise ValueError("Invalid recovery safety limits")
 
 
@@ -86,8 +91,8 @@ class RecoveringGraspNode:
                 break
             self._event("attempt_start", attempt=attempt + 1, active_views=attempt > 0)
             self.active_node = self.attempt_factory(attempt, tuple(failed), target)
-            if self._cancelled:
-                stop_reason = "cancelled"
+            if self._cancelled or self.clock() >= deadline:
+                stop_reason = "cancelled" if self._cancelled else "deadline"
                 break
             result = self.active_node.execute(replace(request, target=target,
                                                       timeout_s=max(0.001, deadline - self.clock())))
@@ -109,10 +114,15 @@ class RecoveringGraspNode:
                 break
             state = self.gripper.state()
             closed = bool(result.metrics.get("close_commanded", 0))
+            if (not math.isfinite(state.timestamp_s)
+                    or not -0.02 <= self.clock() - state.timestamp_s <= self.config.max_state_age_s
+                    or state.width_m is None or not math.isfinite(state.width_m) or state.width_m < 0):
+                stop_reason = "payload_uncertain_do_not_open" if closed else "gripper_state_unverified"
+                break
             # Width alone cannot prove possession, but a non-empty/unknown width
             # after closing is sufficient to forbid release or lateral scanning.
             if closed and (state.width_m is None or state.width_m > self.config.empty_width_m
-                           or state.contact is True or target.properties.thin):
+                           or state.contact is True or state.stalled is True or target.properties.thin):
                 stop_reason = "payload_uncertain_do_not_open"
                 self._event("recovery_blocked", reason=stop_reason)
                 break

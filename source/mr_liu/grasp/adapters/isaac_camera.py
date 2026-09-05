@@ -12,6 +12,7 @@ from mr_liu.grasp.transforms import (
     invert_transform,
     make_transform,
     quaternion_wxyz_to_matrix,
+    assert_transform,
 )
 from mr_liu.perception.camera import SceneCamera
 
@@ -66,30 +67,24 @@ class IsaacWristCamera:
         self.model_seed = int(model_seed)
         self.robot_mask_provider = robot_mask_provider
         self._reference_T_ee_camera: np.ndarray | None = None
+        self._last_render_time = -float("inf")
 
     def capture(self, target: TargetSpec) -> RGBDObservation | None:
         # RTX annotators are delivered one application update behind the
         # articulation/USD pose on Isaac Sim 6.0.  Advancing twice pairs the
         # image with the pose used to render it; a single update produced one
         # large false object jump immediately after every robot motion.
-        frame = getattr(self.camera, "_cam", None)
-        sim_frame = {}
-        render_pose = None
+        sample = None
         # Read RGB, depth and camera parameters from one acquisition callback.
         # get_rgba/get_depth individually read annotators that can be at a
         # different pipeline stage after physics-only motion stepping.
         for attempt in range(16):
             self.advance_frame()
-            sim_frame = frame.get_current_frame() if frame is not None else {}
-            params = sim_frame.get("camera_params")
-            if attempt + 1 < self.render_settle_frames:
+            sample = self.camera.rgbd_frame()
+            if (sample is None or attempt + 1 < self.render_settle_frames
+                    or sample.rendering_time_s <= self._last_render_time):
                 continue
-            if params is None:
-                if frame is None:
-                    break
-                continue
-            view = np.asarray(params["cameraViewTransform"], dtype=np.float64).reshape(4, 4)
-            render_pose = np.linalg.inv(view.T) @ np.diag([1., -1., -1., 1.])
+            render_pose = sample.T_world_camera
             position, quaternion = self.camera.world_pose(camera_axes="ros")
             live_pose = T_world_opencv_from_ros_pose(position, quaternion)
             if (np.linalg.norm(render_pose[:3, 3] - live_pose[:3, 3]) <= 0.001
@@ -97,20 +92,16 @@ class IsaacWristCamera:
                 break
         else:
             return None
-        rgb = sim_frame.get("rgb") if frame is not None else self.camera.rgb_rgba()
-        depth = sim_frame.get("distance_to_image_plane") if frame is not None else self.camera.depth_m()
-        if rgb is None or depth is None:
-            return None
-        K = self.camera.intrinsics_matrix()
+        rgb, depth, K = sample.rgba, sample.depth_m, sample.intrinsics
         width, height = self.camera.resolution
         position, quaternion = self.camera.world_pose(camera_axes="ros")
         T_base_camera = T_world_opencv_from_ros_pose(position, quaternion)
         T_base_ee = np.asarray(self.ee_pose_provider(), dtype=np.float64)
         T_ee_camera = invert_transform(T_base_ee) @ T_base_camera
         self._validate_static_extrinsic(T_ee_camera)
-        if render_pose is not None:
-            T_base_camera = render_pose
-            T_base_ee = T_base_camera @ invert_transform(T_ee_camera)
+        T_base_camera = render_pose
+        T_base_ee = T_base_camera @ invert_transform(T_ee_camera)
+        self._last_render_time = sample.rendering_time_s
         self._sequence += 1
         mask = self.mask_provider(target) if self.mask_provider is not None else None
         return RGBDObservation(
@@ -130,8 +121,9 @@ class IsaacWristCamera:
             T_base_ee=T_base_ee,
             T_ee_camera=T_ee_camera,
             target_mask=None if mask is None else np.asarray(mask, dtype=bool).copy(),
-            metadata={"sim_rendering_time": sim_frame.get("rendering_time"), "model_seed": self.model_seed,
-                      "pose_source": "render_camera_params" if render_pose is not None else "live_pose",
+            metadata={"sim_rendering_time": sample.rendering_time_s, "model_seed": self.model_seed,
+                      "sim_acquisition_id": sample.acquisition_id,
+                      "pose_source": "render_camera_params",
                       "robot_self_mask": self.robot_mask_provider() if self.robot_mask_provider else None,
                       "render_updates": attempt + 1},
         )
@@ -171,23 +163,26 @@ class IsaacSceneCamera:
         if camera.which != "scene" or not camera.has_depth:
             raise ValueError("External observer requires the configured scene RGB-D camera")
         self.camera, self.advance_frame, self.clock = camera, advance_frame, clock
-        self.T_base_world = np.asarray(T_base_world, dtype=float).copy()
+        self.T_base_world = assert_transform(T_base_world, name="T_base_world").copy()
         self.robot_mask_provider = robot_mask_provider
         self._last_id = None
         self._pose = None
         self._sequence = 0
+        self._last_render_time = -float("inf")
 
     def capture(self, target):
         del target
         for step in range(16):
             self.advance_frame()
             sample = self.camera.rgbd_frame()
-            if sample is None or step < 1 or sample.acquisition_id == self._last_id:
+            if (sample is None or step < 1 or sample.acquisition_id == self._last_id
+                    or sample.rendering_time_s <= self._last_render_time):
                 continue
             if self._pose is not None and not np.allclose(self._pose, sample.T_world_camera, atol=1e-5):
                 raise RuntimeError("Fixed overhead camera moved; recalibration required")
             self._pose = sample.T_world_camera.copy()
             self._last_id = sample.acquisition_id
+            self._last_render_time = sample.rendering_time_s
             self._sequence += 1
             k = sample.intrinsics
             width, height = self.camera.resolution

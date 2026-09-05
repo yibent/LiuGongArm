@@ -56,6 +56,50 @@ class SceneObserverTests(unittest.TestCase):
         self.camera.capture.return_value = replace(self.frame, sequence=2, rgb=rgb)
         self.assertIsNone(self.observer.observe(self.target))
 
+    def test_recent_observations_not_old_coarse_pose_drive_identity_roi(self):
+        self.assertIsNotNone(self.observer.observe(self.target))
+        for sequence, offset in ((2, 5), (3, 10)):
+            rgb = np.full_like(self.frame.rgb, 120)
+            depth = np.full_like(self.frame.depth_m, .95)
+            rgb[22:29, 22+offset:29+offset] = [220, 30, 30]
+            depth[22:29, 22+offset:29+offset] = .9
+            self.camera.capture.return_value = replace(self.frame, sequence=sequence, rgb=rgb, depth_m=depth)
+            measured = self.observer.observe(self.target)
+            self.assertIsNotNone(measured)
+            self.assertAlmostEqual(measured.center_base_m[0], offset * .009, places=5)
+        # Final target is 9 cm from the initial hint, outside the 8 cm initial ROI.
+        self.assertGreater(measured.center_base_m[0], self.observer.search_radius_m)
+
+    def test_equally_plausible_components_are_not_guessed(self):
+        depth = np.full_like(self.frame.depth_m, .95)
+        rgb = np.full_like(self.frame.rgb, 120)
+        for col in (17, 29):
+            depth[23:28, col:col+5] = .9
+            rgb[23:28, col:col+5] = [220, 30, 30]
+        self.camera.capture.return_value = replace(self.frame, rgb=rgb, depth_m=depth)
+        self.assertIsNone(self.observer.observe(self.target))
+        self.assertEqual(self.observer.last_diagnostic['scene_reason'], 'ambiguous_components')
+
+    def test_required_robot_mask_cannot_be_silently_omitted(self):
+        self.observer.require_robot_mask = True
+        self.assertIsNone(self.observer.observe(self.target))
+        self.assertEqual(self.observer.last_diagnostic['scene_reason'], 'robot_mask_unavailable')
+
+    def test_lift_verification_keeps_support_hypothesis_in_same_frame(self):
+        # Integration test with the actual observer, not an always-matching mock.
+        motion, wrist = Mock(), Mock()
+        pose = np.eye(4)
+        motion.robot_state.side_effect = lambda: SimpleNamespace(T_base_ee=pose.copy())
+        wrist.min_lift_m, wrist.min_held_width_m = .035, .002
+        wrist.verify_lifted.return_value = VerificationResult(True, .9, 'incorrect_wrist', {})
+        verifier = SceneAssistedVerifier(self.observer, motion, self.target, wrist=wrist)
+        verifier.before_close(self.frame)
+        pose[2, 3] += .10  # Beyond the observer's 8 cm single-hypothesis ROI.
+        self.camera.capture.return_value = replace(self.frame, sequence=2)
+        result = verifier.verify_lifted(self.frame, self.frame, GripperState(10., width_m=.02, stalled=True))
+        self.assertFalse(result.success)
+        self.assertEqual(result.reason, 'external_target_stayed_on_support')
+
 
 class SceneVerificationTests(unittest.TestCase):
     def setUp(self):

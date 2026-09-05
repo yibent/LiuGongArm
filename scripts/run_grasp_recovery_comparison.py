@@ -27,6 +27,7 @@ def main():
     parser.add_argument("--backend", choices=("graspgenx", "geometric"), default="graspgenx")
     parser.add_argument("--segmenter", choices=("depth", "sam2"), default="depth")
     parser.add_argument("--drop-initial-wrist-frames", type=int, default=0)
+    parser.add_argument("--test-target-shift-m", type=float, default=0.)
     args = parser.parse_args()
     output = args.output or ROOT / "output/recovery_comparison" / datetime.now().strftime("%Y%m%d_%H%M%S")
     output = output.resolve()
@@ -55,6 +56,7 @@ def main():
                   "git_dirty": bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True).strip()),
                   "profiles": profiles, "backend": args.backend, "segmenter": args.segmenter,
                   "fault_initial_wrist_frames": args.drop_initial_wrist_frames,
+                  "test_target_shift_m": args.test_target_shift_m,
                   "manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest()}
     (output / "provenance.json").write_text(json.dumps(provenance, indent=2), encoding="utf-8")
     results = {}
@@ -63,6 +65,7 @@ def main():
                    str(ROOT / "scripts/run_fine_grasp_demo.ps1"), "-Benchmark", "-Backend", args.backend,
                    "-Recovery", profile, "-Perception", "single", "-Segmenter", args.segmenter,
                    "-DropInitialWristFrames", str(args.drop_initial_wrist_frames),
+                   "-TestTargetShiftM", str(args.test_target_shift_m),
                    "-Manifest", str(manifest), "-Split", "development", "-Output", str(output / profile)]
         print(f"PROFILE_START {profile} {len(entries)} cases", flush=True)
         with (output / f"{profile}.log").open("w", encoding="utf-8") as log:

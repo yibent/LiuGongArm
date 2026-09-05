@@ -27,6 +27,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--recovery", choices=("off", "assisted", "active"), default="off")
     parser.add_argument("--drop-initial-wrist-frames", type=int, default=0,
                         help="Explicit test-only transient camera fault after the initial diagnostic capture")
+    parser.add_argument("--test-target-shift-m", type=float, default=0.,
+                        help="Simulation-only world-X target perturbation before first close (<= 5 cm)")
     parser.add_argument(
         "--case-json",
         type=Path,
@@ -83,6 +85,7 @@ from mr_liu.grasp.verification import VisionGripperVerifier
 from mr_liu.perception.camera import spawn_configured_cameras
 from mr_liu.robot.so101 import So101Arm
 from mr_liu.sim.spawn import spawn_table_and_so101
+from mr_liu.sim.grasp_faults import OneShotPreCloseShift
 
 
 TARGET_PATH = "/World/FineGraspTarget"
@@ -315,7 +318,7 @@ def main() -> int:
     )
     seed_segmenter = SeededDepthSegmenter(depth_tolerance_m=0.010, max_radius_px=180)
     initial_mask = seed_segmenter.segment(initial_observation, target)
-    if initial_mask is None or not initial_mask.any():
+    if (initial_mask is None or not initial_mask.any()) and ARGS.recovery == "off":
         actual_target = _pose(XformPrim(TARGET_PATH))
         point_camera = transform_points(
             invert_transform(initial_observation.T_base_camera),
@@ -334,7 +337,8 @@ def main() -> int:
             f"depth_finite={int(np.isfinite(initial_observation.depth_m).sum())}"
         )
     cv2.imwrite(
-        str(OUTPUT / "initial_mask.png"), initial_mask.astype(np.uint8) * 255
+        str(OUTPUT / "initial_mask.png"), (np.zeros_like(initial_observation.depth_m, np.uint8)
+                                         if initial_mask is None else initial_mask.astype(np.uint8) * 255)
     )
 
     target_xform = XformPrim(TARGET_PATH)
@@ -347,6 +351,18 @@ def main() -> int:
     if ARGS.perception == "multiview":
         segmenter = GeometricIdentitySegmenter(segmenter)
     recorder = FineGraspDebugRecorder(OUTPUT / "debug")
+    def shift_sim_target(delta):
+        # Test instrument changes the physical scene only, never target hints,
+        # candidates, camera evidence, verifier output or recovery decisions.
+        position = np.asarray(_pose(target_xform), dtype=float) + np.asarray(delta)
+        target_rigid.set_world_poses(positions=[position])
+        target_rigid.set_velocities(linear_velocities=[[0., 0., 0.]], angular_velocities=[[0., 0., 0.]])
+    fault = OneShotPreCloseShift(ARGS.test_target_shift_m, shift_sim_target)
+    def trace_event(event):
+        recorder.trace(event)
+        injected = fault.on_event(event)
+        if injected is not None:
+            recorder.trace(injected)
     segmenter = DebugSegmenter(segmenter, recorder)
     grasp_cfg["backends"]["graspgenx"]["port"] = ARGS.graspgenx_port
     node = GeneralGraspNode(
@@ -357,7 +373,7 @@ def main() -> int:
         gripper=gripper,
         verifier=VisionGripperVerifier(),
         settings=FineGraspSettings.from_mapping(grasp_cfg),
-        trace=recorder.trace,
+        trace=trace_event,
     )
     if ARGS.drop_initial_wrist_frames:
         class TransientCameraFault:
@@ -399,7 +415,7 @@ def main() -> int:
             attempt_recorder = FineGraspDebugRecorder(OUTPUT / f"attempt_{index + 1}" / "debug")
             def trace_attempt(event):
                 attempt_recorder.trace(event)
-                recorder.trace({**event, "attempt": index + 1})
+                trace_event({**event, "attempt": index + 1})
             return GeneralGraspNode(camera=camera, segmenter=DebugSegmenter(inner, attempt_recorder),
                 backend=create_grasp_backend(config), motion=executor, gripper=gripper,
                 verifier=SceneAssistedVerifier(observer, executor, current_target),
@@ -440,6 +456,8 @@ def main() -> int:
         "perception_mode": ARGS.perception,
         "recovery_mode": ARGS.recovery,
         "fault_initial_wrist_frames": ARGS.drop_initial_wrist_frames,
+        "test_target_shift_m": ARGS.test_target_shift_m,
+        "test_target_shift_applied": fault.applied,
         "attempt_results": _jsonable(getattr(node, "attempt_results", [])),
         "attempt_physics": attempt_physics,
         "effective_config": grasp_cfg,

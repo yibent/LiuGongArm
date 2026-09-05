@@ -43,7 +43,7 @@ class SceneTargetObserver:
         self.last_sequence = -1
         self.last_diagnostic = {}
 
-    def observe(self, target: TargetSpec, expected_center=None):
+    def observe(self, target: TargetSpec, expected_center=None, *, alternate_center=None):
         if self.object_id != target.object_id:
             self.reset()
             self.object_id = target.object_id
@@ -62,6 +62,7 @@ class SceneTargetObserver:
         if center is None:
             return None
         center = np.asarray(center, dtype=float)
+        centers = [center] if alternate_center is None else [center, np.asarray(alternate_center, dtype=float)]
         valid = np.isfinite(obs.depth_m) & (obs.depth_m > 0)
         robot = obs.metadata.get("robot_self_mask")
         if robot is None and self.require_robot_mask:
@@ -74,9 +75,11 @@ class SceneTargetObserver:
         # A known support plane rejects table pixels; missing/reflective depth
         # does not become geometry. The XYZ ROI follows observations, not a
         # permanently fixed upstream hint.
-        in_roi = ((np.linalg.norm(points[:, :2] - center[:2], axis=1) < self.search_radius_m)
-                  & (np.abs(points[:, 2] - center[2]) < self.search_radius_m)
-                  & (points[:, 2] > self.table_height_m + 0.004))
+        in_roi = np.zeros(len(points), dtype=bool)
+        for hypothesis in centers:
+            in_roi |= ((np.linalg.norm(points[:, :2] - hypothesis[:2], axis=1) < self.search_radius_m)
+                       & (np.abs(points[:, 2] - hypothesis[2]) < self.search_radius_m))
+        in_roi &= points[:, 2] > self.table_height_m + 0.004
         colors = obs.rgb[rows, cols, :3].astype(float)
         colors /= np.maximum(colors.sum(axis=1, keepdims=True), 12)
         if self.color is not None:
@@ -91,7 +94,8 @@ class SceneTargetObserver:
             component = labels[rows, cols] == label
             cloud = points[component]
             local_center = np.median(cloud, axis=0)
-            candidates.append((float(np.linalg.norm(local_center - center)), label, component, local_center))
+            distance = min(float(np.linalg.norm(local_center - hypothesis)) for hypothesis in centers)
+            candidates.append((distance, label, component, local_center))
         candidates.sort(key=lambda item: item[0])
         reason = "no_target_component"
         if candidates:
@@ -145,7 +149,9 @@ class SceneAssistedVerifier:
             return primary
         delta_ee = self.motion.robot_state().T_base_ee[:3, 3] - self.ee_before[:3, 3]
         expected = self.before.center_base_m + delta_ee
-        evidence = self.observer.observe(self.target, expected)
+        # Search both hypotheses in the SAME frame. An 8 cm test lift must not
+        # remove the original support location from the verification ROI.
+        evidence = self.observer.observe(self.target, expected, alternate_center=self.before.center_base_m)
         self.last_evidence = evidence
         metrics = {**dict(primary.metrics), "wrist_verification_success": int(primary.success)}
         if evidence is None:

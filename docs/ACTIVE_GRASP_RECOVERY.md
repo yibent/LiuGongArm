@@ -28,11 +28,16 @@
 ## 安全边界与失败语义
 
 - 默认最多两次尝试、总预算 110 秒、退让 4 cm、速度比例 0.25；单次还有原节点时限。
-- 闭爪后宽度非空/未知、检测到接触或目标是薄件时，不主动松爪、不横向扫视；
-  返回 `payload_uncertain_do_not_open`，交给上游安全处理。
-- 头顶目标不确定/多目标歧义、深度不足、机器人遮罩缺失、路径未验证时停止。
+- 闭爪后宽度非空/未知、检测到接触/堵转或目标是薄件时，不主动松爪、不横向扫视；
+  `result.metrics['recovery_stop_reason']` 返回 `payload_uncertain_do_not_open`，
+  交给上游安全处理；`result.failure` 保留该次原始失败，不是新增的 FailureCode。
+- 头顶目标不确定/多目标歧义或路径未验证时禁止恢复退让和重试。
+  首次头顶没有目标、闭爪前头顶被遮挡或抬升后头顶无证据时，仍保留腕部验证结果，
+  不将“头顶未知”自动判为成功或失败。腕部增强分割缺少机器人遮罩时不能继续接近。
 - 校准、夹爪、模型以及明确碰撞/IK 等错误不会被无条件重试掩盖。
 - 恢复节点不自行打开夹爪。只有下一次节点选好可执行候选后才会正常预开爪。
+- 入场前提是上游确认空手；持物保护针对本次执行已发出的闭爪命令。
+  次数耗尽或其他原因停止时，没有 `payload_uncertain_do_not_open` 标记也不代表空手。
 - 整体超时依赖驱动调用能够返回，尚无强制终止阻塞硬件 I/O 的独立实时守护。
 - 两指夹爪无法进入的薄件仍应拒绝；主动观察不能创造桌面间隙或机械臂自由度。
 
@@ -40,6 +45,10 @@ Isaac 中机器人遮罩来自已知机器人路径 `/World/SO101` 的 instance-
 **不使用目标的实例标签、真实位姿或网格进行感知/决策**。
 真实机器人需用已标定机器人几何投影/深度一致性实现等价遮罩；缺失时增强模式拒绝动作。
 已修复 Isaac 6 将 annotator 名称 `_fast` 归一化后，旧代码读取不到机器人遮罩的问题。
+
+仿真并非端到端盲抓：场景配置提供初始粗位置、物体属性、桌面高度，
+demo 根据已知对象高度调整交接姿态；规划器按已知目标路径将目标从普通全局障碍中排除，
+再由局部观测做手指/接近检查。这些场景先验必须与真实 BusAgent 的粗定位和碰撞场景更新对应。
 
 ## 运行与公平对比
 
@@ -61,9 +70,30 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run_fine_grasp_demo.
 
 `off`：原始单次节点；`assisted`：机器人自遮罩和头顶验证，最多一次；
 `active`：相同辅助机制，失败后可退让并多视角再尝试。
+若额外指定 `-Perception multiview`，第一次也会主动观察；配对脚本固定为 `single`。
 用这三个组分离机器人遮罩/验证改善与真正主动恢复带来的增益。
 比较脚本冻结相同场景文件及哈希，保存源码提交、脏工作区标记和逐组结果。
 开发集不是验收集，当前默认五种对象均为程序生成的几何代理，不是实物扫描模型。
+
+### BusAgent 装配要求
+
+原接入 README 的 `FineGraspSkill` 可以继续包装新节点，因为 `execute/cancel` 契约不变；
+但不能只把旧示例的类名替换，恢复功能还需要以下依赖：
+
+- `SceneTargetObserver(scene_rgbd_camera, table_height_m=..., require_robot_mask=True)`；
+  固定相机需标定到 base，提供与腕部同一单调时钟域的新鲜 RGB-D。
+- `attempt_factory(index, failed_grasps, target)` 中每次构造新 segmenter、新 node、新 verifier；
+  `index` 从 0 开始，`index > 0` 同时开启 `fusion.enabled` 和 `active_views.enabled`。
+- 分割外包 `RobotMaskedSegmenter(..., require_mask=True)`；
+  `SceneAssistedVerifier(observer, motion, target)` 负责辅助验证；
+  `GeneralGraspNode(..., failed_grasps=failed_grasps)` 保留失败候选排除。
+- `motion.is_observation_path_safe(pose, points_base, FingerGeometry)` 必须验证实际可执行的
+  整条关节轨迹及局部手指扫掠体；没有此钩子时拒绝恢复运动。
+  `clear_grasp_plan()` 应清除旧抓取分支与缓存，不能删除手眼标定。
+- 组装为 `RecoveringGraspNode(attempt_factory=..., observer=..., motion=..., gripper=...)`。
+
+可运行装配示例是 `scripts/run_fine_grasp_demo.py` 的 `attempt_factory` 和其外围代码。
+硬件适配器尚未提供这些完整安全钩子；保留实验模式，不直接启动真机执行。
 
 ## 当前实测证据（2026-09-05，开发工作区）
 
@@ -74,10 +104,40 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run_fine_grasp_demo.
 | 遮罩修复前两次 cube | 物理抬升但视觉验证失败 | 检测持物疑虑并停止，没有松爪或盲目重试 |
 
 上述测试为 GraspGenX 与几何候选混合后端，不代表全部抓取由神经候选产生。
-候选实际来源保存在 `selected_grasp.backend`。尚需同版本、多对象、多种子的配对结果，
+模型服务来源见 `selected_grasp.backend`，内部几何/生成分支见 `selected_grasp.metadata.branch`
+（例如 `obb`）。不能只凭 backend 名称将几何候选成功算作纯神经生成成功。
+尚需同版本、多对象、多种子的配对结果，
 以及真实空抓后的物理重抓测试；不能根据方块演示宣称泛化改善。
 
 ## 调试产物与尚未完成项
+
+### 冻结开发配对测试
+
+代码 `1f93c77`，五对象（apple、coffee_mug、cube、hammer、wrench）、seed 0、共 15 次
+独立 Isaac 进程。场景定义完全相同，15 次 grasp 源码哈希一致。
+精简原始数据及报告哈希见 [配对证据](benchmarks/active_recovery_pilot_20260905.json)，
+本地完整产物：`output/recovery_comparison/pilot_20260905/`。
+
+| 模式 | 节点与物理同时成功 | 仅物理抬升达标 | 平均节点周期 | 成功重抓 |
+|---|---:|---:|---:|---:|
+| off | 1/5 | 4/5 | 15.64 s | 0 |
+| assisted | 2/5 | 3/5 | 17.82 s | 0 |
+| active | 2/5 | 4/5 | 17.74 s | 0 |
+
+三组均无“节点成功但未物理抬升”的假成功；所有最终选择都是 GraspMoE 的 `obb` 分支。
+结果不证明主动恢复改善自然失败成功率：本轮主动扫视次数为 0。
+苹果持物但验证未知而停止，锤子的额外退让路径未验证通过，扳手闭爪命令失败。
+辅助组锤子与另两组的物理结果也不同，说明需要更多种子/重复次数，不能只比较一个总分。
+
+后续安全修正不混入上述冻结结果：堵转即使宽度近零也不视为空手；
+固定/腕部相机均拒绝重复或倒退的渲染时间；头顶验证在同帧搜索“跟随抬升”和“仍在桌面”
+两种假设，避免抬升后搜索框移走导致漏掉桌面上的目标。
+当前 120 项单测通过。真实空抓恢复还需单独的物理测试，不以 mock 测试代替。
+
+可显式用 `-TestTargetShiftM 0.04` 在首次闭爪前将仿真目标沿 base X 移动 4 cm，
+上游粗位置、候选和验证结果均不修改；默认 0 关闭。只有报告中的
+`test_target_shift_applied=true` 才表示实际执行过该扰动，未到闭爪不能算注入成功。
+比较脚本对应参数为 `--test-target-shift-m`，必须与自然场景得分分开报告。
 
 每次尝试保存到 `attempt_N/debug/`：RGB、深度、掩码、自遮罩、相机变换、候选与事件。
 头顶观测在 `overhead/`；总 `report.json` 包含 `attempt_results`、`attempt_physics`、
