@@ -1,0 +1,254 @@
+{
+  "purpose": "Same frozen cube, same b15ff6a code, same oblique mount, same 4cm first-close displacement. Combined assisted recovery vs single attempt; no retry-only ablation or held-out generalization claim.",
+  "provenance": {
+    "git_commit": "b15ff6a68aa1ba5f6990c24f4ddd2b0fd60cf500",
+    "git_dirty": false,
+    "profiles": [
+      "off",
+      "active"
+    ],
+    "backend": "graspgenx",
+    "segmenter": "depth",
+    "fault_initial_wrist_frames": 0,
+    "test_target_shift_m": 0.04,
+    "scene_view": "oblique",
+    "manifest_sha256": "6e802fe1781c3b72367cd01d082eeba688f8c63766f5dbd11f571cf6b0f6db23"
+  },
+  "comparison": {
+    "off": {
+      "trials": 1,
+      "successes": 0,
+      "first_attempt_successes": 0,
+      "recovered_successes": 0,
+      "successful_regrasps": 0,
+      "false_successes": 0,
+      "attempted_trials": 1,
+      "active_view_moves": 0,
+      "metrics": {
+        "alignment_error_mm": {
+          "mean": 4.2145809493453665,
+          "median": 4.2145809493453665,
+          "p95": 4.2145809493453665
+        },
+        "model_latency_ms": {
+          "mean": 735,
+          "median": 735,
+          "p95": 735
+        },
+        "cycle_time_s": {
+          "mean": 14.59400000000096,
+          "median": 14.59400000000096,
+          "p95": 14.59400000000096
+        },
+        "actual_lift_m": {
+          "mean": 3.5762786865234375e-7,
+          "median": 3.5762786865234375e-7,
+          "p95": 3.5762786865234375e-7
+        }
+      },
+      "failure_counts": {
+        "grasp_not_detected": 1
+      }
+    },
+    "active": {
+      "trials": 1,
+      "successes": 1,
+      "first_attempt_successes": 0,
+      "recovered_successes": 1,
+      "successful_regrasps": 1,
+      "false_successes": 0,
+      "attempted_trials": 1,
+      "active_view_moves": 2,
+      "metrics": {
+        "alignment_error_mm": {
+          "mean": 1.6927997902359782,
+          "median": 1.6927997902359782,
+          "p95": 1.6927997902359782
+        },
+        "model_latency_ms": {
+          "mean": 640,
+          "median": 640,
+          "p95": 640
+        },
+        "cycle_time_s": {
+          "mean": 39.18699999999808,
+          "median": 39.18699999999808,
+          "p95": 39.18699999999808
+        },
+        "actual_lift_m": {
+          "mean": 0.08191525936126709,
+          "median": 0.08191525936126709,
+          "p95": 0.08191525936126709
+        }
+      },
+      "failure_counts": {}
+    }
+  },
+  "rows": [
+    {
+      "artifact": "active/001_cube_seed0/report.json",
+      "report_sha256": "53d6e11bb7af0332106dccaf13ff562eb1387f5f5d8035b0e359e6823dc06908",
+      "source_sha256": "e1071a10814d34e7079a579416b89dd1db8ca4aa4a1bdb478441cf85cb59c13b",
+      "profile": "active",
+      "benchmark_case": {
+        "name": "cube",
+        "shape": "cube",
+        "dimensions_m": [
+          0.036,
+          0.036,
+          0.036
+        ],
+        "position_m": [
+          0.32234097227292036,
+          -0.19690911546651874,
+          1.068
+        ],
+        "seed": 0,
+        "yaw_deg": -2.772200419166273,
+        "mass_kg": 0.035,
+        "color_rgb": [
+          0.85,
+          0.12,
+          0.08
+        ],
+        "material": "matte",
+        "fragile": false,
+        "thin": false,
+        "reflective": false,
+        "expected_feasible": true,
+        "mesh_path": null,
+        "light_scale": 1,
+        "metadata": {}
+      },
+      "scene_view": "oblique",
+      "test_shift_m": 0.04,
+      "fault_applied": true,
+      "node_success": true,
+      "failure": null,
+      "physical_lift_m": 0.08191525936126709,
+      "metrics": {
+        "backend": "graspgenx+geometric_antipodal_fallback",
+        "observations": 27,
+        "replans": 0,
+        "servo_steps": 20,
+        "candidates": 128,
+        "close_commanded": 1,
+        "model_calls": 1,
+        "model_total_ms": 640,
+        "active_view_moves": 2,
+        "max_observation_age_ms": 15.99999999962165,
+        "fusion_views": 4,
+        "fusion_points": 492,
+        "fusion_free_conflict_ratio": 0.002061855670103093,
+        "fusion_reset": "none",
+        "model_latency_ms": 640,
+        "rejected_pinch_center_mismatch": 24,
+        "rejected_ik_unreachable": 17,
+        "rejected_observed_finger_collision": 6,
+        "rejected_approach_disconnected": 58,
+        "rejected_table_clearance": 3,
+        "registration_residual_m": 0.0007709108149837214,
+        "registration_inlier_ratio": 1,
+        "max_observed_centroid_jump_m": 0.0004938119282267879,
+        "final_translation_error_m": 0.0016927997902359783,
+        "final_rotation_error_deg": 0.7311382116509502,
+        "close_confidence": 0.65,
+        "lift_motion_completed": 1,
+        "lift_confidence": 0.85,
+        "holding_signal": 1,
+        "gripper_not_fully_closed": 1,
+        "wrist_verification_success": 0,
+        "scene_target_lift_m": 0.07150330397845006,
+        "scene_follow_error_m": 0.00970046701646994,
+        "scene_verification": "confirmed",
+        "elapsed_s": 39.18699999999808,
+        "recovery_attempts": 2,
+        "recovery_stop_reason": "succeeded",
+        "first_attempt_node_success": 0,
+        "grasp_attempts": 2,
+        "total_servo_steps": 39,
+        "total_active_view_moves": 2,
+        "total_model_calls": 2,
+        "total_model_ms": 1422
+      },
+      "attempt_physics": [
+        {
+          "attempt": 1,
+          "actual_target_lift_m": 0
+        },
+        {
+          "attempt": 2,
+          "actual_target_lift_m": 0.08191466331481934
+        }
+      ]
+    },
+    {
+      "artifact": "off/001_cube_seed0/report.json",
+      "report_sha256": "fd70930ac3033df74bca5ff68d9bb7b0ecc5f3395f7a284842b8e13ba4720c15",
+      "source_sha256": "e1071a10814d34e7079a579416b89dd1db8ca4aa4a1bdb478441cf85cb59c13b",
+      "profile": "off",
+      "benchmark_case": {
+        "name": "cube",
+        "shape": "cube",
+        "dimensions_m": [
+          0.036,
+          0.036,
+          0.036
+        ],
+        "position_m": [
+          0.32234097227292036,
+          -0.19690911546651874,
+          1.068
+        ],
+        "seed": 0,
+        "yaw_deg": -2.772200419166273,
+        "mass_kg": 0.035,
+        "color_rgb": [
+          0.85,
+          0.12,
+          0.08
+        ],
+        "material": "matte",
+        "fragile": false,
+        "thin": false,
+        "reflective": false,
+        "expected_feasible": true,
+        "mesh_path": null,
+        "light_scale": 1,
+        "metadata": {}
+      },
+      "scene_view": "oblique",
+      "test_shift_m": 0.04,
+      "fault_applied": true,
+      "node_success": false,
+      "failure": "grasp_not_detected",
+      "physical_lift_m": 3.5762786865234375e-7,
+      "metrics": {
+        "backend": "graspgenx+geometric_antipodal_fallback",
+        "observations": 24,
+        "replans": 0,
+        "servo_steps": 20,
+        "candidates": 128,
+        "close_commanded": 1,
+        "model_calls": 1,
+        "model_total_ms": 735,
+        "active_view_moves": 0,
+        "max_observation_age_ms": 15.99999999962165,
+        "model_latency_ms": 735,
+        "rejected_pinch_center_mismatch": 30,
+        "rejected_approach_disconnected": 78,
+        "rejected_ik_unreachable": 1,
+        "registration_residual_m": 0.000467255600370277,
+        "registration_inlier_ratio": 0.98828125,
+        "max_observed_centroid_jump_m": 0.0008269478578181315,
+        "final_translation_error_m": 0.004214580949345367,
+        "final_rotation_error_deg": 1.4169781122971639,
+        "close_confidence": 0.45,
+        "visual_target": 1,
+        "holding_signal": 0,
+        "elapsed_s": 14.59400000000096
+      },
+      "attempt_physics": []
+    }
+  ]
+}

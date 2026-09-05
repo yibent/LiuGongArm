@@ -50,7 +50,7 @@ class BusAgentReadmeTests(unittest.TestCase):
         gripper.close.assert_not_called()
 
     def test_local_document_links_exist(self):
-        for relative in ("README.md", "docs/BUSAGENT_README.md"):
+        for relative in ("README.md", "docs/BUSAGENT_README.md", "docs/ACTIVE_GRASP_RECOVERY.md"):
             path = ROOT / relative
             doc = path.read_text(encoding="utf-8")
             for target in re.findall(r"\[[^\]]+\]\(([^)]+)\)", doc):

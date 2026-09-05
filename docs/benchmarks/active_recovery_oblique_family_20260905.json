@@ -1,0 +1,320 @@
+{
+  "purpose": "b15ff6a oblique active recovery, no perturbation, procedural apple/hammer/mug seed0 only; not held-out or hardware acceptance.",
+  "successes": 2,
+  "trials": 3,
+  "metrics": {
+    "alignment_error_mm": {
+      "mean": 3.7416875913656384,
+      "median": 4.317605594588214,
+      "p95": 4.49649476936558
+    },
+    "model_latency_ms": {
+      "mean": 838.3333333333334,
+      "median": 890,
+      "p95": 906
+    },
+    "cycle_time_s": {
+      "mean": 19.94799999999911,
+      "median": 21.54699999999866,
+      "p95": 22.985000000000582
+    },
+    "actual_lift_m": {
+      "mean": 0.044165333112080894,
+      "median": 0.05158531665802002,
+      "p95": 0.0809105634689331
+    }
+  },
+  "rows": [
+    {
+      "artifact": "001_apple_seed0/report.json",
+      "report_sha256": "7012350455222eabe582b0bf7254f664d02ad24a34946c6a2a5dcbcd0f06853c",
+      "provenance": {
+        "git_commit": "b15ff6a68aa1ba5f6990c24f4ddd2b0fd60cf500",
+        "source_sha256": "e1071a10814d34e7079a579416b89dd1db8ca4aa4a1bdb478441cf85cb59c13b",
+        "config_sha256": "4aaeb8a75e8b993cdd41a3f1b339046a3f2a717f2ba99584c1f51985f59267af",
+        "model_seed": 0,
+        "segmenter": "depth"
+      },
+      "benchmark_case": {
+        "name": "apple",
+        "shape": "sphere",
+        "dimensions_m": [
+          0.045,
+          0.045,
+          0.045
+        ],
+        "position_m": [
+          0.3220371253128541,
+          -0.19792604030534963,
+          1.0725
+        ],
+        "seed": 0,
+        "yaw_deg": -4.857263692960409,
+        "mass_kg": 0.105,
+        "color_rgb": [
+          0.72,
+          0.08,
+          0.06
+        ],
+        "material": "matte",
+        "fragile": true,
+        "thin": false,
+        "reflective": false,
+        "expected_feasible": true,
+        "mesh_path": null,
+        "light_scale": 1,
+        "metadata": {
+          "scenario": "fruit",
+          "force_sensitive": true
+        }
+      },
+      "scene_view": "oblique",
+      "success": true,
+      "failure": null,
+      "lift_m": 0.0809105634689331,
+      "metrics": {
+        "backend": "graspgenx+geometric_antipodal_fallback",
+        "observations": 33,
+        "replans": 0,
+        "servo_steps": 28,
+        "candidates": 128,
+        "close_commanded": 1,
+        "model_calls": 1,
+        "model_total_ms": 890,
+        "active_view_moves": 0,
+        "max_observation_age_ms": 16.00000000325963,
+        "model_latency_ms": 890,
+        "rejected_table_clearance": 12,
+        "rejected_pinch_center_mismatch": 30,
+        "rejected_approach_disconnected": 62,
+        "rejected_ik_unreachable": 4,
+        "registration_residual_m": 0.0003899501165316116,
+        "registration_inlier_ratio": 1,
+        "max_observed_centroid_jump_m": 0.0009570920703154588,
+        "final_translation_error_m": 0.0024109624101431213,
+        "final_rotation_error_deg": 0.726808388694895,
+        "close_confidence": 0.65,
+        "lift_motion_completed": 1,
+        "lift_confidence": 0.85,
+        "holding_signal": 1,
+        "gripper_not_fully_closed": 1,
+        "wrist_verification_success": 0,
+        "scene_target_lift_m": 0.07521728123406168,
+        "scene_follow_error_m": 0.007824031737988587,
+        "scene_verification": "confirmed",
+        "elapsed_s": 21.54699999999866,
+        "recovery_attempts": 1,
+        "recovery_stop_reason": "succeeded",
+        "first_attempt_node_success": 1,
+        "grasp_attempts": 1,
+        "total_servo_steps": 28,
+        "total_active_view_moves": 0,
+        "total_model_calls": 1,
+        "total_model_ms": 890
+      },
+      "final_gripper": {
+        "timestamp_s": 27186,
+        "width_m": 0.020031306062425886,
+        "effort_n": 0,
+        "contact": null,
+        "stalled": true
+      },
+      "selected_branch": "obb"
+    },
+    {
+      "artifact": "002_hammer_seed0/report.json",
+      "report_sha256": "d1fab04f0af1b8b77b23690faaabefd126dd67f89bf9853b7f431dacc796bc04",
+      "provenance": {
+        "git_commit": "b15ff6a68aa1ba5f6990c24f4ddd2b0fd60cf500",
+        "source_sha256": "e1071a10814d34e7079a579416b89dd1db8ca4aa4a1bdb478441cf85cb59c13b",
+        "config_sha256": "4aaeb8a75e8b993cdd41a3f1b339046a3f2a717f2ba99584c1f51985f59267af",
+        "model_seed": 0,
+        "segmenter": "depth"
+      },
+      "benchmark_case": {
+        "name": "hammer",
+        "shape": "hammer",
+        "dimensions_m": [
+          0.11,
+          0.05,
+          0.028
+        ],
+        "position_m": [
+          0.3252267047647331,
+          -0.19509265204523,
+          1.064
+        ],
+        "seed": 0,
+        "yaw_deg": 1.671788018266529,
+        "mass_kg": 0.15,
+        "color_rgb": [
+          0.18,
+          0.22,
+          0.25
+        ],
+        "material": "matte",
+        "fragile": false,
+        "thin": false,
+        "reflective": false,
+        "expected_feasible": true,
+        "mesh_path": null,
+        "light_scale": 1,
+        "metadata": {
+          "scenario": "industrial_tool",
+          "preferred_region": "handle"
+        }
+      },
+      "scene_view": "oblique",
+      "success": false,
+      "failure": "lift_verification_failed",
+      "lift_m": 1.1920928955078125e-7,
+      "metrics": {
+        "backend": "graspgenx+geometric_antipodal_fallback",
+        "observations": 24,
+        "replans": 0,
+        "servo_steps": 19,
+        "candidates": 128,
+        "close_commanded": 1,
+        "model_calls": 1,
+        "model_total_ms": 719,
+        "active_view_moves": 0,
+        "max_observation_age_ms": 15.99999999962165,
+        "model_latency_ms": 719,
+        "rejected_table_clearance": 7,
+        "rejected_closing_axis_misaligned": 91,
+        "rejected_pinch_center_mismatch": 3,
+        "rejected_approach_disconnected": 9,
+        "rejected_ik_unreachable": 3,
+        "registration_residual_m": 0.0005026798273536829,
+        "registration_inlier_ratio": 0.83447265625,
+        "max_observed_centroid_jump_m": 0.00022111623322024709,
+        "final_translation_error_m": 0.004317605594588214,
+        "final_rotation_error_deg": 1.6690163249347552,
+        "close_confidence": 0.85,
+        "lift_motion_completed": 1,
+        "lift_confidence": 0,
+        "holding_signal": 1,
+        "gripper_not_fully_closed": 0,
+        "wrist_verification_success": 0,
+        "scene_target_lift_m": 0.001199170322809806,
+        "scene_follow_error_m": 0.08576078154338528,
+        "scene_verification": "inconclusive",
+        "elapsed_s": 15.31199999999808,
+        "recovery_attempts": 1,
+        "recovery_stop_reason": "payload_uncertain_do_not_open",
+        "first_attempt_node_success": 0,
+        "grasp_attempts": 1,
+        "total_servo_steps": 19,
+        "total_active_view_moves": 0,
+        "total_model_calls": 1,
+        "total_model_ms": 719
+      },
+      "final_gripper": {
+        "timestamp_s": 27229.296,
+        "width_m": 0,
+        "effort_n": 0,
+        "contact": null,
+        "stalled": true
+      },
+      "selected_branch": "obb"
+    },
+    {
+      "artifact": "003_coffee_mug_seed0/report.json",
+      "report_sha256": "f9c5e7cf16d9bf5ca9d817217bf9f9058172f1d3cc3ef4daf98e4dc684a20ece",
+      "provenance": {
+        "git_commit": "b15ff6a68aa1ba5f6990c24f4ddd2b0fd60cf500",
+        "source_sha256": "e1071a10814d34e7079a579416b89dd1db8ca4aa4a1bdb478441cf85cb59c13b",
+        "config_sha256": "4aaeb8a75e8b993cdd41a3f1b339046a3f2a717f2ba99584c1f51985f59267af",
+        "model_seed": 0,
+        "segmenter": "depth"
+      },
+      "benchmark_case": {
+        "name": "coffee_mug",
+        "shape": "mug",
+        "dimensions_m": [
+          0.082,
+          0.056,
+          0.062
+        ],
+        "position_m": [
+          0.3240704227468036,
+          -0.19653564231690437,
+          1.081
+        ],
+        "seed": 0,
+        "yaw_deg": -3.639745912674673,
+        "mass_kg": 0.125,
+        "color_rgb": [
+          0.82,
+          0.74,
+          0.6
+        ],
+        "material": "matte",
+        "fragile": true,
+        "thin": false,
+        "reflective": false,
+        "expected_feasible": true,
+        "mesh_path": null,
+        "light_scale": 1,
+        "metadata": {
+          "scenario": "service_container",
+          "has_handle": true
+        }
+      },
+      "scene_view": "oblique",
+      "success": true,
+      "failure": null,
+      "lift_m": 0.05158531665802002,
+      "metrics": {
+        "backend": "graspgenx+geometric_antipodal_fallback",
+        "observations": 34,
+        "replans": 0,
+        "servo_steps": 29,
+        "candidates": 128,
+        "close_commanded": 1,
+        "model_calls": 1,
+        "model_total_ms": 906,
+        "active_view_moves": 0,
+        "max_observation_age_ms": 16.00000000325963,
+        "model_latency_ms": 906,
+        "rejected_pinch_center_mismatch": 27,
+        "rejected_ik_unreachable": 21,
+        "rejected_approach_disconnected": 66,
+        "registration_residual_m": 0.0006712616057885778,
+        "registration_inlier_ratio": 0.99853515625,
+        "max_observed_centroid_jump_m": 0.0015669810074643578,
+        "final_translation_error_m": 0.00449649476936558,
+        "final_rotation_error_deg": 1.8085171373153068,
+        "close_confidence": 0.85,
+        "lift_motion_completed": 0,
+        "lift_confidence": 0.85,
+        "target_lift_m": -0.03916885058957531,
+        "target_translation_m": 0.04997330858974184,
+        "holding_signal": 1,
+        "gripper_not_fully_closed": 1,
+        "target_wrist_follow_error_m": 0.1048800576010778,
+        "wrist_verification_success": 0,
+        "scene_target_lift_m": 0.04733137223267225,
+        "scene_follow_error_m": 0.01241963738345369,
+        "scene_verification": "confirmed",
+        "elapsed_s": 22.985000000000582,
+        "recovery_attempts": 1,
+        "recovery_stop_reason": "succeeded",
+        "first_attempt_node_success": 1,
+        "grasp_attempts": 1,
+        "total_servo_steps": 29,
+        "total_active_view_moves": 0,
+        "total_model_calls": 1,
+        "total_model_ms": 906
+      },
+      "final_gripper": {
+        "timestamp_s": 27282.609,
+        "width_m": 0.026725701263972692,
+        "effort_n": 0,
+        "contact": null,
+        "stalled": true
+      },
+      "selected_branch": "obb"
+    }
+  ]
+}
