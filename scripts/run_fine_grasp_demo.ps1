@@ -5,6 +5,13 @@ param(
     [int]$Port = 5556,
     [string]$Output = "",
     [switch]$Benchmark,
+    [ValidateSet("single", "multiview")]
+    [string]$Perception = "single",
+    [ValidateSet("depth", "sam2")]
+    [string]$Segmenter = "depth",
+    [string]$Manifest = "",
+    [ValidateSet("development", "acceptance")]
+    [string]$Split = "development",
     [string]$Seeds = "0",
     [string]$Cases = "cube,sphere,cylinder,thin,metallic_part,apple,bottle,hammer,wrench,screwdriver,key,coffee_mug"
 )
@@ -56,7 +63,7 @@ try {
             }
         }
         New-Item -ItemType Directory -Force -Path $OutputRoot | Out-Null
-        $ServerScript = Join-Path $ModelRoot "client-server\graspgenx_server.py"
+        $ServerScript = Join-Path $PSScriptRoot "serve_graspgenx.py"
         $ServerArgs = @(
             $ServerScript,
             "--config", $CheckpointRoot,
@@ -140,6 +147,12 @@ try {
     }
     if ($NoHeadless) {
         $DemoArgs += "--no-headless"
+    }
+    $DemoArgs += @("--perception", $Perception)
+    $DemoArgs += @("--segmenter", $Segmenter)
+    if (-not [string]::IsNullOrWhiteSpace($Manifest)) {
+        if (-not $Benchmark) { throw "-Manifest requires -Benchmark" }
+        $DemoArgs += @("--manifest", $Manifest, "--split", $Split)
     }
     & $IsaacPython @DemoArgs
     exit $LASTEXITCODE

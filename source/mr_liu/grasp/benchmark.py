@@ -8,6 +8,7 @@ Isaac imports live inside :func:`spawn_benchmark_target`.
 from __future__ import annotations
 
 import json
+import hashlib
 import math
 import statistics
 from collections import Counter
@@ -43,6 +44,8 @@ class BenchmarkCase:
     thin: bool = False
     reflective: bool = False
     expected_feasible: bool = True
+    mesh_path: str | None = None
+    light_scale: float = 1.0
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -58,8 +61,11 @@ class BenchmarkCase:
             "screwdriver",
             "key",
             "mug",
+            "mesh",
         }:
             raise ValueError(f"Unsupported benchmark shape: {self.shape}")
+        if self.shape == "mesh" and not self.mesh_path:
+            raise ValueError("Mesh case requires a local mesh_path")
         if len(self.dimensions_m) != 3 or any(value <= 0 for value in self.dimensions_m):
             raise ValueError("dimensions_m must contain three positive values")
         if len(self.position_m) != 3 or not all(math.isfinite(value) for value in self.position_m):
@@ -110,8 +116,6 @@ def default_unseen_cases(seed: int) -> list[BenchmarkCase]:
     # Each seed maps to a stable XY position and yaw for exact reproduction.
     import random
 
-    randomizer = random.Random(seed)
-
     def varied(
         *,
         name: str,
@@ -119,6 +123,9 @@ def default_unseen_cases(seed: int) -> list[BenchmarkCase]:
         dimensions: tuple[float, float, float],
         **kwargs: Any,
     ) -> BenchmarkCase:
+        # Adding or reordering another object cannot change this object's pose.
+        case_seed = int.from_bytes(hashlib.sha256(f"finegrasp-v2:{seed}:{name}".encode()).digest()[:8], "little")
+        randomizer = random.Random(case_seed)
         position = (
             DEFAULT_TARGET_XY_M[0] + randomizer.uniform(-0.003, 0.003),
             DEFAULT_TARGET_XY_M[1] + randomizer.uniform(-0.003, 0.003),
@@ -323,6 +330,31 @@ def spawn_benchmark_target(case: BenchmarkCase, path: str):
             box("HandleTop", (0.023, 0.0, 0.020), (0.030, 0.012, 0.010))
             box("HandleBottom", (0.023, 0.0, -0.020), (0.030, 0.012, 0.010))
             box("HandleOuter", (0.038, 0.0, 0.0), (0.010, 0.012, 0.050))
+    elif case.shape == "mesh":
+        stage = omni.usd.get_context().get_stage()
+        import numpy as np
+        import trimesh
+        from pxr import Vt
+        mesh_file = Path(case.mesh_path)
+        if not mesh_file.is_absolute():
+            mesh_file = Path(__file__).resolve().parents[3] / mesh_file
+        expected_hash = case.metadata.get("asset_sha256")
+        if expected_hash and hashlib.sha256(mesh_file.read_bytes()).hexdigest() != expected_hash:
+            raise ValueError("Frozen mesh asset hash mismatch")
+        mesh = trimesh.load(mesh_file, force="mesh", process=False)
+        vertices = np.asarray(mesh.vertices, dtype=float)
+        lower, upper = vertices.min(axis=0), vertices.max(axis=0)
+        scale = max(case.dimensions_m) / float(np.max(upper - lower))
+        vertices = (vertices - (lower + upper) * 0.5) * scale
+        authored = UsdGeom.Mesh.Define(stage, path)
+        authored.CreatePointsAttr(Vt.Vec3fArray.FromNumpy(vertices.astype(np.float32)))
+        authored.CreateFaceVertexCountsAttr([3] * len(mesh.faces))
+        authored.CreateFaceVertexIndicesAttr(np.asarray(mesh.faces).reshape(-1).tolist())
+        authored.CreateSubdivisionSchemeAttr("none")
+        authored.CreateDisplayColorAttr([Gf.Vec3f(*color)])
+        UsdGeom.Xformable(authored).AddTranslateOp().Set(Gf.Vec3d(*case.position_m))
+        UsdPhysics.CollisionAPI.Apply(authored.GetPrim())
+        UsdPhysics.MeshCollisionAPI.Apply(authored.GetPrim()).CreateApproximationAttr("convexDecomposition")
     elif case.shape == "sphere":
         Sphere(path, positions=position, radii=x_size * 0.5, colors=color)
     elif case.shape == "cylinder":
@@ -510,6 +542,10 @@ def aggregate_runs(runs: list[Mapping[str, Any]]) -> dict[str, Any]:
             else 0.0
         ),
         "failure_counts": dict(sorted(failure_counts.items())),
+        "false_successes": sum(bool(r.get("node_success")) and not bool(r.get("physical_lift_success")) for r in runs),
+        "attempted_trials": sum(r.get("actual_lift_m") is not None and
+                                r.get("failure_category") not in {"table_clearance", "ik_unreachable", "geometry_uncertain", "target_not_visible"}
+                                for r in feasible_runs),
         "by_shape": grouped("shape"),
         "by_material": grouped("material"),
         "metrics": {

@@ -24,6 +24,8 @@ class FailureCode(str, Enum):
     TARGET_NOT_VISIBLE = "target_not_visible"
     INCONSISTENT_OBSERVATION = "inconsistent_observation"
     INSUFFICIENT_DEPTH = "insufficient_depth"
+    GEOMETRY_UNCERTAIN = "geometry_uncertain"
+    IDENTITY_UNCERTAIN = "identity_uncertain"
     CALIBRATION_INVALID = "calibration_invalid"
     NO_GRASP_CANDIDATES = "no_grasp_candidates"
     MODEL_UNAVAILABLE = "model_unavailable"

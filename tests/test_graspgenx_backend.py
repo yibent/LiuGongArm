@@ -119,7 +119,7 @@ class GraspGenXBackendTests(unittest.TestCase):
         )
         self.assertGreater(candidate.metadata["width_section_points"], 24)
 
-    def test_tool_handle_hint_moves_obb_pose_to_long_stable_region(self) -> None:
+    def test_handle_hint_cannot_move_pose_without_rescoring(self) -> None:
         pose = make_transform(
             np.diag([1.0, -1.0, -1.0]), np.asarray([0.040, 0.0, 0.245])
         )
@@ -152,11 +152,11 @@ class GraspGenXBackendTests(unittest.TestCase):
 
         candidate = backend.generate(observation(), points, target)[0]
 
-        self.assertLess(candidate.T_camera_grasp[0, 3], 0.0)
+        self.assertAlmostEqual(candidate.T_camera_grasp[0, 3], 0.040)
         self.assertEqual(
-            candidate.metadata["region_strategy"], "stable_elongated_handle"
+            candidate.metadata["region_strategy"], "model_pose"
         )
-        self.assertGreater(candidate.metadata["region_shift_m"], 0.02)
+        self.assertEqual(candidate.metadata["region_shift_m"], 0.0)
 
     def test_large_close_range_cloud_is_deterministically_capped(self) -> None:
         pose, score = self.model_pose()

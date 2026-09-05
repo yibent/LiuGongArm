@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import hashlib
+import subprocess
 import sys
 import traceback
 from dataclasses import asdict, is_dataclass
@@ -19,6 +21,9 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--graspgenx-port", type=int, default=5556)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--perception", choices=("single", "multiview"), default="single")
+    parser.add_argument("--planner", choices=("graspmoe", "diffusion"), default="graspmoe")
+    parser.add_argument("--segmenter", choices=("depth", "sam2"), default="depth")
     parser.add_argument(
         "--case-json",
         type=Path,
@@ -65,6 +70,8 @@ from mr_liu.grasp.contracts import FineGraspRequest, ObjectProperties, TargetSpe
 from mr_liu.grasp.debug import DebugSegmenter, FineGraspDebugRecorder
 from mr_liu.grasp.node import GeneralGraspNode
 from mr_liu.grasp.segmentation import AppearanceDepthTrackerSegmenter, SeededDepthSegmenter
+from mr_liu.grasp.identity import GeometricIdentitySegmenter, RemotePromptSegmenter
+from mr_liu.grasp.backends.graspgenx import ZmqGraspGenXTransport
 from mr_liu.grasp.settings import FineGraspSettings
 from mr_liu.grasp.transforms import invert_transform, transform_points
 from mr_liu.grasp.verification import VisionGripperVerifier
@@ -159,6 +166,11 @@ def main() -> int:
         np.random.seed(CASE.seed)
     grasp_cfg = fine_grasp_config().copy()
     grasp_cfg["backend"] = ARGS.backend
+    grasp_cfg["backends"]["graspgenx"]["planner"] = ARGS.planner
+    if ARGS.perception == "multiview":
+        grasp_cfg["fusion"] = {"enabled": True}
+        grasp_cfg["active_views"] = {"enabled": True}
+        grasp_cfg["selection"]["max_elongated_axis_error_deg"] = 180.0
     OUTPUT.mkdir(parents=True, exist_ok=True)
     error_path = OUTPUT / "error.txt"
     error_path.unlink(missing_ok=True)
@@ -166,7 +178,7 @@ def main() -> int:
     motion_cfg = motion_config()
     stage_utils.create_new_stage()
     GroundPlane("/World/GroundPlane", positions=[0, 0, 0])
-    DistantLight("/World/DistantLight").set_intensities(float(scene["distant_intensity"]))
+    DistantLight("/World/DistantLight").set_intensities(float(scene["distant_intensity"]) * CASE.light_scale)
     spawn_table_and_so101()
     target_rigid = _spawn_target()
     simulation_app.update()
@@ -276,6 +288,7 @@ def main() -> int:
         wrist_scene_camera,
         ee_pose_provider=arm.T_base_ee,
         advance_frame=simulation_app.update,
+        model_seed=CASE.seed,
     )
     initial_observation = camera.capture(target)
     if initial_observation is None:
@@ -317,6 +330,11 @@ def main() -> int:
     target_xform = XformPrim(TARGET_PATH)
     initial_target_position = _pose(target_xform)
     segmenter = AppearanceDepthTrackerSegmenter(seed_segmenter)
+    if ARGS.segmenter == "sam2":
+        segmenter = RemotePromptSegmenter(ZmqGraspGenXTransport("127.0.0.1", ARGS.graspgenx_port, 60000),
+                                           seed_segmenter)
+    if ARGS.perception == "multiview":
+        segmenter = GeometricIdentitySegmenter(segmenter)
     recorder = FineGraspDebugRecorder(OUTPUT / "debug")
     segmenter = DebugSegmenter(segmenter, recorder)
     grasp_cfg["backends"]["graspgenx"]["port"] = ARGS.graspgenx_port
@@ -342,6 +360,18 @@ def main() -> int:
     if hasattr(masses, "numpy"):
         masses = masses.numpy()
     report = {
+        "provenance": {
+            "git_commit": subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT,
+                                          capture_output=True, text=True).stdout.strip(),
+            "source_sha256": hashlib.sha256(b"".join(
+                p.relative_to(ROOT).as_posix().encode() + p.read_bytes()
+                for p in sorted((ROOT / "source/mr_liu/grasp").rglob("*.py")))).hexdigest(),
+            "config_sha256": hashlib.sha256(json.dumps(grasp_cfg, sort_keys=True).encode()).hexdigest(),
+            "model_seed": CASE.seed,
+            "segmenter": ARGS.segmenter,
+        },
+        "perception_mode": ARGS.perception,
+        "effective_config": grasp_cfg,
         "result": _jsonable(result),
         "initial_target_position_m": initial_target_position,
         "final_target_position_m": final_target_position,

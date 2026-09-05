@@ -64,6 +64,8 @@ class SceneCamera:
         self._cam.initialize(attach_rgb_annotator="rgb" in self.annotators)
         if self.has_depth:
             self._cam.add_distance_to_image_plane_to_frame()
+        if self.which == "wrist":
+            self._cam.attach_annotator("camera_params")
 
         target = target or self.config.get("target")
         mount = "local" if translation is not None else "world"

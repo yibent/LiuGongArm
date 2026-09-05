@@ -1,0 +1,30 @@
+{
+  "name": "cylinder",
+  "shape": "cylinder",
+  "dimensions_m": [
+    0.032,
+    0.032,
+    0.046
+  ],
+  "position_m": [
+    0.32642688773994755,
+    -0.19759529351862945,
+    1.073
+  ],
+  "seed": 0,
+  "yaw_deg": 0.38889151863709515,
+  "mass_kg": 0.035,
+  "color_rgb": [
+    0.15,
+    0.28,
+    0.78
+  ],
+  "material": "matte",
+  "fragile": false,
+  "thin": false,
+  "reflective": false,
+  "expected_feasible": true,
+  "mesh_path": null,
+  "light_scale": 1.0,
+  "metadata": {}
+}

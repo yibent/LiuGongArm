@@ -76,7 +76,8 @@ class IsaacGripperCalibrationTests(unittest.TestCase):
             physics_dt_s=1.0 / 60.0,
         )
         self.assertTrue(controller.close(0.0, force_n=6.0, speed_mps=0.025))
-        self.assertTrue(controller.state().contact)
+        self.assertTrue(controller.state().stalled)
+        self.assertIsNone(controller.state().contact)
 
 
 if __name__ == "__main__":

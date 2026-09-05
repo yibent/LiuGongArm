@@ -1,0 +1,30 @@
+{
+  "name": "cube",
+  "shape": "cube",
+  "dimensions_m": [
+    0.036,
+    0.036,
+    0.036
+  ],
+  "position_m": [
+    0.32234097227292036,
+    -0.19690911546651874,
+    1.068
+  ],
+  "seed": 0,
+  "yaw_deg": -2.772200419166273,
+  "mass_kg": 0.035,
+  "color_rgb": [
+    0.85,
+    0.12,
+    0.08
+  ],
+  "material": "matte",
+  "fragile": false,
+  "thin": false,
+  "reflective": false,
+  "expected_feasible": true,
+  "mesh_path": null,
+  "light_scale": 1.0,
+  "metadata": {}
+}

@@ -40,16 +40,13 @@ class VisionGripperVerifierTests(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertLess(result.metrics["target_wrist_follow_error_m"], 1e-6)
 
-    def test_accepts_visual_follow_for_thin_payload_at_nominal_zero_width(self) -> None:
+    def test_rejects_zero_width_even_if_finger_mask_follows_wrist(self) -> None:
         result = VisionGripperVerifier().verify_lifted(
             observation(1, 0.0),
             observation(2, 0.08),
             GripperState(2.0, width_m=0.0, contact=True, stalled=True),
         )
-        self.assertTrue(result.success)
-        self.assertEqual(
-            result.reason, "target_lifted_visual_follow_with_closed_gripper"
-        )
+        self.assertFalse(result.success)
 
     def test_rejects_fully_closed_gripper_when_lift_target_is_occluded(self) -> None:
         after = observation(2, 0.08)

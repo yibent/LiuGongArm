@@ -32,6 +32,8 @@ from mr_liu.grasp.geometry import (
     support_completed_center,
 )
 from mr_liu.grasp.policy import ExecutionPolicy, policy_for_target
+from mr_liu.grasp.fusion import LocalSurfaceFusion, propose_wrist_views
+from mr_liu.grasp.contact import FingerGeometry
 from mr_liu.grasp.selection import SelectionResult, select_grasp
 from mr_liu.grasp.servo import PoseServo
 from mr_liu.grasp.settings import FineGraspSettings
@@ -72,6 +74,8 @@ class GeneralGraspNode:
         self.trace = trace
         self._cancelled = False
         self._last_sequence = -1
+        self._fusion = LocalSurfaceFusion(settings.fusion)
+        self._finger_geometry = FingerGeometry(open_width_m=settings.gripper.max_width_m)
 
     def cancel(self) -> None:
         self._cancelled = True
@@ -92,6 +96,7 @@ class GeneralGraspNode:
         }
         self._cancelled = False
         self._last_sequence = -1
+        self._fusion.reset()
         policy = policy_for_target(
             request.target,
             default_force_n=self.settings.gripper.default_force_n,
@@ -115,12 +120,36 @@ class GeneralGraspNode:
                 if isinstance(observed, FineGraspResult):
                     return self._with_elapsed(observed, started, metrics)
                 observation, geometry = observed
+                if self.settings.active_views.enabled and not request.dry_run:
+                    scanned = self._collect_views(request, observation, geometry, metrics, deadline)
+                    if isinstance(scanned, FineGraspResult):
+                        return self._with_elapsed(scanned, started, metrics)
+                    observation, geometry = scanned
+                if self.settings.fusion.enabled:
+                    geometry = self._fusion.geometry(observation, geometry)
                 self._emit(FineGraspPhase.GENERATE, observation_sequence=observation.sequence)
                 generated_at = self.clock()
                 candidates = list(
                     self.backend.generate(observation, geometry.points_camera, request.target)
                 )
                 metrics["model_latency_ms"] = round((self.clock() - generated_at) * 1000.0, 3)
+                # A slow model consumes time: validate a NEW observation before
+                # permitting even the pregrasp move, not only after arrival.
+                if self.settings.fusion.enabled and not request.dry_run:
+                    confirmation = self._observe(request, metrics, allow_same_sequence=False,
+                                                 allow_depth_hole_recovery=policy.allow_depth_hole_recovery)
+                    if isinstance(confirmation, FineGraspResult):
+                        return self._with_elapsed(confirmation, started, metrics)
+                    fresh, fresh_geometry = confirmation
+                    if metrics.get("fusion_reset") == "motion_or_identity_inconsistent":
+                        self._emit(FineGraspPhase.GENERATE, event="discard_stale_model_result")
+                        continue
+                    from mr_liu.grasp.transforms import invert_transform
+                    candidates = [replace(c, T_camera_grasp=invert_transform(fresh.T_base_camera)
+                                          @ observation.T_base_camera @ c.T_camera_grasp,
+                                          observation_sequence=fresh.sequence) for c in candidates]
+                    observation = fresh
+                    geometry = self._fusion.geometry(fresh, fresh_geometry)
                 metrics["candidates"] = int(metrics["candidates"]) + len(candidates)
                 selection = select_grasp(
                     candidates,
@@ -148,6 +177,14 @@ class GeneralGraspNode:
                         started,
                     )
                 selected = selection.grasp
+                if self.settings.fusion.enabled:
+                    count = self._finger_geometry.path_collision_count(
+                        geometry.points_base, selected.T_base_pregrasp, selected.T_base_grasp)
+                    metrics["selected_finger_surface_collisions"] = count
+                    if count:
+                        return self._failure(request, FailureCode.COLLISION,
+                                             "Observed target intersects open-finger approach sweep",
+                                             metrics, started, selected)
                 self._emit(
                     FineGraspPhase.PREGRASP,
                     score=selected.score,
@@ -476,7 +513,7 @@ class GeneralGraspNode:
                     return self._with_elapsed(after_lift_result, started, metrics)
                 after_lift = after_lift_result
                 lift_check = self.verifier.verify_lifted(
-                    after_close, after_lift, self.gripper.state()
+                    before_close, after_lift, self.gripper.state()
                 )
                 metrics["lift_confidence"] = lift_check.confidence
                 metrics.update(lift_check.metrics)
@@ -613,6 +650,14 @@ class GeneralGraspNode:
                 valid_depth_ratio=geometry.valid_depth_ratio,
             )
             self._last_sequence = observation.sequence
+            if self.settings.fusion.enabled:
+                try:
+                    fusion_metrics = self._fusion.integrate(synchronized, geometry, request.target.object_id)
+                except ValueError as exc:
+                    last_failure, last_message = FailureCode.GEOMETRY_UNCERTAIN, str(exc)
+                    continue
+                metrics.update(fusion_metrics)
+                self._emit(FineGraspPhase.OBSERVE, event="surface_fusion", **fusion_metrics)
             return synchronized, geometry
         return FineGraspResult(
             success=False,
@@ -622,6 +667,41 @@ class GeneralGraspNode:
             message=last_message,
             metrics=metrics,
         )
+
+    def _collect_views(self, request, observation, geometry, metrics, deadline):
+        cfg = self.settings.active_views
+        if not self.settings.fusion.enabled:
+            return self._failure(request, FailureCode.INVALID_REQUEST,
+                                 "Active views require fusion", metrics, self.clock())
+        proposals = propose_wrist_views(observation, geometry.T_base_object[:3, 3], cfg)
+        for pose in proposals:
+            if len(self._fusion.views) >= cfg.max_views:
+                break
+            terminal = self._terminal_check(request, deadline, metrics, None)
+            if terminal is not None:
+                return terminal
+            start_pose = self.motion.robot_state().T_base_ee
+            if not self.motion.is_reachable(pose) or not self.motion.is_collision_free(
+                pose, margin_m=self.settings.selection.collision_margin_m, allow_target_contact=False
+            ):
+                self._emit(FineGraspPhase.OBSERVE, event="view_rejected", reason="ik_or_world_collision")
+                continue
+            if self._finger_geometry.path_collision_count(self._fusion.points_base, start_pose, pose):
+                self._emit(FineGraspPhase.OBSERVE, event="view_rejected", reason="target_finger_collision")
+                continue
+            self._emit(FineGraspPhase.OBSERVE, event="active_view_move", xyz_m=pose[:3, 3].tolist())
+            if not self.motion.move_to(pose, speed_scale=cfg.speed_scale):
+                self.motion.stop()
+                return self._failure(request, FailureCode.GEOMETRY_UNCERTAIN,
+                                     "Active observation motion failed", metrics, self.clock())
+            observed = self._observe(request, metrics, allow_same_sequence=False)
+            if isinstance(observed, FineGraspResult):
+                return observed
+            observation, geometry = observed
+        if len(self._fusion.views) < cfg.min_views:
+            return self._failure(request, FailureCode.GEOMETRY_UNCERTAIN,
+                                 "Insufficient consistent independent wrist views", metrics, self.clock())
+        return observation, geometry
 
     def _tracking_center(
         self, geometry: ObjectGeometry, selected: SelectedGrasp
@@ -689,6 +769,9 @@ class GeneralGraspNode:
             observation = self.camera.capture(vision_target)
             if observation is None:
                 continue
+            if coarse_position_base_m is not None:
+                observation = replace(observation, metadata={**observation.metadata,
+                    "tracking_hint_base_m": np.asarray(coarse_position_base_m).tolist()})
             metrics["observations"] = int(metrics["observations"]) + 1
             age = self.clock() - observation.timestamp_s
             if age > self.settings.observation.max_age_s or observation.sequence <= self._last_sequence:

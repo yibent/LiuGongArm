@@ -1,0 +1,30 @@
+{
+  "name": "sphere",
+  "shape": "sphere",
+  "dimensions_m": [
+    0.034,
+    0.034,
+    0.034
+  ],
+  "position_m": [
+    0.324601361262743,
+    -0.19770639528855058,
+    1.067
+  ],
+  "seed": 0,
+  "yaw_deg": 4.337109677821978,
+  "mass_kg": 0.035,
+  "color_rgb": [
+    0.18,
+    0.62,
+    0.2
+  ],
+  "material": "matte",
+  "fragile": false,
+  "thin": false,
+  "reflective": false,
+  "expected_feasible": true,
+  "mesh_path": null,
+  "light_scale": 1.0,
+  "metadata": {}
+}

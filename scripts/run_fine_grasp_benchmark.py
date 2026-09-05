@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import hashlib
 import os
 import subprocess
 import sys
@@ -66,6 +67,10 @@ def _parse_args() -> argparse.Namespace:
         "--backend", choices=("geometric", "graspgenx"), default="geometric"
     )
     parser.add_argument("--graspgenx-port", type=int, default=5556)
+    parser.add_argument("--perception", choices=("single", "multiview"), default="single")
+    parser.add_argument("--segmenter", choices=("depth", "sam2"), default="depth")
+    parser.add_argument("--manifest", type=Path)
+    parser.add_argument("--split", choices=("development", "acceptance"), default="development")
     parser.add_argument("--dry-run", action="store_true", help="Exercise planning only (not scored as physical success)")
     parser.add_argument("--timeout-s", type=float, default=180.0)
     parser.add_argument("--list", action="store_true", help="Print expanded cases without running Isaac")
@@ -79,6 +84,16 @@ def _slug(value: str) -> str:
 
 
 def _expanded_cases(args: argparse.Namespace) -> list[BenchmarkCase]:
+    if args.manifest:
+        manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
+        cases = []
+        for entry in manifest["splits"][args.split]:
+            path = args.manifest.parent / entry["path"]
+            data = path.read_bytes()
+            if hashlib.sha256(data).hexdigest() != entry["sha256"]:
+                raise ValueError(f"Frozen case was modified: {path}")
+            cases.append(BenchmarkCase.from_mapping(json.loads(data)))
+        return cases
     requested = {item.strip() for item in args.cases.split(",") if item.strip()}
     cases: list[BenchmarkCase] = []
     for seed in args.seeds:
@@ -123,6 +138,8 @@ def _run_case(args: argparse.Namespace, case: BenchmarkCase, run_dir: Path) -> d
         args.backend,
         "--graspgenx-port",
         str(args.graspgenx_port),
+        "--perception", args.perception,
+        "--segmenter", args.segmenter,
         "--headless" if args.headless else "--no-headless",
     ]
     if args.dry_run:
@@ -196,6 +213,8 @@ def main() -> int:
         raise FileNotFoundError(f"Isaac Python executable not found: {args.isaac_python}")
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
+    if (output / "summary.json").exists():
+        raise FileExistsError(f"Refusing to overwrite benchmark evidence: {output}")
     runs: list[dict] = []
     for index, case in enumerate(cases, start=1):
         run_dir = output / f"{index:03d}_{_slug(case.name)}_seed{case.seed}"
@@ -204,14 +223,14 @@ def main() -> int:
         runs.append(row)
         summary = _persist_summary(output, runs)
         print(
-            f"  {'PASS' if row['success'] else 'FAIL'} "
+            f"  {'PASS' if row.get('task_success', row['success']) else 'FAIL'} "
             f"failure={row.get('failure_category')} lift={row.get('actual_lift_m')} "
             f"aggregate={summary['successes']}/{summary['trials']}",
             flush=True,
         )
-        if args.fail_fast and not row["success"]:
+        if args.fail_fast and not row.get("task_success", row["success"]):
             break
-    return 0 if runs and all(run["success"] for run in runs) else 2
+    return 0 if runs and all(run.get("task_success", run["success"]) for run in runs) else 2
 
 
 if __name__ == "__main__":

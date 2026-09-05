@@ -49,6 +49,7 @@ class IsaacWristCamera:
         max_extrinsic_translation_drift_m: float = 0.001,
         max_extrinsic_rotation_drift: float = 0.002,
         render_settle_frames: int = 2,
+        model_seed: int = 0,
     ) -> None:
         if camera.which != "wrist":
             raise ValueError("IsaacWristCamera requires the configured wrist camera")
@@ -61,6 +62,7 @@ class IsaacWristCamera:
         self.max_extrinsic_rotation_drift = float(max_extrinsic_rotation_drift)
         self.render_settle_frames = max(int(render_settle_frames), 1)
         self._sequence = 0
+        self.model_seed = int(model_seed)
         self._reference_T_ee_camera: np.ndarray | None = None
 
     def capture(self, target: TargetSpec) -> RGBDObservation | None:
@@ -68,10 +70,33 @@ class IsaacWristCamera:
         # articulation/USD pose on Isaac Sim 6.0.  Advancing twice pairs the
         # image with the pose used to render it; a single update produced one
         # large false object jump immediately after every robot motion.
-        for _ in range(self.render_settle_frames):
+        frame = getattr(self.camera, "_cam", None)
+        sim_frame = {}
+        render_pose = None
+        # Read RGB, depth and camera parameters from one acquisition callback.
+        # get_rgba/get_depth individually read annotators that can be at a
+        # different pipeline stage after physics-only motion stepping.
+        for attempt in range(16):
             self.advance_frame()
-        rgb = self.camera.rgb_rgba()
-        depth = self.camera.depth_m()
+            sim_frame = frame.get_current_frame() if frame is not None else {}
+            params = sim_frame.get("camera_params")
+            if attempt + 1 < self.render_settle_frames:
+                continue
+            if params is None:
+                if frame is None:
+                    break
+                continue
+            view = np.asarray(params["cameraViewTransform"], dtype=np.float64).reshape(4, 4)
+            render_pose = np.linalg.inv(view.T) @ np.diag([1., -1., -1., 1.])
+            position, quaternion = self.camera.world_pose(camera_axes="ros")
+            live_pose = T_world_opencv_from_ros_pose(position, quaternion)
+            if (np.linalg.norm(render_pose[:3, 3] - live_pose[:3, 3]) <= 0.001
+                    and np.linalg.norm(render_pose[:3, :3] - live_pose[:3, :3]) <= 0.005):
+                break
+        else:
+            return None
+        rgb = sim_frame.get("rgb") if frame is not None else self.camera.rgb_rgba()
+        depth = sim_frame.get("distance_to_image_plane") if frame is not None else self.camera.depth_m()
         if rgb is None or depth is None:
             return None
         K = self.camera.intrinsics_matrix()
@@ -81,10 +106,11 @@ class IsaacWristCamera:
         T_base_ee = np.asarray(self.ee_pose_provider(), dtype=np.float64)
         T_ee_camera = invert_transform(T_base_ee) @ T_base_camera
         self._validate_static_extrinsic(T_ee_camera)
+        if render_pose is not None:
+            T_base_camera = render_pose
+            T_base_ee = T_base_camera @ invert_transform(T_ee_camera)
         self._sequence += 1
         mask = self.mask_provider(target) if self.mask_provider is not None else None
-        frame = getattr(self.camera, "_cam", None)
-        sim_frame = frame.get_current_frame() if frame is not None else {}
         return RGBDObservation(
             sequence=self._sequence,
             timestamp_s=self.clock(),
@@ -102,7 +128,9 @@ class IsaacWristCamera:
             T_base_ee=T_base_ee,
             T_ee_camera=T_ee_camera,
             target_mask=None if mask is None else np.asarray(mask, dtype=bool).copy(),
-            metadata={"sim_rendering_time": sim_frame.get("rendering_time")},
+            metadata={"sim_rendering_time": sim_frame.get("rendering_time"), "model_seed": self.model_seed,
+                      "pose_source": "render_camera_params" if render_pose is not None else "live_pose",
+                      "render_updates": attempt + 1},
         )
 
     @property

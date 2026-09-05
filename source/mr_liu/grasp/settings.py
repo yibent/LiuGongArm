@@ -8,6 +8,7 @@ from typing import Any, Mapping
 
 from mr_liu.grasp.selection import SelectionConfig
 from mr_liu.grasp.servo import ServoConfig
+from mr_liu.grasp.fusion import FusionConfig, ActiveViewConfig
 
 
 @dataclass(frozen=True)
@@ -54,6 +55,8 @@ class FineGraspSettings:
     servo: ServoConfig
     loop: LoopSettings
     table_clearance_m: float
+    fusion: FusionConfig = FusionConfig()
+    active_views: ActiveViewConfig = ActiveViewConfig()
 
     @classmethod
     def from_mapping(cls, config: Mapping[str, Any]) -> "FineGraspSettings":
@@ -62,6 +65,8 @@ class FineGraspSettings:
         select = config["selection"]
         loop = config["loop"]
         return cls(
+            fusion=FusionConfig(**config.get("fusion", {})),
+            active_views=ActiveViewConfig(**config.get("active_views", {})),
             observation=ObservationSettings(
                 max_age_s=float(obs["max_age_s"]),
                 min_mask_pixels=int(obs["min_mask_pixels"]),

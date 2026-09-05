@@ -1,0 +1,30 @@
+{
+  "name": "thin",
+  "shape": "thin",
+  "dimensions_m": [
+    0.05,
+    0.025,
+    0.007
+  ],
+  "position_m": [
+    0.3218550165080745,
+    -0.19860664120595214,
+    1.0535
+  ],
+  "seed": 0,
+  "yaw_deg": 13.648854063467677,
+  "mass_kg": 0.012,
+  "color_rgb": [
+    0.72,
+    0.55,
+    0.08
+  ],
+  "material": "matte",
+  "fragile": false,
+  "thin": true,
+  "reflective": false,
+  "expected_feasible": false,
+  "mesh_path": null,
+  "light_scale": 1.0,
+  "metadata": {}
+}

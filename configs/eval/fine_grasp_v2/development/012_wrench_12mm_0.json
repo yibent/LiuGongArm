@@ -1,0 +1,33 @@
+{
+  "name": "wrench_12mm",
+  "shape": "wrench",
+  "dimensions_m": [
+    0.125,
+    0.038,
+    0.012
+  ],
+  "position_m": [
+    0.3214802206984453,
+    -0.1982339887197926,
+    1.056
+  ],
+  "seed": 0,
+  "yaw_deg": -7.702581777798738,
+  "mass_kg": 0.095,
+  "color_rgb": [
+    0.42,
+    0.46,
+    0.5
+  ],
+  "material": "metallic",
+  "fragile": false,
+  "thin": false,
+  "reflective": true,
+  "expected_feasible": true,
+  "mesh_path": null,
+  "light_scale": 1.0,
+  "metadata": {
+    "scenario": "industrial_tool",
+    "preferred_region": "handle"
+  }
+}

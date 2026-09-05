@@ -1,0 +1,32 @@
+{
+  "name": "bottle",
+  "shape": "cylinder",
+  "dimensions_m": [
+    0.044,
+    0.044,
+    0.09
+  ],
+  "position_m": [
+    0.3218932231404696,
+    -0.19683655864323632,
+    1.095
+  ],
+  "seed": 0,
+  "yaw_deg": 4.224033650943323,
+  "mass_kg": 0.12,
+  "color_rgb": [
+    0.12,
+    0.48,
+    0.62
+  ],
+  "material": "matte",
+  "fragile": false,
+  "thin": false,
+  "reflective": false,
+  "expected_feasible": true,
+  "mesh_path": null,
+  "light_scale": 1.0,
+  "metadata": {
+    "scenario": "container"
+  }
+}

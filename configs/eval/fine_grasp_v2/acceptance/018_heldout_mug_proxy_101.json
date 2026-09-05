@@ -1,0 +1,33 @@
+{
+  "name": "heldout_mug_proxy",
+  "shape": "mug",
+  "dimensions_m": [
+    0.082,
+    0.056,
+    0.062
+  ],
+  "position_m": [
+    0.3264894659724389,
+    -0.1999870561868608,
+    1.081
+  ],
+  "seed": 101,
+  "yaw_deg": 11.0,
+  "mass_kg": 0.125,
+  "color_rgb": [
+    0.82,
+    0.74,
+    0.6
+  ],
+  "material": "matte",
+  "fragile": true,
+  "thin": false,
+  "reflective": false,
+  "expected_feasible": true,
+  "mesh_path": null,
+  "light_scale": 1.0,
+  "metadata": {
+    "split": "acceptance",
+    "asset_kind": "compound_proxy"
+  }
+}

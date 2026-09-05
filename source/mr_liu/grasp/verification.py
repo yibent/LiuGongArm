@@ -52,8 +52,10 @@ class VisionGripperVerifier:
         del before
         visual = _target_center_base(after) is not None
         holding_signal = gripper.contact is True or gripper.stalled is True
-        nonempty_width = gripper.width_m is None or gripper.width_m > self.min_held_width_m
-        success = bool(nonempty_width and (holding_signal or visual))
+        nonempty_width = gripper.width_m is not None and gripper.width_m > self.min_held_width_m
+        # This only authorizes a bounded test lift. Final success always needs
+        # visible target motion plus gripper evidence in verify_lifted().
+        success = bool(nonempty_width and holding_signal)
         confidence = 0.85 if holding_signal and visual else 0.65 if holding_signal else 0.45 if visual else 0.0
         return VerificationResult(
             success=success,
@@ -69,11 +71,13 @@ class VisionGripperVerifier:
         after_center = _target_center_base(after)
         holding_signal = gripper.contact is True or gripper.stalled is True
         not_fully_closed = (
-            gripper.width_m is None
-            or gripper.width_m > self.empty_width_tolerance_m
+            gripper.width_m is not None
+            and gripper.width_m > self.empty_width_tolerance_m
         )
         if before_center is None or after_center is None:
-            success = bool(holding_signal and not_fully_closed)
+            # A stall can be the linkage or a table collision. Occlusion alone
+            # must never become successful target-specific verification.
+            success = False
             return VerificationResult(
                 success=success,
                 confidence=0.45 if success else 0.0,
@@ -102,7 +106,7 @@ class VisionGripperVerifier:
         # carried. In that case require visual 3-D motion to follow the wrist;
         # if vision is unavailable, a non-empty gripper remains mandatory.
         visual_follow_evidence = follow_error_m is not None and follows_wrist
-        payload_evidence = not_fully_closed or visual_follow_evidence
+        payload_evidence = not_fully_closed
         success = bool(
             dz >= self.min_lift_m
             and holding_signal

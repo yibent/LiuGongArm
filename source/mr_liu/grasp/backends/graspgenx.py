@@ -270,6 +270,7 @@ class ZmqGraspGenXTransport:
                 "sweep_volume_params": dict(sweep_volume_params),
                 "planner": str(kwargs.get("planner", "diffusion")),
                 "num_grasps": int(kwargs.get("num_grasps", 100)),
+                "seed": int(kwargs.get("seed", 0)),
             }
         )
         result = self._filter(
@@ -291,6 +292,7 @@ class ZmqGraspGenXTransport:
                 "sweep_volume_params": dict(sweep_volume_params),
                 "planner": str(kwargs.get("planner", "diffusion")),
                 "min_object_points": int(kwargs.get("min_object_points", 64)),
+                "seed": int(kwargs.get("seed", 0)),
                 "num_grasps": int(kwargs.get("num_grasps", 100)),
             }
         )
@@ -554,6 +556,7 @@ class GraspGenXBackend:
         self, observation: RGBDObservation, points: np.ndarray
     ) -> tuple[np.ndarray, np.ndarray, list[str]]:
         common = dict(
+            seed=int(observation.metadata.get("model_seed", 0)),
             planner=self.config.planner,
             num_grasps=self.config.num_grasps,
             grasp_threshold=self.config.min_confidence,
@@ -652,11 +655,10 @@ class GraspGenXBackend:
         )
         invalid_poses = 0
         preferred_region = str(target.properties.metadata.get("preferred_region", ""))
-        stable_region = (
-            _stable_elongated_region_center(points)
-            if preferred_region == "handle"
-            else None
-        )
+        # A semantic hint may filter a scored pose, but must not move it while
+        # retaining the old discriminator score. Region proposal/rescoring is
+        # a separate operation, not a post-hoc pose edit.
+        stable_region = None
         for index, (raw_pose, raw_score, branch) in enumerate(zip(grasps, scores, tags)):
             T_model_model_base = _sanitize_model_pose(raw_pose)
             if T_model_model_base is None or not np.isfinite(raw_score):

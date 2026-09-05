@@ -111,8 +111,9 @@ class IsaacGripperController:
         return GripperState(
             timestamp_s=self.clock(),
             width_m=self.calibration.width_for_joint(joint),
-            effort_n=effort_n if effort_n is not None else self._last_effort_n,
-            contact=self._stalled,
+            effort_n=effort_n,
+            # This adapter has joint-stall evidence, not a target contact sensor.
+            contact=None,
             stalled=self._stalled,
         )
 

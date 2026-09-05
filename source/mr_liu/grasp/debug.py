@@ -43,6 +43,14 @@ class FineGraspDebugRecorder:
             cv2.applyColorMap(255 - depth_vis, cv2.COLORMAP_TURBO),
         )
         mask_bool = np.zeros(depth.shape, dtype=bool) if mask is None else np.asarray(mask, dtype=bool)
+        np.savez_compressed(
+            self.output_dir / f"{stem}_rgbd.npz", rgb=rgb, depth_m=depth,
+            mask=mask_bool, intrinsics=observation.intrinsics.matrix,
+            T_base_camera=observation.T_base_camera,
+            timestamp_s=observation.timestamp_s,
+            T_base_ee=observation.T_base_ee,
+            T_ee_camera=observation.T_ee_camera,
+        )
         overlay = rgb.copy()
         overlay[mask_bool] = (0.35 * overlay[mask_bool] + 0.65 * np.asarray([40, 255, 40])).astype(np.uint8)
         cv2.imwrite(str(self.output_dir / f"{stem}_overlay.png"), overlay[:, :, ::-1])
@@ -67,6 +75,9 @@ class DebugSegmenter:
     def segment(self, observation: RGBDObservation, target: TargetSpec) -> np.ndarray | None:
         mask = self.segmenter.segment(observation, target)
         self.recorder.record_segmentation(observation, mask, target)
+        diagnostic = getattr(self.segmenter, "last_diagnostic", None)
+        if diagnostic:
+            self.recorder.trace({"event": "identity", "sequence": observation.sequence, **diagnostic})
         return mask
 
 
