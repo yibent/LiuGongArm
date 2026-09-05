@@ -14,8 +14,21 @@ from pathlib import Path
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--headless", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--backend", choices=("geometric",), default="geometric")
+    parser.add_argument(
+        "--backend", choices=("geometric", "graspgenx"), default="geometric"
+    )
+    parser.add_argument("--graspgenx-port", type=int, default=5556)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--case-json",
+        type=Path,
+        help="Optional parameterized physical benchmark case (legacy cube by default)",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        help="Per-run output directory (default: output/fine_grasp_demo)",
+    )
     return parser.parse_args()
 
 
@@ -30,8 +43,8 @@ import isaacsim.core.experimental.utils.app as app_utils
 import isaacsim.core.experimental.utils.stage as stage_utils
 import numpy as np
 import omni.usd
-from isaacsim.core.experimental.objects import Cube, DistantLight, GroundPlane
-from isaacsim.core.experimental.prims import GeomPrim, RigidPrim, XformPrim
+from isaacsim.core.experimental.objects import DistantLight, GroundPlane
+from isaacsim.core.experimental.prims import RigidPrim, XformPrim
 from isaacsim.core.simulation_manager import SimulationManager
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -41,7 +54,13 @@ from mr_liu.config import fine_grasp_config, motion_config, scene_config
 from mr_liu.grasp.adapters.isaac_camera import IsaacWristCamera, T_world_opencv_from_ros_pose
 from mr_liu.grasp.adapters.isaac_gripper import IsaacGripperController
 from mr_liu.grasp.adapters.isaac_motion import IsaacCumotionExecutor
-from mr_liu.grasp.backends.geometric import GeometricAntipodalBackend
+from mr_liu.grasp.backends.factory import create_grasp_backend
+from mr_liu.grasp.benchmark import (
+    BenchmarkCase,
+    default_demo_case,
+    load_case,
+    spawn_benchmark_target,
+)
 from mr_liu.grasp.contracts import FineGraspRequest, ObjectProperties, TargetSpec
 from mr_liu.grasp.debug import DebugSegmenter, FineGraspDebugRecorder
 from mr_liu.grasp.node import GeneralGraspNode
@@ -55,8 +74,9 @@ from mr_liu.sim.spawn import spawn_table_and_so101
 
 
 TARGET_PATH = "/World/FineGraspTarget"
-OUTPUT = ROOT / "output" / "fine_grasp_demo"
-TARGET_POSITION = (0.324, -0.198, 1.068)
+OUTPUT = ARGS.output.resolve() if ARGS.output else ROOT / "output" / "fine_grasp_demo"
+CASE: BenchmarkCase = load_case(ARGS.case_json) if ARGS.case_json else default_demo_case()
+TARGET_POSITION = CASE.position_m
 # A collision-free handoff pose found from the SO-101 URDF kinematics. It puts
 # the wrist optical axis about 10 cm above the target and nearly normal to the
 # tabletop, matching the intended fast-loop -> fine-loop handoff condition.
@@ -87,16 +107,7 @@ def _tag_target() -> None:
 
 
 def _spawn_target() -> RigidPrim:
-    # Default wrist optical axis meets the tabletop near this point, keeping
-    # the initial observation inside the eye-in-hand camera's close-range FOV.
-    Cube(
-        TARGET_PATH,
-        positions=[list(TARGET_POSITION)],
-        sizes=0.036,
-        colors=(0.85, 0.12, 0.08),
-    )
-    GeomPrim(TARGET_PATH, apply_collision_apis=True)
-    rigid = RigidPrim(TARGET_PATH, masses=[0.035])
+    rigid = spawn_benchmark_target(CASE, TARGET_PATH)
     _tag_target()
     return rigid
 
@@ -144,6 +155,10 @@ def _configure_arm_drives(arm: So101Arm, config: dict[str, object]) -> None:
 
 
 def main() -> int:
+    if ARGS.case_json:
+        np.random.seed(CASE.seed)
+    grasp_cfg = fine_grasp_config().copy()
+    grasp_cfg["backend"] = ARGS.backend
     OUTPUT.mkdir(parents=True, exist_ok=True)
     error_path = OUTPUT / "error.txt"
     error_path.unlink(missing_ok=True)
@@ -170,7 +185,7 @@ def main() -> int:
     for _ in range(30):
         simulation_app.update()
     imported_arm_drive = _arm_drive_report(arm)
-    sim_drive_config = fine_grasp_config()["isaac_sim"]
+    sim_drive_config = grasp_cfg["isaac_sim"]
     _configure_arm_drives(arm, sim_drive_config)
     arm_drive = _arm_drive_report(arm)
     print(f"[mr_liu] Imported SO-101 drive configuration: {json.dumps(imported_arm_drive)}")
@@ -201,9 +216,14 @@ def main() -> int:
 
     target = TargetSpec(
         object_id="fine_grasp_target",
-        semantic_label="unseen red cube",
+        semantic_label=CASE.semantic_label if ARGS.case_json else "unseen red cube",
         coarse_position_base_m=TARGET_POSITION,
-        properties=ObjectProperties(),
+        properties=ObjectProperties(
+            fragile=CASE.fragile,
+            thin=CASE.thin,
+            reflective=CASE.reflective,
+            metadata={"benchmark_case": CASE.name, **dict(CASE.metadata)},
+        ),
     )
     camera = IsaacWristCamera(
         wrist_scene_camera,
@@ -216,7 +236,7 @@ def main() -> int:
     cv2.imwrite(
         str(OUTPUT / "initial_wrist.png"), initial_observation.rgb[:, :, ::-1]
     )
-    seed_segmenter = SeededDepthSegmenter(depth_tolerance_m=0.018, max_radius_px=180)
+    seed_segmenter = SeededDepthSegmenter(depth_tolerance_m=0.010, max_radius_px=180)
     initial_mask = seed_segmenter.segment(initial_observation, target)
     if initial_mask is None or not initial_mask.any():
         actual_target = _pose(XformPrim(TARGET_PATH))
@@ -252,14 +272,15 @@ def main() -> int:
         target_object_paths=[TARGET_PATH],
         track_orientation=True,
     )
+    grasp_cfg["backends"]["graspgenx"]["port"] = ARGS.graspgenx_port
     node = GeneralGraspNode(
         camera=camera,
         segmenter=segmenter,
-        backend=GeometricAntipodalBackend(),
+        backend=create_grasp_backend(grasp_cfg),
         motion=executor,
         gripper=gripper,
         verifier=VisionGripperVerifier(),
-        settings=FineGraspSettings.from_mapping(fine_grasp_config()),
+        settings=FineGraspSettings.from_mapping(grasp_cfg),
         trace=recorder.trace,
     )
     result = node.execute(
@@ -288,6 +309,8 @@ def main() -> int:
         "arm_drive": arm_drive,
         "imported_arm_drive": imported_arm_drive,
     }
+    if ARGS.case_json:
+        report["benchmark_case"] = CASE.to_dict()
     (OUTPUT / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(json.dumps(report["result"], indent=2))
     return 0 if result.success else 2

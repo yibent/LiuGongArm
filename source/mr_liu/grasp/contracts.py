@@ -26,6 +26,10 @@ class FailureCode(str, Enum):
     INSUFFICIENT_DEPTH = "insufficient_depth"
     CALIBRATION_INVALID = "calibration_invalid"
     NO_GRASP_CANDIDATES = "no_grasp_candidates"
+    MODEL_UNAVAILABLE = "model_unavailable"
+    MODEL_TIMEOUT = "model_timeout"
+    MODEL_PROTOCOL_ERROR = "model_protocol_error"
+    MODEL_INFERENCE_FAILED = "model_inference_failed"
     GRIPPER_WIDTH_INFEASIBLE = "gripper_width_infeasible"
     TABLE_CLEARANCE = "table_clearance"
     COLLISION = "collision"
@@ -37,6 +41,28 @@ class FailureCode(str, Enum):
     LIFT_VERIFICATION_FAILED = "lift_verification_failed"
     ABORTED = "aborted"
     INTERNAL_ERROR = "internal_error"
+
+
+class GraspBackendError(RuntimeError):
+    """A grasp-generator failure that the node can report without losing its cause."""
+
+    def __init__(
+        self,
+        failure: FailureCode,
+        message: str,
+        *,
+        retryable: bool,
+    ) -> None:
+        if failure not in {
+            FailureCode.MODEL_UNAVAILABLE,
+            FailureCode.MODEL_TIMEOUT,
+            FailureCode.MODEL_PROTOCOL_ERROR,
+            FailureCode.MODEL_INFERENCE_FAILED,
+        }:
+            raise ValueError(f"{failure.value} is not a backend failure code")
+        super().__init__(message)
+        self.failure = failure
+        self.retryable = bool(retryable)
 
 
 class FineGraspPhase(str, Enum):

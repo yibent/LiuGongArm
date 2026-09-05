@@ -34,10 +34,12 @@ class SeededDepthSegmenter:
         self,
         *,
         depth_tolerance_m: float = 0.025,
+        chromaticity_tolerance: float = 0.18,
         seed_window_px: int = 7,
         max_radius_px: int = 140,
     ) -> None:
         self.depth_tolerance_m = float(depth_tolerance_m)
+        self.chromaticity_tolerance = float(chromaticity_tolerance)
         self.seed_window_px = int(seed_window_px)
         self.max_radius_px = int(max_radius_px)
 
@@ -62,8 +64,19 @@ class SeededDepthSegmenter:
         patch = np.asarray(observation.depth_m[y0:y1, x0:x1], dtype=np.float64)
         valid_patch = patch[np.isfinite(patch) & (patch > 0)]
         seed_depth = float(np.median(valid_patch)) if valid_patch.size else float(point_camera[2])
+        depth_tolerance = min(
+            self.depth_tolerance_m,
+            0.004 if bool(target.properties.thin) else self.depth_tolerance_m,
+        )
         allowed = np.isfinite(observation.depth_m) & (
-            np.abs(observation.depth_m - seed_depth) <= self.depth_tolerance_m
+            np.abs(observation.depth_m - seed_depth) <= depth_tolerance
+        )
+        rgb = np.asarray(observation.rgb[:, :, :3], dtype=np.float32)
+        chromaticity = rgb / np.maximum(rgb.sum(axis=2, keepdims=True), 12.0)
+        seed_chromaticity = np.median(chromaticity[y0:y1, x0:x1].reshape(-1, 3), axis=0)
+        allowed &= (
+            np.linalg.norm(chromaticity - seed_chromaticity.reshape(1, 1, 3), axis=2)
+            <= self.chromaticity_tolerance
         )
         yy, xx = np.ogrid[: K.height, : K.width]
         allowed &= (xx - u) ** 2 + (yy - v) ** 2 <= self.max_radius_px**2
@@ -86,19 +99,27 @@ class AppearanceDepthTrackerSegmenter:
         chromaticity_tolerance: float = 0.16,
         min_component_pixels: int = 80,
         morphology_kernel_px: int = 5,
+        max_area_growth_per_frame: float = 4.0,
+        max_depth_change_m: float = 0.10,
     ) -> None:
         self.seed_segmenter = seed_segmenter or SeededDepthSegmenter()
         self.chromaticity_tolerance = float(chromaticity_tolerance)
         self.min_component_pixels = int(min_component_pixels)
         self.kernel = np.ones((morphology_kernel_px, morphology_kernel_px), dtype=np.uint8)
+        self.max_area_growth_per_frame = float(max_area_growth_per_frame)
+        self.max_depth_change_m = float(max_depth_change_m)
         self._object_id: str | None = None
         self._reference_chromaticity: np.ndarray | None = None
         self._last_center_uv: np.ndarray | None = None
+        self._last_area_px: int | None = None
+        self._last_depth_m: float | None = None
 
     def reset(self) -> None:
         self._object_id = None
         self._reference_chromaticity = None
         self._last_center_uv = None
+        self._last_area_px = None
+        self._last_depth_m = None
 
     def segment(self, observation: RGBDObservation, target: TargetSpec) -> np.ndarray | None:
         if target.object_id != self._object_id:
@@ -111,7 +132,7 @@ class AppearanceDepthTrackerSegmenter:
             if initial is None or int(np.asarray(initial, dtype=bool).sum()) < self.min_component_pixels:
                 return None
             mask = np.asarray(initial, dtype=bool)
-            self._update_reference(chromaticity, mask, replace=True)
+            self._update_reference(chromaticity, observation.depth_m, mask, replace=True)
             return mask
 
         distance = np.linalg.norm(chromaticity - self._reference_chromaticity.reshape(1, 1, 3), axis=2)
@@ -128,18 +149,43 @@ class AppearanceDepthTrackerSegmenter:
                 continue
             center = centers[label]
             travel = 0.0 if self._last_center_uv is None else float(np.linalg.norm(center - self._last_center_uv))
-            # Area supports large close-range targets; the soft travel term
-            # preserves identity without preventing large eye-in-hand motion.
-            score = np.log1p(area) - 1.5 * travel / max(diagonal, 1.0)
+            area_ratio = 1.0 if self._last_area_px is None else area / max(self._last_area_px, 1)
+            if not 1.0 / self.max_area_growth_per_frame <= area_ratio <= self.max_area_growth_per_frame:
+                continue
+            component = labels == label
+            component_depth = np.asarray(observation.depth_m[component], dtype=np.float64)
+            component_depth = component_depth[np.isfinite(component_depth) & (component_depth > 0)]
+            median_depth = float(np.median(component_depth)) if component_depth.size else None
+            if (
+                median_depth is not None
+                and self._last_depth_m is not None
+                and abs(median_depth - self._last_depth_m) > self.max_depth_change_m
+            ):
+                continue
+            # Preserve identity under eye-in-hand scale change.  A large area
+            # alone is not evidence of being the target: it is commonly the
+            # table, gripper, or a reflection-connected background region.
+            score = (
+                -2.0 * travel / max(diagonal, 1.0)
+                - abs(float(np.log(max(area_ratio, 1e-6))))
+                + 0.03 * float(np.log1p(area))
+            )
             candidates.append((score, label))
         if not candidates:
             return None
         selected_label = max(candidates)[1]
         mask = labels == selected_label
-        self._update_reference(chromaticity, mask, replace=False)
+        self._update_reference(chromaticity, observation.depth_m, mask, replace=False)
         return mask
 
-    def _update_reference(self, chromaticity: np.ndarray, mask: np.ndarray, *, replace: bool) -> None:
+    def _update_reference(
+        self,
+        chromaticity: np.ndarray,
+        depth_m: np.ndarray,
+        mask: np.ndarray,
+        *,
+        replace: bool,
+    ) -> None:
         values = chromaticity[mask]
         reference = np.median(values, axis=0)
         if replace or self._reference_chromaticity is None:
@@ -148,6 +194,10 @@ class AppearanceDepthTrackerSegmenter:
             self._reference_chromaticity = 0.9 * self._reference_chromaticity + 0.1 * reference
         rows, columns = np.nonzero(mask)
         self._last_center_uv = np.asarray([np.median(columns), np.median(rows)], dtype=np.float64)
+        self._last_area_px = int(mask.sum())
+        depths = np.asarray(depth_m[mask], dtype=np.float64)
+        depths = depths[np.isfinite(depths) & (depths > 0)]
+        self._last_depth_m = float(np.median(depths)) if depths.size else None
 
 
 def _connected_component_from_nearest_seed(

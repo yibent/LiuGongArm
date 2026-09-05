@@ -109,6 +109,10 @@ class IsaacCumotionExecutor:
         self._transition_cache: dict[
             tuple[tuple[float, ...], tuple[float, ...]], list[np.ndarray] | None
         ] = {}
+        self._grasp_center_specs: dict[
+            tuple[float, ...], tuple[np.ndarray, float]
+        ] = {}
+        self.last_transition_rejection_reason = "approach_disconnected"
         self._active_waypoints: list[np.ndarray] = []
         self._active_waypoint_index = 0
         self._fk_reported = False
@@ -191,7 +195,14 @@ class IsaacCumotionExecutor:
         center = np.asarray(T_base_grasp_center, dtype=np.float64)
         T_ee_center = np.eye(4, dtype=np.float64)
         T_ee_center[0, 3] = self.pinch_center_x_per_width * float(width_m)
-        return center @ invert_transform(T_ee_center)
+        T_base_ee = center @ invert_transform(T_ee_center)
+        self._grasp_center_specs[self._pose_key(T_base_ee)] = (
+            center.copy(),
+            float(width_m),
+        )
+        if len(self._grasp_center_specs) > 256:
+            self._grasp_center_specs.pop(next(iter(self._grasp_center_specs)))
+        return T_base_ee
 
     def prepare_grasp(self, grasp: SelectedGrasp) -> bool:
         """Pin the candidate's validated endpoint for closed-loop execution."""
@@ -213,6 +224,7 @@ class IsaacCumotionExecutor:
         self, T_base_pregrasp: np.ndarray, T_base_grasp: np.ndarray
     ) -> bool:
         """Require one continuous collision-free branch through the approach."""
+        self.last_transition_rejection_reason = "approach_disconnected"
         pair = (self._pose_key(T_base_pregrasp), self._pose_key(T_base_grasp))
         if pair in self._transition_cache:
             return self._transition_cache[pair] is not None
@@ -224,6 +236,30 @@ class IsaacCumotionExecutor:
         if q_pregrasp is None or q_grasp is None:
             self._transition_cache[pair] = None
             return False
+        center_spec = self._grasp_center_specs.get(pair[1])
+        if center_spec is not None and self.orientation_mode == "approach_axis":
+            desired_center_world, width_m = center_spec
+            kinematics = self.controller.cumotion_robot.kinematics
+            tool_frame = str(robot_config()["tool_frame"])
+            goal_pose = kinematics.pose(q_grasp, tool_frame)
+            goal_rotation = np.asarray(goal_pose.rotation.matrix(), dtype=np.float64)
+            actual_center_base = np.asarray(goal_pose.translation, dtype=np.float64) + (
+                goal_rotation[:, 0] * self.pinch_center_x_per_width * width_m
+            )
+            base_position, base_orientation = (
+                self.controller.world_binding.get_world_interface().get_world_to_robot_base_transform()
+            )
+            desired_center_base = isaac_sim_to_cumotion_translation(
+                desired_center_world[:3, 3], base_position, base_orientation
+            )
+            center_error_m = float(np.linalg.norm(actual_center_base - desired_center_base))
+            # XYZ plus approach-axis IK leaves closing-axis yaw unconstrained on
+            # a five-DOF arm.  Reject poses whose reachable yaw would move the
+            # fixed-finger gripper's physical pinch centre off the object.
+            if center_error_m > 0.006:
+                self.last_transition_rejection_reason = "pinch_center_mismatch"
+                self._transition_cache[pair] = None
+                return False
         path = self._linear_cspace_path(q_pregrasp, q_grasp)
         if path is None:
             self._transition_cache[pair] = None

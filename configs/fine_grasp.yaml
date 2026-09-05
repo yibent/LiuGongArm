@@ -1,6 +1,55 @@
 # Model-independent FineGrasp safety and closed-loop parameters.
 # Distances are metres, angles are degrees and time values are seconds.
 backend: geometric
+backends:
+  graspgenx:
+    # Run the weight-bearing server from the isolated GraspGenX environment.
+    # BusAgent/Isaac stays a small torch-free ZMQ client.
+    host: 127.0.0.1
+    port: 5556
+    timeout_ms: 5000
+    # object_points avoids shipping the full depth image after segmentation;
+    # scene_depth is also supported for protocol/debug parity.
+    request_mode: object_points
+    # GraspMoE's geometry branch uses +Z as gravity/up.  The points still come
+    # solely from the current wrist image, but are transformed through the
+    # current hand-eye chain before inference so top-down means -base Z.
+    inference_frame: base
+    # GraspMoE unions learned diffusion proposals with geometry-seeded OBB
+    # proposals, then scores both using the released discriminator.  This is
+    # materially more reliable on a five-axis arm than unconstrained diffusion
+    # orientations alone while keeping the neural model in the decision path.
+    planner: graspmoe
+    num_grasps: 100
+    max_candidates: 128
+    min_object_points: 64
+    # The upstream outlier filter forms an N x N distance matrix.  Capping the
+    # segmented wrist cloud prevents quadratic memory spikes on close views.
+    max_object_points: 4096
+    # Scores are useful for ranking but are not calibrated across unseen
+    # geometry and close-range partial views.  Safety comes from the explicit
+    # width/clearance/collision/IK filters, so retain the full ranked set.
+    min_confidence: 0.0
+    width_margin_m: 0.006
+    fallback_backend: geometric
+    fallback_on_empty: true
+    stability:
+      cluster_translation_m: 0.025
+      cluster_rotation_deg: 25.0
+      consensus_bonus: 0.04
+      continuity_translation_m: 0.040
+      continuity_rotation_deg: 40.0
+      continuity_bonus: 0.10
+      switch_score_margin: 0.08
+    # Configured SO-101 parallel-jaw inner sweep approximation. All units are
+    # metres; update this block if fingers or jaw mechanics are changed.
+    sweep_volume:
+      extents_open: [0.075, 0.018, 0.045]
+      offset_open: [0.0, 0.0, 0.0225]
+      extents_mid: [0.0375, 0.018, 0.045]
+      offset_mid: [0.0, 0.0, 0.0225]
+      gripper_type: 0
+      fingertip_depth_m: 0.045
 frames:
   base: base
   end_effector: gripper_frame_link
@@ -33,7 +82,7 @@ gripper:
   default_speed_mps: 0.025
 
 selection:
-  min_model_score: 0.10
+  min_model_score: 0.0
   table_height_m: 1.05
   table_clearance_m: 0.006
   pregrasp_distance_m: 0.060
@@ -47,7 +96,9 @@ loop:
   model_period_s: 0.50
   model_replan_translation_m: 0.015
   model_replan_rotation_deg: 12.0
-  servo_translation_tolerance_m: 0.004
+  # Match the compact arm planner's tested 5 mm Cartesian reach tolerance.
+  # Stable frames are still required, so this is not a one-frame acceptance.
+  servo_translation_tolerance_m: 0.005
   servo_rotation_tolerance_deg: 5.0
   servo_max_translation_step_m: 0.006
   servo_max_rotation_step_deg: 3.0

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+import cv2
 
 from mr_liu.grasp.contracts import CameraIntrinsics, RGBDObservation
 from mr_liu.grasp.transforms import invert_transform, make_transform, transform_points
@@ -19,6 +20,45 @@ class ObjectGeometry:
     T_base_object: np.ndarray
     valid_depth_ratio: float
     extents_m: np.ndarray
+
+
+def recover_small_depth_holes(
+    depth_m: np.ndarray,
+    target_mask: np.ndarray,
+    *,
+    max_hole_area_px: int = 160,
+    boundary_depth_span_m: float = 0.012,
+) -> tuple[np.ndarray, int]:
+    """Conservatively fill small specular holes inside a target mask.
+
+    Only bounded connected holes with a coherent finite boundary are filled.
+    Large missing regions remain invalid so reflective or transparent objects
+    are rejected instead of receiving fabricated geometry.
+    """
+    depth = np.asarray(depth_m, dtype=np.float32).copy()
+    target = np.asarray(target_mask, dtype=bool)
+    missing = target & (~np.isfinite(depth) | (depth <= 0))
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(
+        missing.astype(np.uint8), connectivity=8
+    )
+    kernel = np.ones((3, 3), dtype=np.uint8)
+    filled = 0
+    for label in range(1, count):
+        area = int(stats[label, cv2.CC_STAT_AREA])
+        if area <= 0 or area > int(max_hole_area_px):
+            continue
+        component = labels == label
+        ring = cv2.dilate(component.astype(np.uint8), kernel, iterations=2).astype(bool)
+        ring &= ~component & target & np.isfinite(depth) & (depth > 0)
+        boundary = np.asarray(depth[ring], dtype=np.float64)
+        if boundary.size < 8:
+            continue
+        low, high = np.percentile(boundary, [10.0, 90.0])
+        if float(high - low) > float(boundary_depth_span_m):
+            continue
+        depth[component] = float(np.median(boundary))
+        filled += area
+    return depth, filled
 
 
 def support_completed_center(

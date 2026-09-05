@@ -23,6 +23,7 @@ class ServoUpdate:
     command_pose: np.ndarray
     translation_error_m: float
     rotation_error_rad: float
+    within_tolerance: bool
     aligned: bool
 
 
@@ -72,5 +73,6 @@ class PoseServo:
             command_pose=command,
             translation_error_m=translation_error,
             rotation_error_rad=rotation,
+            within_tolerance=within,
             aligned=self._stable_count >= self.config.stable_frames,
         )

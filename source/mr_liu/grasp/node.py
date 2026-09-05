@@ -15,6 +15,7 @@ from mr_liu.grasp.contracts import (
     FineGraspRequest,
     FineGraspResult,
     GraspBackend,
+    GraspBackendError,
     GraspVerifier,
     GripperController,
     MotionExecutor,
@@ -26,6 +27,7 @@ from mr_liu.grasp.contracts import (
 from mr_liu.grasp.geometry import (
     ObjectGeometry,
     extract_object_geometry,
+    recover_small_depth_holes,
     support_completed_center,
 )
 from mr_liu.grasp.policy import ExecutionPolicy, policy_for_target
@@ -103,7 +105,12 @@ class GeneralGraspNode:
                 terminal = self._terminal_check(request, deadline, metrics, selected)
                 if terminal is not None:
                     return terminal
-                observed = self._observe(request, metrics, allow_same_sequence=False)
+                observed = self._observe(
+                    request,
+                    metrics,
+                    allow_same_sequence=False,
+                    allow_depth_hole_recovery=policy.allow_depth_hole_recovery,
+                )
                 if isinstance(observed, FineGraspResult):
                     return self._with_elapsed(observed, started, metrics)
                 observation, geometry = observed
@@ -124,6 +131,13 @@ class GeneralGraspNode:
                 )
                 for reason, count in selection.rejected.items():
                     metrics[f"rejected_{reason}"] = int(metrics.get(f"rejected_{reason}", 0)) + count
+                self._emit(
+                    FineGraspPhase.GENERATE,
+                    event="candidate_filter",
+                    considered=selection.considered,
+                    rejected=selection.rejected,
+                    candidates=list(selection.diagnostics),
+                )
                 if selection.grasp is None:
                     return self._failure(
                         request,
@@ -199,10 +213,29 @@ class GeneralGraspNode:
                     terminal = self._terminal_check(request, deadline, metrics, selected)
                     if terminal is not None:
                         return terminal
-                    latest = self._observe(request, metrics, allow_same_sequence=False)
+                    latest = self._observe(
+                        request,
+                        metrics,
+                        allow_same_sequence=False,
+                        allow_depth_hole_recovery=policy.allow_depth_hole_recovery,
+                    )
                     if isinstance(latest, FineGraspResult):
                         return self._with_elapsed(latest, started, metrics)
                     current_observation, current_geometry = latest
+                    baseline_extent = max(float(np.linalg.norm(geometry.extents_m)), 1e-4)
+                    extent_ratio = float(np.linalg.norm(current_geometry.extents_m)) / baseline_extent
+                    if extent_ratio > 3.0 or extent_ratio < 0.15:
+                        metrics["segmentation_extent_outliers"] = int(
+                            metrics.get("segmentation_extent_outliers", 0)
+                        ) + 1
+                        self._emit(
+                            FineGraspPhase.OBSERVE,
+                            event="segmentation_extent_outlier",
+                            extent_ratio=extent_ratio,
+                            baseline_extents_m=geometry.extents_m.tolist(),
+                            observed_extents_m=current_geometry.extents_m.tolist(),
+                        )
+                        continue
                     raw_center = self._tracking_center(current_geometry, selected)
                     jump = float(np.linalg.norm(raw_center - previous_raw_center))
                     metrics["max_observed_centroid_jump_m"] = max(
@@ -268,7 +301,19 @@ class GeneralGraspNode:
                     if update.aligned:
                         before_close = current_observation
                         break
+                    if update.within_tolerance:
+                        # Validate stable alignment with another fresh wrist
+                        # frame without asking IK to solve an unnecessary
+                        # sub-millimetre correction.  Compact arms often sit
+                        # inside their Cartesian reach tolerance while gravity
+                        # sag makes the exact virtual pose unsolvable.
+                        continue
                     if not self.motion.is_reachable(update.command_pose):
+                        self._emit(
+                            FineGraspPhase.SERVO,
+                            event="replan_required",
+                            reason="command_unreachable",
+                        )
                         replan_required = True
                         break
                     if not self.motion.is_collision_free(
@@ -287,6 +332,11 @@ class GeneralGraspNode:
                     if not self.motion.servo_to(
                         update.command_pose, speed_scale=policy.motion_speed_scale
                     ):
+                        self._emit(
+                            FineGraspPhase.SERVO,
+                            event="replan_required",
+                            reason="command_execution_failed",
+                        )
                         replan_required = True
                         break
 
@@ -347,15 +397,10 @@ class GeneralGraspNode:
                     state.T_base_ee[:3, 3]
                     + np.asarray([0.0, 0.0, self.settings.loop.lift_distance_m]),
                 )
-                if not self.motion.move_to(lift_pose, speed_scale=min(policy.motion_speed_scale, 0.4)):
-                    return self._failure(
-                        request,
-                        FailureCode.IK_UNREACHABLE,
-                        "Lift motion failed",
-                        metrics,
-                        started,
-                        selected,
-                    )
+                lift_motion_completed = self.motion.move_to(
+                    lift_pose, speed_scale=min(policy.motion_speed_scale, 0.4)
+                )
+                metrics["lift_motion_completed"] = int(lift_motion_completed)
                 after_lift_result = self._capture_for_verification(request, metrics)
                 if isinstance(after_lift_result, FineGraspResult):
                     return self._with_elapsed(after_lift_result, started, metrics)
@@ -366,6 +411,15 @@ class GeneralGraspNode:
                 metrics["lift_confidence"] = lift_check.confidence
                 metrics.update(lift_check.metrics)
                 if not lift_check.success:
+                    if not lift_motion_completed:
+                        return self._failure(
+                            request,
+                            FailureCode.IK_UNREACHABLE,
+                            "Lift motion did not complete and grasp lift could not be verified",
+                            metrics,
+                            started,
+                            selected,
+                        )
                     return self._failure(
                         request,
                         FailureCode.LIFT_VERIFICATION_FAILED,
@@ -393,6 +447,17 @@ class GeneralGraspNode:
                 started,
                 selected,
             )
+        except GraspBackendError as exc:
+            metrics["backend_error"] = exc.failure.value
+            metrics["backend_error_retryable"] = str(exc.retryable).lower()
+            return self._failure(
+                request,
+                exc.failure,
+                str(exc),
+                metrics,
+                started,
+                selected,
+            )
         except Exception as exc:  # noqa: BLE001 - node returns classified failures
             self.motion.stop()
             return self._failure(
@@ -410,6 +475,7 @@ class GeneralGraspNode:
         metrics: dict[str, float | int | str],
         *,
         allow_same_sequence: bool,
+        allow_depth_hole_recovery: bool = False,
     ) -> tuple[RGBDObservation, ObjectGeometry] | FineGraspResult:
         last_failure = FailureCode.NO_OBSERVATION
         last_message = "Wrist camera returned no observation"
@@ -437,6 +503,14 @@ class GeneralGraspNode:
                 last_message = "Target is not visible in the latest wrist frame"
                 continue
             synchronized = replace(observation, target_mask=np.asarray(mask, dtype=bool))
+            if allow_depth_hole_recovery:
+                recovered_depth, recovered_pixels = recover_small_depth_holes(
+                    synchronized.depth_m, synchronized.target_mask
+                )
+                synchronized = replace(synchronized, depth_m=recovered_depth)
+                metrics["recovered_depth_pixels"] = int(
+                    metrics.get("recovered_depth_pixels", 0)
+                ) + recovered_pixels
             try:
                 geometry = extract_object_geometry(
                     synchronized,
@@ -482,7 +556,8 @@ class GeneralGraspNode:
     def _tracking_center(
         self, geometry: ObjectGeometry, selected: SelectedGrasp
     ) -> np.ndarray:
-        if bool(selected.metadata.get("support_surface_completion", False)):
+        top_down = float(selected.T_base_grasp[2, 2]) < -0.6
+        if bool(selected.metadata.get("support_surface_completion", False)) or top_down:
             return support_completed_center(
                 geometry,
                 table_height_m=self.settings.selection.table_height_m,

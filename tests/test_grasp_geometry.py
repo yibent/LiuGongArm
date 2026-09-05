@@ -16,9 +16,13 @@ from mr_liu.grasp.geometry import (  # noqa: E402
     ObjectGeometry,
     deproject_depth,
     estimate_object_frame,
+    recover_small_depth_holes,
     support_completed_center,
 )
-from mr_liu.grasp.segmentation import SeededDepthSegmenter  # noqa: E402
+from mr_liu.grasp.segmentation import (  # noqa: E402
+    AppearanceDepthTrackerSegmenter,
+    SeededDepthSegmenter,
+)
 from mr_liu.grasp.transforms import make_transform  # noqa: E402
 
 
@@ -55,6 +59,18 @@ class GraspGeometryTests(unittest.TestCase):
         self.assertAlmostEqual(center[2], (1.05 + np.percentile(points[:, 2], 95)) * 0.5)
         np.testing.assert_allclose(center[:2], [0.2, -0.1])
 
+    def test_reflective_depth_recovery_fills_only_small_coherent_holes(self) -> None:
+        depth = np.full((30, 30), 0.12, dtype=np.float32)
+        mask = np.ones((30, 30), dtype=bool)
+        depth[10:14, 11:15] = np.nan
+        depth[18:29, 1:20] = np.nan
+        recovered, count = recover_small_depth_holes(
+            depth, mask, max_hole_area_px=50
+        )
+        self.assertEqual(count, 16)
+        np.testing.assert_allclose(recovered[10:14, 11:15], 0.12)
+        self.assertTrue(np.isnan(recovered[18:29, 1:20]).all())
+
     def test_seeded_segmenter_reprojects_base_hint_through_wrist_pose(self) -> None:
         intrinsics = CameraIntrinsics(width=40, height=30, fx=100, fy=100, cx=20, cy=15)
         depth = np.full((30, 40), 0.5, dtype=np.float32)
@@ -72,6 +88,40 @@ class GraspGeometryTests(unittest.TestCase):
         self.assertIsNotNone(mask)
         assert mask is not None
         self.assertEqual(int(mask.sum()), 121)
+
+    def test_appearance_tracker_rejects_background_area_takeover(self) -> None:
+        intrinsics = CameraIntrinsics(width=40, height=30, fx=100, fy=100, cx=20, cy=15)
+        rgb = np.full((30, 40, 3), [80, 80, 80], dtype=np.uint8)
+        rgb[10:21, 15:26] = [220, 20, 20]
+        depth = np.full((30, 40), 0.5, dtype=np.float32)
+        depth[10:21, 15:26] = 0.2
+        first = RGBDObservation(
+            sequence=1,
+            timestamp_s=0.0,
+            rgb=rgb,
+            depth_m=depth,
+            intrinsics=intrinsics,
+            T_base_camera=np.eye(4),
+        )
+        target = TargetSpec("part", coarse_position_base_m=(0.0, 0.0, 0.2))
+        tracker = AppearanceDepthTrackerSegmenter(
+            SeededDepthSegmenter(depth_tolerance_m=0.01, max_radius_px=20),
+            morphology_kernel_px=1,
+        )
+        initial = tracker.segment(first, target)
+        self.assertIsNotNone(initial)
+        assert initial is not None
+        self.assertEqual(int(initial.sum()), 121)
+
+        takeover = RGBDObservation(
+            sequence=2,
+            timestamp_s=0.1,
+            rgb=np.full_like(rgb, [220, 20, 20]),
+            depth_m=np.full_like(depth, 0.2),
+            intrinsics=intrinsics,
+            T_base_camera=np.eye(4),
+        )
+        self.assertIsNone(tracker.segment(takeover, target))
 
 
 if __name__ == "__main__":
