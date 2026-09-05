@@ -8,7 +8,10 @@
 
 新增开发中的 [Florence + RGB-D 非快环放置](docs/FINE_PLACE.md)：
 `scripts\run_fine_place.ps1 -Destination 'blue square'`。
-独立 FinePlace 状态机与安全测试已加入，实际仿真验收状态见文档；尚未接入 Web place 或真机。
+独立 FinePlace 状态机与安全测试已加入；方块到桌面区域已有多次实际抓放/撤离/多帧验证成功，
+最新桌面回归在释放后撤离失败，托盘和异形物也有未解决的实测失败，不能宣称稳定或通用放置完成；尚未接入 Web place 或真机。
+可用 `scripts\benchmark_fine_place.ps1 -RecordVideo` 运行固定开发对照；
+停稳释放的可选 1 秒策略、逐项失败和耗时拆分见上述文档。
 
 新增可选 [标签到完整抓取入口](docs/LABEL_TO_GRASP.md)：
 `scripts\run_label_grasp.ps1 -Label 'red cube' -RecordVideo`。
