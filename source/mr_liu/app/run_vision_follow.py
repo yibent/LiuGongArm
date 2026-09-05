@@ -18,7 +18,7 @@ from mr_liu.paths import repo_root
 from mr_liu.perception.camera import SceneCamera, spawn_configured_cameras
 from mr_liu.robot.so101 import So101Arm
 from mr_liu.sim.spawn import spawn_table_and_so101
-from mr_liu.vision import MultiViewFindTrackPipeline, RuntimeConfig
+from mr_liu.vision import MultiViewFindTrackPipeline, ObjectMemoryStore, RuntimeConfig
 from mr_liu.vision.control import VisionControlServer, VisionRuntimeControl
 from mr_liu.vision.worker import VisionWorker, frozen_unprojector
 
@@ -84,12 +84,17 @@ def _try_load_pipelines(
     cfg: RuntimeConfig,
     *,
     device: str | None,
+    memory_store: ObjectMemoryStore | None = None,
 ) -> MultiViewFindTrackPipeline | None:
     weights = repo_root() / "yoloe-26x-seg.pt"
     if not weights.is_file():
         print(f"[mr_liu] YOLOE weights missing ({weights}); vision loop disabled, cube is still draggable.")
         return None
-    pipe = MultiViewFindTrackPipeline(yoloe_weights=weights, device=device)
+    pipe = MultiViewFindTrackPipeline(
+        yoloe_weights=weights,
+        device=device,
+        memory_store=memory_store,
+    )
     try:
         pipe.load(cfg.fast_backend)
     except Exception as exc:  # noqa: BLE001
@@ -138,6 +143,7 @@ def main(
         slow_interval=max(0, int(slow_interval)),
     )
     control = VisionRuntimeControl(vis_cfg, follow_enabled=follow_target)
+    control.memory_store = ObjectMemoryStore(repo_root() / "runs" / "memories")
     from mr_liu.vision.grounding import SceneGrounding, surface_point, confirmed_mask
     control.grounding = SceneGrounding()
     from mr_liu.config import robot_config
@@ -166,7 +172,7 @@ def main(
     host, port = server.start()
     print(f"[mr_liu] Runtime vision control: http://{host}:{port}")
 
-    pipe = _try_load_pipelines(vis_cfg, device=device)
+    pipe = _try_load_pipelines(vis_cfg, device=device, memory_store=control.memory_store)
     if pipe is None:
         control.set_error("Vision models failed to load or weights are missing")
     else:
@@ -205,7 +211,7 @@ def main(
         # JPEG encoding is also off the physics/render thread.
         if control.snapshot().prompt_version == packet["config"].prompt_version:
             for view, result in results.items():
-                control.publish(view, result)
+                control.publish(view, result, packet["frames"].get(view))
         return packet, results
 
     worker = VisionWorker(process_vision) if pipe is not None else None

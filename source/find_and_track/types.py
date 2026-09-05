@@ -52,6 +52,8 @@ class RuntimeConfig:
     lost_patience: int = 12
     find_epoch: int = 0
     stop: bool = False
+    memory_id: str | None = None
+    memory_view: str | None = None
 
 
 @dataclass

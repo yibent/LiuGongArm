@@ -35,10 +35,13 @@ class VisionRuntimeControl:
         self._lock = threading.Lock()
         self._views: dict[str, dict[str, Any]] = {}
         self._frames: dict[str, bytes] = {}
+        self._raw_frames: dict[str, Any] = {}
+        self._detections: dict[str, list[dict[str, Any]]] = {}
         self._models: dict[str, Any] = {}
         self._error: str | None = None
         self.motion = None
         self.grounding = None
+        self.memory_store = None
 
     def snapshot(self) -> RuntimeConfig:
         with self._lock:
@@ -79,7 +82,7 @@ class VisionRuntimeControl:
         with self._lock:
             self._error = str(message)
 
-    def publish(self, view: str, result: FrameResult) -> None:
+    def publish(self, view: str, result: FrameResult, frame_bgr: Any = None) -> None:
         detections = [_detection_dict(det) for det in (result.fast or result.slow)]
         ok, encoded = cv2.imencode(
             ".jpg", result.image, [int(cv2.IMWRITE_JPEG_QUALITY), 84]
@@ -90,8 +93,39 @@ class VisionRuntimeControl:
         }
         with self._lock:
             self._views[str(view)] = payload
+            if frame_bgr is not None:
+                self._raw_frames[str(view)] = frame_bgr.copy()
+            self._detections[str(view)] = detections
             if ok:
                 self._frames[str(view)] = encoded.tobytes()
+
+    def remember(self, label: str, *, memory_id: str | None = None,
+                 aliases: list[str] | None = None, metadata: dict | None = None) -> dict[str, Any]:
+        if self.memory_store is None:
+            raise RuntimeError("object memory store is not configured")
+        with self._lock:
+            frames = dict(self._raw_frames)
+            detections = {
+                view: max(items, key=lambda item: float(item.get("score", 0.0)))
+                for view, items in self._detections.items() if items
+            }
+        memory = self.memory_store.remember(
+            label, frames, detections, memory_id=memory_id,
+            aliases=aliases, metadata=metadata,
+        )
+        return asdict(memory)
+
+    def recall(self, memory_id: str, view: str | None = None) -> RuntimeConfig:
+        memory = self.memory_store.get(memory_id) if self.memory_store else None
+        if memory is None:
+            raise ValueError(f"unknown object memory: {memory_id}")
+        with self._lock:
+            self._config.prompt = memory.label
+            self._config.memory_id = memory_id
+            self._config.memory_view = view
+            self._config.prompt_version += 1
+            self._config.find_epoch += 1
+            return replace(self._config)
 
     def frame(self, view: str) -> bytes | None:
         with self._lock:
@@ -104,6 +138,8 @@ class VisionRuntimeControl:
                 "prompt": self._config.prompt,
                 "prompt_version": self._config.prompt_version,
                 "find_epoch": self._config.find_epoch,
+                "memory_id": self._config.memory_id,
+                "memory_view": self._config.memory_view,
                 "fast_backend": self._config.fast_backend,
                 "slow_interval": self._config.slow_interval,
                 "follow_enabled": self._follow_enabled,
@@ -112,13 +148,14 @@ class VisionRuntimeControl:
                 "error": self._error,
                 "motion": motion,
                 "grounding": self.grounding.snapshot() if self.grounding else None,
+                "memories": self.memory_store.list() if self.memory_store else [],
                 "capabilities": self.capabilities(),
             }
 
     def capabilities(self) -> dict[str, Any]:
         from mr_liu.motion.commands import MOTION_SKILLS
         return {
-            "skills": ["select_target", "perceive", "follow", "hold", "stop", "status", "capabilities"]
+            "skills": ["select_target", "perceive", "follow", "remember", "recall", "forget", "hold", "stop", "status", "capabilities"]
                       + (sorted(MOTION_SKILLS - {"hold", "stop"}) if self.motion is not None else []),
             "unsupported": ["plan_grasp", "grasp", "transport", "place", "verify_placement"],
             "message": "当前支持识别、跟随、暂停和停止" + (
@@ -159,6 +196,26 @@ def execute_control_command(
             prompt = category
         cfg = control.set_prompt(prompt)
         return {"ok": True, "message": f"target set to {prompt}", "prompt": cfg.prompt}
+    if skill == "remember":
+        label = str(values.get("label") or values.get("category") or control.snapshot().prompt).strip()
+        result = control.remember(
+            label,
+            memory_id=values.get("memory_id"),
+            aliases=values.get("aliases") if isinstance(values.get("aliases"), list) else None,
+            metadata=values.get("metadata") if isinstance(values.get("metadata"), dict) else None,
+        )
+        return {"ok": True, "message": f"memory captured for {label}", "memory": result}
+    if skill == "recall":
+        memory_id = str(values.get("memory_id") or "").strip()
+        if not memory_id:
+            raise ValueError("recall requires memory_id")
+        cfg = control.recall(memory_id, values.get("view"))
+        return {"ok": True, "message": "memory prompt armed", "memory_id": cfg.memory_id, "prompt": cfg.prompt}
+    if skill == "forget":
+        memory_id = str(values.get("memory_id") or "").strip()
+        if not memory_id or control.memory_store is None:
+            raise ValueError("forget requires memory_id")
+        return {"ok": control.memory_store.delete(memory_id), "memory_id": memory_id}
     if skill == "perceive":
         cfg = control.force_find()
         return {"ok": True, "message": "new perception requested", "find_epoch": cfg.find_epoch}
@@ -179,17 +236,22 @@ def execute_control_command(
 _CONTROL_HTML = """<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><title>SO-101 双视角追踪</title>
 <style>body{font:15px system-ui;background:#111;color:#eee;margin:24px}input{width:420px;padding:9px}
-button{padding:9px 15px;margin-left:6px}.views{display:flex;gap:18px;margin-top:20px}.view{width:48%}
+button,select{padding:9px 15px;margin-left:6px}.views{display:flex;gap:18px;margin-top:20px}.view{width:48%}
 img{width:100%;background:#222}pre{white-space:pre-wrap;color:#9fd}</style></head>
 <body><h2>Florence FIND + YOLOE TRACK</h2><input id="p" placeholder="red cube">
 <button onclick="setPrompt()">切换目标</button><button onclick="forceFind()">立即 FIND</button>
+<button onclick="remember()">记住当前目标</button><select id="m"><option value="">选择记忆</option></select><button onclick="recall()">回放记忆</button>
 <div class="views"><div class="view"><h3>顶部</h3><img id="scene"></div>
 <div class="view"><h3>腕部</h3><img id="wrist"></div></div><pre id="s"></pre>
 <script>
 async function post(path, body={}){await fetch(path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)})}
 async function setPrompt(){await post('/api/prompt',{prompt:document.querySelector('#p').value})}
 async function forceFind(){await post('/api/find')}
+async function remember(){await post('/api/command',{skill:'remember',params:{label:document.querySelector('#p').value}});await tick()}
+async function recall(){let id=document.querySelector('#m').value;if(id)await post('/api/command',{skill:'recall',params:{memory_id:id}});await tick()}
 async function tick(){let s=await (await fetch('/api/status')).json();document.querySelector('#s').textContent=JSON.stringify(s,null,2);
+let select=document.querySelector('#m'), current=select.value;select.innerHTML='<option value="">选择记忆</option>';
+for(let item of (s.memories||[])){let option=document.createElement('option');option.value=item.memory_id;option.textContent=item.label+' ('+item.memory_id+')';select.appendChild(option)}select.value=current;
 let t=Date.now();document.querySelector('#scene').src='/api/frame/scene.jpg?t='+t;document.querySelector('#wrist').src='/api/frame/wrist.jpg?t='+t}
 setInterval(tick,700);tick();</script></body></html>"""
 
@@ -239,6 +301,9 @@ class VisionControlServer:
                     return
                 if path == "/api/capabilities":
                     self._json(control.capabilities())
+                    return
+                if path == "/api/memories":
+                    self._json({"memories": control.memory_store.list() if control.memory_store else []})
                     return
                 if path.startswith("/api/commands/"):
                     from urllib.parse import unquote
@@ -294,6 +359,18 @@ class VisionControlServer:
                             self._json({"ok": False, "message": "当前未接入RGB-D物体定位。"})
                         else:
                             self._json(control.grounding.resolve(control, body))
+                        return
+                    if path == "/api/memory":
+                        result = execute_control_command(control, "remember", body)
+                        self._json(result)
+                        return
+                    if path == "/api/recall":
+                        result = execute_control_command(control, "recall", body)
+                        self._json(result)
+                        return
+                    if path == "/api/forget":
+                        result = execute_control_command(control, "forget", body)
+                        self._json(result)
                         return
                     self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
                 except NotImplementedError as exc:

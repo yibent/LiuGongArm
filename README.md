@@ -62,6 +62,18 @@ D:\isaac\env_isaacsim60\python.exe -m pip install isaacsim[all,extscache]==6.0.1
 D:\isaac\env_isaacsim60\python.exe -m pip install -r requirements-vision.txt
 ```
 
+Windows 本地也可以使用仓库内的独立视觉环境（不修改 Isaac Sim 的 Python）：
+
+```bat
+conda create -y -p E:\LiuGongArm\.venv python=3.12
+E:\LiuGongArm\.venv\python.exe -m pip install torch torchvision
+E:\LiuGongArm\.venv\python.exe -m pip install -r requirements-vision.txt ultralytics opencv-python
+```
+
+Florence 权重放在 `.cache\huggingface\Florence-2-large`、YOLOE 权重放在仓库根目录后，
+可运行 `scripts\run_florence_local.bat` 启动离线 WebUI；该入口默认使用 Florence + YOLOE，
+缺少 YOLOE 权重时自动回退到 CV 跟踪。
+
 视觉权重不进 Git。把 `yoloe-26x-seg.pt` 放到仓库根目录。没有权重时，仿真仍可手动拖绿立方体。
 
 Linux/服务器建议把视觉依赖放在仓库自己的 venv 中：
@@ -94,6 +106,7 @@ FineGrasp 的架构、Isaac 闭环 demo、失败排查和真机前置条件见
 | 只加载桌 + SO-101 | `run_hello_world.bat` |
 | Kit GUI + 工程扩展 | `launch_isaac_sim.bat` |
 | 独立视觉 WebUI（不开仿真，默认 :7860） | `scripts\run_yoloe_webui.bat` |
+| 本地 Florence 离线 WebUI（不开仿真，默认 :7860） | `scripts\run_florence_local.bat` |
 | 关节名自检（无 GUI） | `scripts\run_tests.bat` |
 
 FineGrasp wrapper 在自己启动模型服务时会等待 GraspGenX warmup 返回 `status=ready`，并把
@@ -164,13 +177,40 @@ curl -X POST http://127.0.0.1:7861/api/command \
 
 远程查看控制页可建立 SSH 隧道：`ssh -L 7861:127.0.0.1:7861 -p 30133 root@183.147.142.40`，然后打开 `http://127.0.0.1:7861`。接口还提供 `/api/frame/scene.jpg` 与 `/api/frame/wrist.jpg` 两路实时标注快照。
 
+### 目标记忆与恢复
+
+完整的模块关系、状态转换、记忆文件格式、线程边界和接入 API 见 [视觉记忆方案说明](docs/VISION_MEMORY_ARCHITECTURE.md)。
+
+视觉链路按“YOLOE 先试、Florence 慢环兜底、CV 持续跟踪”的策略运行。YOLOE 先使用文本标签库和置信度尝试定位；置信度不足时才调用 Florence。Florence 的框会同时初始化 CV 和 YOLOE 视觉提示。CV 丢失达到 `lost_patience` 后，系统再次调用 Florence，并用新框重建 YOLOE 提示后恢复 CV 跟踪。
+
+记忆保存在 `runs/memories/`，每条记忆包含标签、时间、多视角裁剪图和原始框坐标。机械臂运行时可通过统一控制接口采集和回放：
+
+```bash
+# 采集当前顶部与腕部快照；重复使用同一个 memory_id 可追加新的视角
+curl -X POST http://127.0.0.1:7861/api/command \
+  -H 'Content-Type: application/json' \
+  -d '{"skill":"remember","params":{"label":"red mug"}}'
+
+# 回放记忆：下一帧直接用记忆图片建立 YOLOE visual prompt
+curl -X POST http://127.0.0.1:7861/api/command \
+  -H 'Content-Type: application/json' \
+  -d '{"skill":"recall","params":{"memory_id":"<memory_id>","view":"wrist"}}'
+
+curl http://127.0.0.1:7861/api/status
+curl -X POST http://127.0.0.1:7861/api/command \
+  -H 'Content-Type: application/json' \
+  -d '{"skill":"forget","params":{"memory_id":"<memory_id>"}}'
+```
+
+记忆采集与回放也分别提供 `/api/memory`、`/api/recall`、`/api/memories` 和 `/api/forget` 接口。`memory_id` 回放时不要求 Florence 首次重新圈定，YOLOE 无法恢复时仍会回退到 Florence。
+
 `--slow-interval 0` 表示只在首次检测、目标丢失、提示词变化或手动请求时
 运行 Florence；设置为正数则按相应帧数周期重新 FIND。`--no-follow` 只关闭
 检测框到机械臂目标的映射，物理仿真、双相机和推理仍正常运行。
 
 ### 接入 BusAgent 语音控制
 
-先保持上述 `run_vision_follow.py` 运行，再启动 `BusAgent/backend` 和 Web 前端。BusAgent 会把“找红色方块”“跟踪电钻”“停一下”“现在什么状态”等语音指令转换为结构化技能，并通过 `/api/command` 下发。当前机械臂侧只实现目标识别与跟随；抓取和放置会明确返回未实现，详见 [BusAgent 说明](BusAgent/README.md)。
+先保持上述 `run_vision_follow.py` 运行，再启动 `BusAgent/backend` 和 Web 前端。BusAgent 会把“找红色方块”“跟踪电钻”“停一下”“现在什么状态”等语音指令转换为结构化技能，并通过 `/api/command` 下发。当前机械臂侧只实现目标识别与跟随；抓取和放置会明确返回未实现，详见 [BusAgent 说明](docs/BUSAGENT_README.md)。
 
 ### 验证结果
 

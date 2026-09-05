@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Iterable
 
 import cv2
@@ -16,6 +17,7 @@ FLORENCE_IDS = (
     "florence-community/Florence-2-large",
     "microsoft/Florence-2-large",
 )
+LOCAL_FLORENCE = Path(__file__).resolve().parents[2] / ".cache" / "huggingface" / "Florence-2-large"
 OVD = "<OPEN_VOCABULARY_DETECTION>"
 GROUNDING = "<CAPTION_TO_PHRASE_GROUNDING>"
 
@@ -81,7 +83,12 @@ class FlorenceFinder:
             return
         from transformers import AutoProcessor, Florence2ForConditionalGeneration
 
-        ids = (self.model_id,) if self.model_id else FLORENCE_IDS
+        if self.model_id:
+            ids = (self.model_id,)
+        elif (LOCAL_FLORENCE / "model.safetensors").is_file():
+            ids = (str(LOCAL_FLORENCE),)
+        else:
+            ids = FLORENCE_IDS
         last_err: Exception | None = None
         for model_id in ids:
             for extra in ({"attn_implementation": "sdpa"}, {}):
