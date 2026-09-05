@@ -1,0 +1,9 @@
+{
+  "description": "Development comparison, not an unseen-object acceptance benchmark. Same cube; vary release policy and destination geometry.",
+  "cases": [
+    {"name": "strict_repeat", "release_max_age_s": 0.35, "fixture": "region", "destination": "blue square", "relation": "on", "x": 0.25, "y": -0.198},
+    {"name": "stationary_repeat", "release_max_age_s": 1.0, "fixture": "region", "destination": "blue square", "relation": "on", "x": 0.25, "y": -0.198},
+    {"name": "stationary_shift_xy", "release_max_age_s": 1.0, "fixture": "region", "destination": "blue square", "relation": "on", "x": 0.24, "y": -0.185},
+    {"name": "stationary_tray", "release_max_age_s": 1.0, "fixture": "tray", "destination": "blue tray", "relation": "inside", "x": 0.25, "y": -0.198}
+  ]
+}
