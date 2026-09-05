@@ -24,7 +24,8 @@ def main():
     parser.add_argument("--cases", default="cube,apple,hammer,wrench,coffee_mug")
     parser.add_argument("--seeds", default="0")
     parser.add_argument("--profiles", default="off,assisted,active")
-    parser.add_argument("--backend", choices=("graspgenx", "geometric"), default="graspgenx")
+    parser.add_argument("--backend", choices=("graspgenx", "geometric", "m2t2"), default="graspgenx")
+    parser.add_argument("--m2t2-port", type=int, default=5562)
     parser.add_argument("--segmenter", choices=("depth", "sam2"), default="depth")
     parser.add_argument("--drop-initial-wrist-frames", type=int, default=0)
     parser.add_argument("--test-target-shift-m", type=float, default=0.)
@@ -66,6 +67,7 @@ def main():
         command = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
                    str(ROOT / "scripts/run_fine_grasp_demo.ps1"), "-Benchmark", "-Backend", args.backend,
                    "-Recovery", profile, "-Perception", "single", "-Segmenter", args.segmenter,
+                   "-M2T2Port", str(args.m2t2_port),
                    "-DropInitialWristFrames", str(args.drop_initial_wrist_frames),
                    "-TestTargetShiftM", str(args.test_target_shift_m),
                    "-SceneView", args.scene_view,

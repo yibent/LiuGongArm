@@ -41,6 +41,9 @@ class FailureCode(str, Enum):
     GRIPPER_FAILURE = "gripper_failure"
     GRASP_NOT_DETECTED = "grasp_not_detected"
     LIFT_VERIFICATION_FAILED = "lift_verification_failed"
+    PLACE_UNREACHABLE = "place_unreachable"
+    PLACE_COLLISION = "place_collision"
+    PLACE_VERIFICATION_FAILED = "place_verification_failed"
     ABORTED = "aborted"
     INTERNAL_ERROR = "internal_error"
 
@@ -76,6 +79,18 @@ class FineGraspPhase(str, Enum):
     VERIFY_CLOSE = "verify_close"
     LIFT = "lift"
     VERIFY_LIFT = "verify_lift"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
+class PickPlacePhase(str, Enum):
+    """Phases after a verified grasp when the object is carried to a region."""
+
+    GRASP = "grasp"
+    TRANSPORT = "transport"
+    PLACE = "place"
+    RELEASE = "release"
+    VERIFY_PLACE = "verify_place"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
 
@@ -220,6 +235,38 @@ class FineGraspRequest:
     request_id: str | None = None
     timeout_s: float | None = None
     dry_run: bool = False
+
+
+@dataclass(frozen=True)
+class PlaceRequest:
+    """A metric placement region expressed in the robot base frame."""
+
+    center_base_m: tuple[float, float, float]
+    size_xy_m: tuple[float, float] = (0.12, 0.12)
+    surface_z_m: float | None = None
+    object_id: str | None = None
+    timeout_s: float | None = None
+    dry_run: bool = False
+
+    def __post_init__(self) -> None:
+        if len(self.center_base_m) != 3 or not np.isfinite(self.center_base_m).all():
+            raise ValueError("center_base_m must contain three finite values")
+        if len(self.size_xy_m) != 2 or not np.isfinite(self.size_xy_m).all():
+            raise ValueError("size_xy_m must contain two finite values")
+        if min(self.size_xy_m) <= 0:
+            raise ValueError("size_xy_m must be positive")
+        if self.surface_z_m is not None and not np.isfinite(self.surface_z_m):
+            raise ValueError("surface_z_m must be finite")
+
+
+@dataclass(frozen=True)
+class PlaceResult:
+    success: bool
+    phase: PickPlacePhase
+    failure: FailureCode | None = None
+    message: str = ""
+    selected_pose: Matrix4 | None = None
+    metrics: Mapping[str, float | int | str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

@@ -19,6 +19,10 @@ PHASE_MESSAGES = {
     "verify_close": "正在验证是否夹住目标。",
     "lift": "正在抬升目标，等待验证。",
     "verify_lift": "正在验证目标是否随夹爪抬升。",
+    "transport": "抓取已验证，正在搬运到放置区域。",
+    "place": "正在根据 M2T2 放置候选下降到目标区域。",
+    "release": "正在释放目标，尚未确认落点。",
+    "verify_place": "正在验证目标已脱离夹爪并落入放置区域。",
 }
 
 RECOVERY_MESSAGES = {
@@ -132,6 +136,7 @@ class IsaacGraspSession:
         self.scene = scene
         self.node = None
         self.recorder = None
+        self.place_result = None
 
     def check(self):
         from isaacsim.core.experimental.utils import app as app_utils
@@ -152,7 +157,9 @@ class IsaacGraspSession:
         from mr_liu.grasp.adapters.isaac_gripper import IsaacGripperController
         from mr_liu.grasp.adapters.isaac_motion import IsaacCumotionExecutor
         from mr_liu.grasp.backends.factory import create_grasp_backend
-        from mr_liu.grasp.contracts import FineGraspRequest, TargetSpec
+        from mr_liu.grasp.backends.m2t2 import M2T2Config, M2T2PlacementPlanner
+        from mr_liu.grasp.contracts import FineGraspRequest, PlaceRequest, TargetSpec
+        from mr_liu.grasp.place import PickPlaceController
         from mr_liu.grasp.live_assembly import assemble_live_grasp
         from mr_liu.grasp.debug import FineGraspDebugRecorder
 
@@ -177,6 +184,9 @@ class IsaacGraspSession:
             raise ValueError("目标没有动态刚体，不能执行物理抓取。")
         config = fine_grasp_config()
         config["backend"] = self.backend
+        requested_place = self.target.get("place") if isinstance(self.target, dict) else None
+        if isinstance(requested_place, dict):
+            config["place"] = {**config.get("place", {}), **requested_place}
         if self.backend == "graspgenx":
             # Never silently degrade the live BusAgent path to geometric grasps.
             config["backends"]["graspgenx"]["fallback_backend"] = "none"
@@ -230,6 +240,8 @@ class IsaacGraspSession:
             self.scene, T_base_world=np.eye(4), advance_frame=self.advance,
             robot_mask_provider=lambda: self.scene.instance_mask("/World/SO101", leaf_paths=True),
         ), self.check) if self.scene is not None else None
+        self.scene_camera_for_place = scene_camera
+        self.gripper_for_place = gripper
         report_progress = GraspProgressReporter(self.progress)
 
         def trace(event):
@@ -248,7 +260,89 @@ class IsaacGraspSession:
             target=target, request_id=command_id,
             timeout_s=110., dry_run=False,
         ))
+        # M2T2 is the only backend that opts into the full pick-and-place
+        # contract.  Existing GraspGenX/geometric runs retain their tested
+        # grasp-and-lift behaviour until a placement region is explicitly
+        # configured for them.
+        place_cfg = config.get("place", {})
+        if result.success and self.backend == "m2t2" and bool(place_cfg.get("enabled", True)):
+            result = self._execute_place(
+                result, target, config, place_cfg, M2T2Config, M2T2PlacementPlanner,
+                PlaceRequest, PickPlaceController,
+            )
         return self.result_output(result)
+
+    def _execute_place(self, grasp_result, target, config, place_cfg,
+                        M2T2Config, M2T2PlacementPlanner, PlaceRequest,
+                        PickPlaceController):
+        """Run M2T2 placement and require external-camera落点 evidence."""
+        observer = getattr(self.node, "observer", None)
+        evidence = getattr(observer, "latest", None)
+        if observer is None or evidence is None or len(evidence.points_base) < 6:
+            from mr_liu.grasp.contracts import FailureCode, PickPlacePhase, PlaceResult
+            self.place_result = PlaceResult(
+                False, PickPlacePhase.FAILED, FailureCode.PLACE_VERIFICATION_FAILED,
+                "抬升后没有足够的双相机持物点云，拒绝盲放。",
+            )
+            return grasp_result
+        # IsaacSceneCamera.capture supplies the calibrated base/camera chain
+        # and advances to a fresh render frame; the first captured frame is
+        # the reference for M2T2's held-object cloud.
+        before = self.scene_camera_for_place.capture(target)
+        if before is None:
+            from mr_liu.grasp.contracts import FailureCode, PickPlacePhase, PlaceResult
+            self.place_result = PlaceResult(
+                False, PickPlacePhase.FAILED, FailureCode.PLACE_VERIFICATION_FAILED,
+                "放置前固定相机采集失败，拒绝释放。",
+            )
+            return grasp_result
+        section = config.get("backends", {}).get("m2t2", {})
+        planner = M2T2PlacementPlanner(
+            M2T2Config.from_mapping(section),
+            transport=getattr(getattr(self.backend_instance, "primary", self.backend_instance), "transport", None),
+        )
+        request = PlaceRequest(
+            center_base_m=tuple(float(v) for v in place_cfg.get("target_center_base_m", [0.68, 0.0, 1.05])),
+            size_xy_m=tuple(float(v) for v in place_cfg.get("target_size_xy_m", [0.14, 0.14])),
+            surface_z_m=float(place_cfg["surface_z_m"]) if place_cfg.get("surface_z_m") is not None else None,
+            object_id=target.object_id,
+        )
+        def find_center(current_target, req):
+            found = observer.observe(current_target, expected_center=np.asarray(req.center_base_m, dtype=float))
+            return None if found is None else found.center_base_m
+        self.progress("transport", "抓取验证通过，正在规划 M2T2 放置。", event="transport_start")
+        controller = PickPlaceController(
+            motion=self.executor, gripper=self.gripper_for_place,
+            planner=planner.generate, camera=self.scene_camera_for_place,
+            target=target, observer=find_center,
+            max_width_m=float(place_cfg.get("max_width_m", 0.075)),
+            speed_scale=float(place_cfg.get("speed_scale", 0.35)),
+            release_speed_mps=float(place_cfg.get("release_speed_mps", 0.025)),
+        )
+        try:
+            self.place_result = controller.execute(
+                request, held_points_base=np.asarray(evidence.points_base), before_observation=before,
+            )
+        except Exception as exc:
+            from mr_liu.grasp.contracts import FailureCode, PickPlacePhase, PlaceResult
+            self.place_result = PlaceResult(
+                False, PickPlacePhase.FAILED, FailureCode.MODEL_INFERENCE_FAILED,
+                f"M2T2 放置规划失败，未释放目标：{type(exc).__name__}: {exc}",
+            )
+        if not self.place_result.success:
+            from dataclasses import replace
+            from mr_liu.grasp.contracts import FailureCode, FineGraspPhase
+            metrics = {**dict(grasp_result.metrics), "place_success": 0,
+                       "place_failure": self.place_result.failure.value if self.place_result.failure else "unknown",
+                       **dict(self.place_result.metrics)}
+            return replace(
+                grasp_result, success=False, phase=FineGraspPhase.FAILED,
+                failure=self.place_result.failure or FailureCode.PLACE_VERIFICATION_FAILED,
+                message=f"抓取抬升成功，但放置未验证：{self.place_result.message}", metrics=metrics,
+            )
+        from dataclasses import replace
+        metrics = {**dict(grasp_result.metrics), "place_success": 1, **dict(self.place_result.metrics)}
+        return replace(grasp_result, message="抓取、搬运、放置及落点验证成功", metrics=metrics)
 
     def observation_blocked(self, diagnostics, reason="当前姿态下未找到可达且无碰撞的腕部观察位置"):
         proposal = self.executor.initial_pose_proposal()
@@ -276,6 +370,9 @@ class IsaacGraspSession:
     def result_output(self, result):
         output = {**jsonable(result), "retry_available": self.node.pending_retry is not None,
                   "attempt_results": jsonable(self.node.attempt_results)}
+        if self.place_result is not None:
+            output["place"] = jsonable(self.place_result)
+            output["retry_available"] = False
         (self.recorder.output_dir / f"report-{uuid.uuid4().hex}.json").write_text(
             json.dumps(output, ensure_ascii=False, indent=2), encoding="utf-8")
         return output

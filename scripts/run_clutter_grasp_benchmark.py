@@ -39,8 +39,9 @@ def _args() -> argparse.Namespace:
                         help="Stop after scene-to-wrist handoff; useful for perception/path checks")
     parser.add_argument("--dry-run", action="store_true",
                         help="Run FineGrasp planning without scoring a physical lift")
-    parser.add_argument("--backend", choices=("geometric", "graspgenx"), default="geometric")
+    parser.add_argument("--backend", choices=("geometric", "graspgenx", "m2t2"), default="geometric")
     parser.add_argument("--graspgenx-port", type=int, default=5556)
+    parser.add_argument("--m2t2-port", type=int, default=5562)
     parser.add_argument("--locator-port", type=int, default=5570)
     parser.add_argument("--localization-mode", choices=("florence", "florence_yoloe"), default="florence_yoloe")
     parser.add_argument("--perception", choices=("single", "multiview"), default="multiview")
@@ -91,7 +92,8 @@ def _run_one(args: argparse.Namespace, scene: ClutterScene, target_case, run_dir
         "--case-json", str(case_path), "--clutter-case-json", str(scene_path),
         "--locator-port", str(args.locator_port),
         "--localization-mode", args.localization_mode, "--backend", args.backend,
-        "--graspgenx-port", str(args.graspgenx_port), "--perception", args.perception,
+        "--graspgenx-port", str(args.graspgenx_port), "--m2t2-port", str(args.m2t2_port),
+        "--perception", args.perception,
         "--recovery", args.recovery, "--segmenter", args.segmenter,
         "--headless" if args.headless else "--no-headless",
         "--output", str(run_dir),

@@ -66,9 +66,10 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--headless", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--record-video", action="store_true")
     parser.add_argument(
-        "--backend", choices=("geometric", "graspgenx"), default="geometric"
+        "--backend", choices=("geometric", "graspgenx", "m2t2"), default="geometric"
     )
     parser.add_argument("--graspgenx-port", type=int, default=5556)
+    parser.add_argument("--m2t2-port", type=int, default=5562)
     parser.add_argument("--perception", choices=("single", "multiview"), default="single")
     parser.add_argument("--segmenter", choices=("depth", "sam2"), default="depth")
     parser.add_argument("--recovery", choices=("off", "assisted", "active"), default="off")
@@ -144,6 +145,8 @@ def _run_case(args: argparse.Namespace, case: BenchmarkCase, run_dir: Path) -> d
         args.backend,
         "--graspgenx-port",
         str(args.graspgenx_port),
+        "--m2t2-port",
+        str(args.m2t2_port),
         "--perception", args.perception,
         "--segmenter", args.segmenter,
         "--recovery", args.recovery,

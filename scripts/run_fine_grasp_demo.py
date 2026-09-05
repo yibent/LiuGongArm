@@ -24,9 +24,10 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--record-video", action="store_true",
                         help="Record overview + two RGB-D RGB panels to demo.mp4 (adds render cost)")
     parser.add_argument(
-        "--backend", choices=("geometric", "graspgenx"), default="geometric"
+        "--backend", choices=("geometric", "graspgenx", "m2t2"), default="geometric"
     )
     parser.add_argument("--graspgenx-port", type=int, default=5556)
+    parser.add_argument("--m2t2-port", type=int, default=5562)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--label", help="Opt-in label -> external RGB-D/LK coarse approach -> wrist FineGrasp")
     parser.add_argument("--locator-port", type=int, default=5570)
@@ -100,7 +101,7 @@ from mr_liu.grasp.benchmark import (
     load_case,
     spawn_benchmark_target,
 )
-from mr_liu.grasp.contracts import FineGraspRequest, ObjectProperties, TargetSpec
+from mr_liu.grasp.contracts import FineGraspRequest, ObjectProperties, PlaceRequest, TargetSpec
 from mr_liu.grasp.debug import DebugSegmenter, FineGraspDebugRecorder
 from mr_liu.grasp.node import GeneralGraspNode
 from mr_liu.grasp.segmentation import AppearanceDepthTrackerSegmenter, SeededDepthSegmenter
@@ -108,9 +109,11 @@ from mr_liu.grasp.identity import GeometricIdentitySegmenter, RemotePromptSegmen
 from mr_liu.grasp.recovery import RecoveringGraspNode, RecoveryConfig
 from mr_liu.grasp.scene_observer import SceneTargetObserver, SceneAssistedVerifier
 from mr_liu.grasp.backends.graspgenx import ZmqGraspGenXTransport
+from mr_liu.grasp.backends.m2t2 import M2T2Config, M2T2PlacementPlanner
 from mr_liu.grasp.settings import FineGraspSettings
 from mr_liu.grasp.transforms import invert_transform, transform_points, look_at_opencv, matrix_to_quaternion_wxyz
 from mr_liu.grasp.verification import VisionGripperVerifier
+from mr_liu.grasp.place import PickPlaceController
 from mr_liu.perception.camera import spawn_configured_cameras
 from mr_liu.robot.so101 import So101Arm
 from mr_liu.sim.spawn import spawn_table_and_so101
@@ -208,6 +211,7 @@ def main() -> int:
     grasp_cfg = fine_grasp_config().copy()
     grasp_cfg["backend"] = ARGS.backend
     grasp_cfg["backends"]["graspgenx"]["planner"] = ARGS.planner
+    grasp_cfg["backends"]["m2t2"]["port"] = ARGS.m2t2_port
     if ARGS.perception == "multiview":
         grasp_cfg["fusion"] = {"enabled": True}
         grasp_cfg["active_views"] = {"enabled": True}
@@ -442,6 +446,23 @@ def main() -> int:
     initial_observation = camera.capture(target)
     if initial_observation is None:
         raise RuntimeError("Wrist RGB-D camera did not produce an initial frame")
+    place_scene_camera = None
+    place_observer = None
+    if ARGS.backend == "m2t2":
+        place_scene_camera = IsaacSceneCamera(
+            cameras["scene"], T_base_world=np.eye(4),
+            advance_frame=advance_observation_frame,
+            robot_mask_provider=lambda: cameras["scene"].instance_mask("/World/SO101", leaf_paths=True),
+        )
+        place_observer = SceneTargetObserver(
+            place_scene_camera,
+            table_height_m=grasp_cfg["selection"]["table_height_m"],
+            require_robot_mask=True,
+            recorder=FineGraspDebugRecorder(OUTPUT / "placement" / "overhead"),
+        )
+        # Establish an appearance anchor before the object is lifted.  This
+        # observation is evidence only and is never used as a pose hint.
+        place_observer.observe(target)
     cv2.imwrite(
         str(OUTPUT / "initial_wrist.png"), initial_observation.rgb[:, :, ::-1]
     )
@@ -613,6 +634,61 @@ def main() -> int:
     result = node.execute(
         FineGraspRequest(target=target, request_id="isaac-demo", dry_run=ARGS.dry_run)
     )
+    place_result = None
+    if result.success and ARGS.backend == "m2t2" and not ARGS.dry_run:
+        from dataclasses import replace
+        from mr_liu.grasp.contracts import FailureCode, FineGraspPhase, PickPlacePhase, PlaceResult
+        observer = getattr(node, "observer", None) or place_observer
+        scene_camera = place_scene_camera
+        if observer is None or scene_camera is None:
+            place_result = PlaceResult(False, PickPlacePhase.FAILED,
+                                       FailureCode.PLACE_VERIFICATION_FAILED,
+                                       "放置验证相机未初始化。")
+        else:
+            evidence = observer.observe(target, expected_center=executor.robot_state().T_base_ee[:3, 3])
+            if evidence is None:
+                evidence = observer.latest
+            if evidence is None:
+                place_result = PlaceResult(False, PickPlacePhase.FAILED,
+                                           FailureCode.PLACE_VERIFICATION_FAILED,
+                                           "抬升后没有获得固定相机持物证据。")
+            else:
+                section = grasp_cfg["backends"]["m2t2"]
+                backend_for_place = getattr(node, "backend", None)
+                while hasattr(backend_for_place, "primary"):
+                    backend_for_place = backend_for_place.primary
+                planner = M2T2PlacementPlanner(
+                    M2T2Config.from_mapping(section),
+                    transport=getattr(backend_for_place, "transport", None),
+                )
+                place_cfg = grasp_cfg.get("place", {})
+                place_request = PlaceRequest(
+                    center_base_m=tuple(place_cfg.get("target_center_base_m", [0.68, 0., 1.05])),
+                    size_xy_m=tuple(place_cfg.get("target_size_xy_m", [0.14, 0.14])),
+                    surface_z_m=place_cfg.get("surface_z_m"), object_id=target.object_id,
+                )
+                def placement_center(current_target, req):
+                    found = observer.observe(current_target, expected_center=np.asarray(req.center_base_m, dtype=float))
+                    return None if found is None else found.center_base_m
+                controller = PickPlaceController(
+                    motion=executor, gripper=gripper, planner=planner.generate,
+                    camera=scene_camera, target=target, observer=placement_center,
+                    max_width_m=float(place_cfg.get("max_width_m", 0.075)),
+                    speed_scale=float(place_cfg.get("speed_scale", 0.35)),
+                    release_speed_mps=float(place_cfg.get("release_speed_mps", 0.025)),
+                )
+                place_result = controller.execute(
+                    place_request, held_points_base=evidence.points_base,
+                    before_observation=evidence.observation,
+                )
+        if place_result is not None and not place_result.success:
+            result = replace(result, success=False, phase=FineGraspPhase.FAILED,
+                             failure=place_result.failure or FailureCode.PLACE_VERIFICATION_FAILED,
+                             message=f"抓取抬升成功，但放置未验证：{place_result.message}",
+                             metrics={**dict(result.metrics), "place_success": 0, **dict(place_result.metrics)})
+        elif place_result is not None:
+            result = replace(result, message="抓取、搬运、放置及落点验证成功",
+                             metrics={**dict(result.metrics), "place_success": 1, **dict(place_result.metrics)})
     final_observation = camera.capture(target)
     if final_observation is not None:
         cv2.imwrite(str(OUTPUT / "final_wrist.png"), final_observation.rgb[:, :, ::-1])
@@ -648,6 +724,7 @@ def main() -> int:
         "attempt_physics": attempt_physics,
         "effective_config": grasp_cfg,
         "result": _jsonable(result),
+        "place": _jsonable(place_result),
         "initial_target_position_m": initial_target_position,
         "final_target_position_m": final_target_position,
         "actual_target_lift_m": final_target_position[2] - initial_target_position[2],

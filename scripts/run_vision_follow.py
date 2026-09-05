@@ -18,7 +18,7 @@ parser.add_argument("--fast", choices=["yoloe", "cv"], default="yoloe")
 parser.add_argument("--slow-interval", type=int, default=45)
 parser.add_argument("--control-host", default="127.0.0.1")
 parser.add_argument("--control-port", type=int, default=7861)
-parser.add_argument("--grasp-backend", choices=["graspgenx", "geometric", "disabled"], default="graspgenx")
+parser.add_argument("--grasp-backend", choices=["graspgenx", "geometric", "m2t2", "disabled"], default="graspgenx")
 parser.add_argument(
     "--no-follow",
     action="store_true",

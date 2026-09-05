@@ -166,7 +166,7 @@ def main(
             arm, cameras["wrist"], app, 1/float(motion.get("render_hz", 30)), grounded, selected, guard, progress,
             backend=grasp_backend, output_root=repo_root() / "output/busagent_grasp",
             scene=cameras["scene"],
-        ))
+        ), supports_place=(grasp_backend == "m2t2"))
 
     def update_motion():
         q = arm.articulation.get_dof_positions().numpy().reshape(-1)

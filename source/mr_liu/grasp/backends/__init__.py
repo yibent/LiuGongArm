@@ -9,6 +9,7 @@ from mr_liu.grasp.backends.graspgenx import (
     SweepVolume,
     ZmqGraspGenXTransport,
 )
+from mr_liu.grasp.backends.m2t2 import M2T2Backend, M2T2Config, M2T2PlacementPlanner, ZmqM2T2Transport
 
 __all__ = [
     "FallbackGraspBackend",
@@ -17,5 +18,9 @@ __all__ = [
     "GraspGenXConfig",
     "SweepVolume",
     "ZmqGraspGenXTransport",
+    "M2T2Backend",
+    "M2T2Config",
+    "M2T2PlacementPlanner",
+    "ZmqM2T2Transport",
     "create_grasp_backend",
 ]

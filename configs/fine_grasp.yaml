@@ -8,6 +8,26 @@ fusion:
 active_views:
   enabled: false
 backends:
+  m2t2:
+    # M2T2 runs in an isolated torch/CUDA process.  The main Isaac process
+    # only uses the msgpack client below.  The official generic checkpoint is
+    # downloaded by scripts/setup_m2t2.ps1 into _models/m2t2/.
+    host: 127.0.0.1
+    port: 5562
+    timeout_ms: 8000
+    model_frame: base
+    checkpoint: _models/m2t2/m2t2.pth
+    max_scene_points: 16384
+    max_object_points: 1024
+    max_candidates: 64
+    min_confidence: 0.0
+    contact_radius_m: 0.030
+    width_margin_m: 0.010
+    gripper_depth_m: 0.1034
+    # Preserve the existing learned FineGrasp path if M2T2 is unavailable or
+    # produces no target contact.  Set to none for strict M2T2-only trials.
+    fallback_backend: graspgenx
+    fallback_on_empty: true
   graspgenx:
     # Run the weight-bearing server from the isolated GraspGenX environment.
     # BusAgent/Isaac stays a small torch-free ZMQ client.
@@ -121,6 +141,17 @@ loop:
   servo_max_steps: 40
   lift_distance_m: 0.080
   verify_settle_s: 0.25
+
+# Used only when the selected backend is ``m2t2``.  The region is expressed in
+# the configured robot base frame and is checked again after release.
+place:
+  enabled: true
+  target_center_base_m: [0.68, 0.00, 1.05]
+  target_size_xy_m: [0.14, 0.14]
+  surface_z_m: 1.05
+  max_width_m: 0.075
+  speed_scale: 0.35
+  release_speed_mps: 0.025
 
 debug:
   enabled: true

@@ -1,7 +1,7 @@
 param(
     [string]$Label = 'red cube',
     [ValidateSet('florence', 'florence_yoloe')][string]$LocalizationMode = 'florence_yoloe',
-    [ValidateSet('geometric', 'graspgenx')][string]$Backend = 'graspgenx',
+    [ValidateSet('geometric', 'graspgenx', 'm2t2')][string]$Backend = 'graspgenx',
     [ValidateSet('off', 'assisted', 'active')][string]$Recovery = 'active',
     [ValidateSet('fine_grasp', 'tabletop_wide')][string]$WristCameraProfile = 'fine_grasp',
     [string]$CaseJson = '', [string]$Output = '',

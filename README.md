@@ -13,7 +13,12 @@ Florence/YOLOE 定位 → 真正的 LK 光流 → 经安全检查的粗接近 �
 
 现有 Web/语音控制链路的抓取接入见 [运行说明](docs/BUSAGENT_GRASP_RUNTIME.md)：
 单物体定位、接近、腕部抓取、抬升验证与中断已接入代码。
-Web 运行时已装配默认双相机辅助，失败后等待对话指令再恢复；当前控制器尚不支持放置。
+Web 运行时已装配默认双相机辅助，失败后等待对话指令再恢复；
+`feature/m2t2-grasp-place` 分支在选择 M2T2 后还会执行搬运、释放和落点验证。
+
+M2T2 抓取到放置的结构、坐标系、服务连接、权重校验和失败码见
+[M2T2 抓取到放置说明](docs/M2T2_PICK_PLACE.md)。该分支保留原有
+Florence/YOLOE 定位、FineGrasp 安全筛选和 GraspGenX 回退链路。
 
 新增 `GeneralGraspNode` / `FineGraspSkill`：机械臂靠近目标后，以腕部 RGB-D 持续观测，
 通过 GraspGenX 候选、IK/碰撞筛选和小步伺服完成接近、闭爪、抬升与验证。
@@ -123,6 +128,7 @@ FineGrasp 的架构、Isaac 闭环 demo、失败排查和真机前置条件见
 | 做什么 | 命令 |
 |---|---|
 | 腕部 RGB-D 精细抓取闭环（默认 GraspGenX，不自动几何回退） | `scripts\run_fine_grasp_demo.bat` |
+| M2T2 抓取→搬运→放置（需独立 CUDA 服务） | `scripts\run_fine_grasp_demo.ps1 -Backend m2t2 -Label "red block" -NoHeadless` |
 | 拖绿立方体，臂跟随（一期） | `scripts\run_follow_target.bat` |
 | 场景相机 → FIND/TRACK → 立方体 → 臂 | `scripts\run_vision_follow.bat` |
 | 杂乱桌面/多障碍物/碰撞拒绝基准 | `scripts\run_clutter_grasp_benchmark.py`（说明见 `docs\CLUTTER_COLLISION_BENCHMARK.md`） |
@@ -138,6 +144,11 @@ FineGrasp wrapper 在自己启动模型服务时会等待 GraspGenX warmup 返�
 3.39 mm/0.15°、腕部视觉验证抬升 82.05 mm、Isaac 刚体实际抬升 82.06 mm。
 这不代表当前基线已通过验收；最新双 RGB-D 基线回归实际抬升 80.24 mm，
 但节点视觉随动验证失败，完整结果和限制见上述基线说明。
+
+M2T2 使用独立进程隔离 CUDA/PointNet++ 依赖：先按
+[`docs/M2T2_PICK_PLACE.md`](docs/M2T2_PICK_PLACE.md) 准备 `_envs/m2t2`，或设置
+`M2T2_PYTHON`，再由 wrapper 自动启动端口 `5562` 的服务。当前开发机没有 CUDA
+版 PyTorch，因此只完成客户端、状态机和协议回归，未把真实 M2T2 推理结果标记为已验证。
 
 双 RGB-D 相机运行时验证（本机 PowerShell；不会执行抓取）：
 
@@ -233,7 +244,7 @@ curl -X POST http://127.0.0.1:7861/api/command \
 
 ### 接入 BusAgent 语音控制
 
-先保持上述 `run_vision_follow.py` 运行，再启动独立仓库 `BusAgent/backend` 和 Web 前端。BusAgent 会把语音指令转换为结构化技能，通过 `/api/command` 下发；当前支持目标识别、跟随、基础运动和已接入控制器的单物体抓取，放置未实现。视觉记忆已提供控制 API，但尚未接入 BusAgent 的记忆语音意图，不能仅凭接口存在就宣称支持语音记忆。实际能力以 `/api/capabilities` 为准，详见 [BusAgent 说明](docs/BUSAGENT_README.md)。
+先保持上述 `run_vision_follow.py` 运行，再启动独立仓库 `BusAgent/backend` 和 Web 前端。BusAgent 会把语音指令转换为结构化技能，通过 `/api/command` 下发；当前支持目标识别、跟随、基础运动和已接入控制器的单物体抓取。将控制器配置为 M2T2 且提供放置区域后，抓取会继续执行搬运、释放和放置验证；默认 GraspGenX 控制器仍只执行抓取与抬升验证。视觉记忆已提供控制 API，但尚未接入 BusAgent 的记忆语音意图，不能仅凭接口存在就宣称支持语音记忆。实际能力以 `/api/capabilities` 为准，详见 [BusAgent 说明](docs/BUSAGENT_README.md)。
 
 ### 验证结果
 

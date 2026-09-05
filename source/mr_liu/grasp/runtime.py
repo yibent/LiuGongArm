@@ -19,12 +19,14 @@ class GraspInterrupted(RuntimeError):
 
 
 class GraspRuntime:
-    def __init__(self, control, session_factory, *, clock=time.monotonic, timeout_s=150):
+    def __init__(self, control, session_factory, *, clock=time.monotonic, timeout_s=150,
+                 supports_place: bool = False):
         self.control = control
         self.motion = control.motion
         self.session_factory = session_factory
         self.clock = clock
         self.timeout_s = timeout_s
+        self.supports_place = bool(supports_place)
         self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="grasp-grounding")
         self.job = None
         self.running = False
@@ -34,7 +36,10 @@ class GraspRuntime:
     def capabilities(self):
         return dict(dual_camera_default=True, retry_via_dialogue=True, max_attempts=2,
                     scene_assisted_verification=True, robot_self_mask=True,
-                    geometric_fallback=False, preparation_via_dialogue=True)
+                    geometric_fallback=False, preparation_via_dialogue=True,
+                    m2t2_pick_place=self.supports_place,
+                    placement_requires_region=self.supports_place,
+                    placement_requires_post_release_observation=self.supports_place)
 
     def status(self):
         with self.motion.lock:
@@ -223,7 +228,9 @@ class GraspRuntime:
                       session.retry(job["cid"]) if "retry_session" in job else session.execute(job["cid"]))
             self.guard()  # A cancelled request cannot be reported successful.
             state = "completed" if result.get("success") is True else "failed"
-            message = ("目标已抓起，夹持与抬升视觉验证通过。" if state == "completed"
+            placed = bool((result or {}).get("place", {}).get("success"))
+            message = (("目标已抓取、搬运并完成放置验证。" if placed else "目标已抓起，夹持与抬升视觉验证通过。")
+                       if state == "completed"
                        else f"抓取未完成：{result.get('failure') or 'verification_failed'}；{result.get('message', '')}")
             if result.get("preparation_only") is True:
                 message = result["message"]

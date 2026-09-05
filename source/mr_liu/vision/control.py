@@ -163,19 +163,20 @@ class VisionRuntimeControl:
 
     def capabilities(self) -> dict[str, Any]:
         from mr_liu.motion.commands import MOTION_SKILLS
+        place_capable = bool(self.grasp and self.grasp.capabilities().get("m2t2_pick_place"))
         return {
             "skills": ["select_target", "perceive", "follow", "hold", "stop", "status", "capabilities"]
                       + (sorted(MOTION_SKILLS - {"hold", "stop"}) if self.motion is not None else [])
                       + (["remember", "recall", "forget"] if self.memory_store is not None else [])
                       + (["grasp"] if self.grasp is not None else []),
-            "unsupported": ["plan_grasp", "transport", "place", "verify_placement"] + ([] if self.grasp else ["grasp"]),
+            "unsupported": ["plan_grasp", "transport"] + ([] if place_capable else ["place", "verify_placement"]) + ([] if self.grasp else ["grasp"]),
             "grasp": self.grasp.capabilities() if self.grasp else None,
             "message": "当前支持识别、跟随、暂停和停止" + (
                 "，以及关节转动、末端移动、归位、夹爪开合、调速和物体相对定位。"
                 if self.motion is not None else "。基础运动控制尚未接入。") + (
                 "支持物体多视角记忆、回忆定位和删除记忆。" if self.memory_store is not None else ""
             ) + (
-                "支持单物体抓取，默认双RGB-D辅助验证与机器人自遮罩；失败后通过对话确认，符合条件才重新观察并重试一次，持物不确定时停止。未通过泛化验收。放置未实现，夹爪闭合不代表抓取成功。"
+                "支持单物体抓取；" + ("M2T2 后端还支持搬运、释放和放置后双相机验证。" if place_capable else "") + "失败后通过对话确认，符合条件才重新观察并重试一次，持物不确定时停止。"
                 if self.grasp else "抓取和放置尚未实现，夹爪闭合不代表抓取成功。"),
         }
 

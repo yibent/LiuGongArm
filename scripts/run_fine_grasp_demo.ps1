@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("geometric", "graspgenx")]
+    [ValidateSet("geometric", "graspgenx", "m2t2")]
     [string]$Backend = "graspgenx",
     [switch]$NoHeadless,
     [switch]$KeepOpen,
@@ -15,6 +15,7 @@ param(
     [ValidateRange(0, 120)]
     [double]$StartDelayS = 0,
     [int]$Port = 5556,
+    [int]$M2T2Port = 5562,
     [string]$Output = "",
     [switch]$Benchmark,
     [ValidateSet("single", "multiview")]
@@ -46,6 +47,7 @@ else {
     "D:\isaac\env_isaacsim60\python.exe"
 }
 $ModelPython = Join-Path $ProjectRoot "_envs\graspgenx\python.exe"
+$M2T2Python = if ($env:M2T2_PYTHON) { $env:M2T2_PYTHON } elseif (Test-Path (Join-Path $ProjectRoot "_envs\m2t2\python.exe")) { Join-Path $ProjectRoot "_envs\m2t2\python.exe" } else { $null }
 $ModelRoot = Join-Path $ProjectRoot "_vendor\GraspGenX"
 $CheckpointRoot = Join-Path $ProjectRoot "_models\graspgenx\checkpoints\release"
 $CheckpointCacheRoot = Split-Path -Parent $CheckpointRoot
@@ -53,6 +55,7 @@ $GripperConfigRoot = Join-Path $ModelRoot "ext\gripper_descriptions"
 $OutputRoot = Join-Path $ProjectRoot "output\graspgenx_server"
 $ServerProcess = $null
 $WarmupProcess = $null
+$M2T2Process = $null
 
 if (($KeepOpen -or $StartDelayS -gt 0) -and ($Benchmark -or -not $NoHeadless)) {
     throw "-KeepOpen and -StartDelayS require -NoHeadless and a single demo (no -Benchmark)"
@@ -86,7 +89,33 @@ function Test-LocalPort([int]$TargetPort) {
 }
 
 try {
-    if ($Backend -eq "graspgenx" -and -not (Test-LocalPort $Port)) {
+    if ($Backend -eq "m2t2" -and -not (Test-LocalPort $M2T2Port)) {
+        if ([string]::IsNullOrWhiteSpace($M2T2Python) -or -not (Test-Path -LiteralPath $M2T2Python)) {
+            throw "M2T2 Python launcher was not found; set M2T2_PYTHON or create _envs\m2t2\python.exe with scripts/setup_m2t2.ps1"
+        }
+        $M2T2Checkpoint = Join-Path $ProjectRoot "_models\m2t2\m2t2.pth"
+        if (-not (Test-Path -LiteralPath $M2T2Checkpoint)) {
+            throw "M2T2 checkpoint is missing: $M2T2Checkpoint; run scripts/setup_m2t2.ps1 first"
+        }
+        $M2T2Output = Join-Path $ProjectRoot "output\m2t2_server"
+        New-Item -ItemType Directory -Force -Path $M2T2Output | Out-Null
+        $M2T2Process = Start-Process -FilePath $M2T2Python -ArgumentList @(
+            (Join-Path $PSScriptRoot "serve_m2t2.py"), "--host", "127.0.0.1",
+            "--port", "$M2T2Port", "--checkpoint", $M2T2Checkpoint) `
+            -WorkingDirectory $ProjectRoot -WindowStyle Hidden `
+            -RedirectStandardOutput (Join-Path $M2T2Output "stdout.log") `
+            -RedirectStandardError (Join-Path $M2T2Output "stderr.log") -PassThru
+        for ($Attempt = 0; $Attempt -lt 240; $Attempt++) {
+            if ($M2T2Process.HasExited) { throw "M2T2 server exited during startup; inspect $M2T2Output" }
+            if (Test-LocalPort $M2T2Port) { break }
+            Start-Sleep -Milliseconds 250
+        }
+        if (-not (Test-LocalPort $M2T2Port)) { throw "M2T2 server did not listen on port $M2T2Port within 60 seconds" }
+    }
+    # The default M2T2 configuration inherits GraspGenX as its recovery
+    # backend. Start that service alongside M2T2 so an unavailable/empty M2T2
+    # response can use the original learned path without manual setup.
+    if (($Backend -eq "graspgenx" -or $Backend -eq "m2t2") -and -not (Test-LocalPort $Port)) {
         foreach ($RequiredPath in @($ModelPython, $ModelRoot, $CheckpointRoot, $GripperConfigRoot)) {
             if (-not (Test-Path -LiteralPath $RequiredPath)) {
                 throw "GraspGenX local dependency is missing: $RequiredPath"
@@ -162,6 +191,7 @@ try {
             "--isaac-python", $IsaacPython,
             "--backend", $Backend,
             "--graspgenx-port", "$Port",
+            "--m2t2-port", "$M2T2Port",
             "--seeds", $Seeds,
             "--cases", $NormalizedCases,
             "--output", $Output
@@ -172,6 +202,7 @@ try {
             (Join-Path $PSScriptRoot "run_fine_grasp_demo.py"),
             "--backend", $Backend,
             "--graspgenx-port", "$Port",
+            "--m2t2-port", "$M2T2Port",
             "--output", $Output
         )
     }
@@ -208,5 +239,9 @@ finally {
     if ($null -ne $ServerProcess -and -not $ServerProcess.HasExited) {
         Stop-Process -Id $ServerProcess.Id
         $ServerProcess.WaitForExit(5000)
+    }
+    if ($null -ne $M2T2Process -and -not $M2T2Process.HasExited) {
+        Stop-Process -Id $M2T2Process.Id
+        $M2T2Process.WaitForExit(5000)
     }
 }

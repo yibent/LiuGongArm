@@ -1,0 +1,4 @@
+# Torch-free dependencies used by the Isaac/BusAgent M2T2 client.
+msgpack>=1.0,<2
+msgpack-numpy>=0.4.8,<0.5
+pyzmq>=25,<28
