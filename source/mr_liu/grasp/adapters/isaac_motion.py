@@ -459,6 +459,28 @@ class IsaacCumotionExecutor:
         self._plan_cache.clear()
         return self._target_reached(T_base_ee)
 
+    def move_place_step(self, T_base_ee: np.ndarray, *, speed_scale: float) -> bool:
+        """Execute a prechecked local placement step with measurable progress.
+
+        Joint tolerance alone can accept a ~4 mm Cartesian correction without
+        sending any command. Require up to 1 mm progress (capped at half the
+        measured FK error), then retain the ordinary endpoint/settling checks.
+        Grasp, global transit and lift keep their existing execution policies.
+        """
+        if np.linalg.norm(T_base_ee[:3,3]-self.arm.T_base_ee()[:3,3]) > .01:
+            return False
+        self._stopped = False
+        self.controller.set_track_orientation(self.plan_orientation)
+        path = self._plan(T_base_ee)
+        if not isinstance(path, _JointWaypointPath):
+            return False
+        completed = self._drive_joint_waypoint(
+            path.waypoints[-1], speed_scale=speed_scale, max_steps=self.max_move_steps,
+            minimum_cartesian_progress_m=.001,
+        )
+        self._plan_cache.clear()
+        return completed and self._target_reached(T_base_ee)
+
     def servo_to(self, T_base_ee: np.ndarray, *, speed_scale: float) -> bool:
         self._stopped = False
         self.controller.set_track_orientation(self.plan_orientation)

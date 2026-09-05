@@ -335,7 +335,8 @@ class IsaacPlaceMotion:
         # A bounded step only. Scene/world/self collision checks remain active.
         state_reader=getattr(self.executor,'robot_state',None)
         before_move=state_reader().T_base_ee.copy() if state_reader is not None else None
-        ok=self.executor.move_to(goal,speed_scale=.20)
+        move=getattr(self.executor,'move_place_step',self.executor.move_to)
+        ok=move(goal,speed_scale=.20)
         if not ok:
             self.last_failure="checked_motion_endpoint_not_reached"
             actual=state_reader().T_base_ee if state_reader is not None else None

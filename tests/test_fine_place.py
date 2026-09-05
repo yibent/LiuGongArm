@@ -57,6 +57,52 @@ class Rig:
 
 
 class FinePlaceTests(unittest.TestCase):
+    def test_place_step_requests_progress_on_exact_checked_path(self):
+        source=Path(__file__).resolve().parents[1]/'source/mr_liu/grasp/adapters/isaac_motion.py'
+        tree=ast.parse(source.read_text(encoding='utf-8'))
+        cls=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='IsaacCumotionExecutor')
+        method=next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name=='move_place_step')
+        class PathPlan:
+            waypoints=[np.zeros(1),np.array([.01875])]
+        env={'np':np,'_JointWaypointPath':PathPlan}
+        exec(compile(ast.Module(body=[method],type_ignores=[]),str(source),'exec'),env)
+        executor=SimpleNamespace(arm=SimpleNamespace(T_base_ee=lambda:np.eye(4)),
+            controller=SimpleNamespace(set_track_orientation=Mock()),plan_orientation=True,
+            _plan=Mock(return_value=PathPlan()),_drive_joint_waypoint=Mock(return_value=True),
+            _plan_cache={1:2},_target_reached=Mock(return_value=True),max_move_steps=120)
+        target=np.eye(4);target[0,3]=.004
+        self.assertTrue(env['move_place_step'](executor,target,speed_scale=.2))
+        self.assertEqual(executor._drive_joint_waypoint.call_args.kwargs['minimum_cartesian_progress_m'],.001)
+        np.testing.assert_array_equal(executor._drive_joint_waypoint.call_args.args[0],PathPlan.waypoints[-1])
+        target[0,3]=.02
+        self.assertFalse(env['move_place_step'](executor,target,speed_scale=.2))
+        self.assertEqual(executor._plan.call_count,1)
+        target[0,3]=.004;executor._plan.return_value=None
+        self.assertFalse(env['move_place_step'](executor,target,speed_scale=.2))
+
+    def test_small_place_step_requires_physical_progress_despite_joint_tolerance(self):
+        source=Path(__file__).resolve().parents[1]/'source/mr_liu/grasp/adapters/isaac_motion.py'
+        tree=ast.parse(source.read_text(encoding='utf-8'))
+        cls=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='IsaacCumotionExecutor')
+        method=next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name=='_drive_joint_waypoint')
+        env={'np':np,'robot_config':lambda:{'tool_frame':'ee'}}
+        exec(compile(ast.Module(body=[method],type_ignores=[]),str(source),'exec'),env)
+        q=np.zeros(1)
+        drive=SimpleNamespace(_stopped=False,joint_tolerance_rad=.020,waypoint_settle_steps=0,
+            arm_dof_indices=[0],_arm_values=lambda getter:getter(),advance_frame=lambda:None,
+            controller=SimpleNamespace(cumotion_robot=SimpleNamespace(kinematics=SimpleNamespace(
+                position=lambda joints,frame:np.array([joints[0]*.25,0,0])))))
+        def command(positions,**kwargs):q[:]=positions
+        drive.articulation=SimpleNamespace(get_dof_positions=lambda:q.copy(),
+            get_dof_velocities=lambda:np.zeros(1),get_dof_efforts=lambda:np.zeros(1),
+            set_dof_position_targets=Mock(side_effect=command))
+        method=env['_drive_joint_waypoint'];goal=np.array([.01875])
+        self.assertTrue(method(drive,goal,speed_scale=.2,max_steps=10))
+        drive.articulation.set_dof_position_targets.assert_not_called()
+        self.assertTrue(method(drive,goal,speed_scale=.2,max_steps=10,minimum_cartesian_progress_m=.001))
+        self.assertGreaterEqual(q[0]*.25,.001)
+        self.assertGreater(drive.articulation.set_dof_position_targets.call_count,0)
+
     def test_sim_shutdown_watchdog_precedes_native_teardown(self):
         script=Path(__file__).resolve().parents[1]/'scripts/run_fine_grasp_demo.py'
         tree=ast.parse(script.read_text(encoding='utf-8'))
