@@ -77,7 +77,17 @@ class IsaacCumotionExecutor:
     ) -> None:
         self.arm = arm
         self.articulation = arm.articulation
-        self.advance_frame = advance_frame
+        self.execution_guard = None
+        self._guard_ticks = 0
+        def guarded_advance():
+            advance_frame()
+            self._guard_ticks += 1
+            # Optional coarse-loop guard only; FineGrasp keeps its original
+            # observation-at-servo-boundary behavior when this callback is None.
+            if self.execution_guard is not None and self._guard_ticks % 6 == 0:
+                if not self.execution_guard():
+                    self.stop()
+        self.advance_frame = guarded_advance
         self.physics_dt_s = float(physics_dt_s)
         self.position_tolerance_m = float(position_tolerance_m)
         self.joint_tolerance_rad = float(joint_tolerance_rad)
@@ -274,8 +284,10 @@ class IsaacCumotionExecutor:
         This is an observed-surface test with the configured finger-box model,
         not a guarantee about unobserved space or unmodeled hardware.
         """
+        self.last_observation_path_rejection = None
         plan = self._plan(target)
         if plan is None:
+            self.last_observation_path_rejection = "ik_or_joint_path_infeasible"
             return False
         q0 = self._arm_values(self.articulation.get_dof_positions)
         if isinstance(plan, _JointStepPlan):
@@ -284,17 +296,22 @@ class IsaacCumotionExecutor:
             waypoints = [q0] + [np.asarray(plan.get_waypoint_by_index(i)).reshape(-1)
                                 for i in range(plan.get_waypoints_count())]
         else:
+            self.last_observation_path_rejection = "unsupported_plan_type"
             return False
         previous = self._world_ee_pose_from_joints(q0)
         for start, end in zip(waypoints, waypoints[1:]):
             steps = max(1, int(np.ceil(np.max(np.abs(end - start)) / 0.005)))
             for alpha in np.linspace(0, 1, steps + 1):
                 q = start + alpha * (end - start)
-                if (self._collision_inspector.in_self_collision(q)
-                        or self._collision_inspector.in_collision_with_obstacle(q)):
+                if self._collision_inspector.in_self_collision(q):
+                    self.last_observation_path_rejection = "self_collision"
+                    return False
+                if self._collision_inspector.in_collision_with_obstacle(q):
+                    self.last_observation_path_rejection = "world_collision"
                     return False
                 pose = self._world_ee_pose_from_joints(q)
                 if finger.path_collision_count(points_base, previous, pose):
+                    self.last_observation_path_rejection = "observed_surface_finger_collision"
                     return False
                 previous = pose
         return True

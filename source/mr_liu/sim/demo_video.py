@@ -13,6 +13,8 @@ from PIL import Image, ImageDraw, ImageFont
 
 
 PHASES = {
+    "find": "标签 → Florence / YOLOE 定位", "track": "CV 光流跟踪 + RGB-D 更新目标",
+    "coarse": "快速粗接近：IK / 碰撞 / 移动中视觉检查", "handoff": "停止粗环 → 交接腕部精细抓取",
     "observe": "腕部观察 / 更新局部几何", "generate": "生成抓取候选",
     "select": "碰撞 / IK / 夹爪约束筛选", "pregrasp": "移动到预抓取位姿",
     "servo": "最新腕部观测 → 小步闭环对齐", "close": "夹爪闭合",
