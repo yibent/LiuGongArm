@@ -78,7 +78,7 @@ function completionMessage(plan: RobotPlan, results: ControlResult[]): string {
         ? (results.at(-1)?.message ?? '初始准备移动结果未确认。')
         : `已完成${target}抓取。`;
     case 'pick_place':
-      return `已完成${target}抓取与放置。`;
+      return results.at(-1)?.message ?? `已完成${target}抓取与放置。`;
     case 'chat':
       return '指令处理完成。';
   }
@@ -419,7 +419,7 @@ export class RobotAdapterNode implements InProcessAgent, OnModuleInit {
   ): Promise<'completed' | 'failed' | 'cancelled' | 'unknown'> {
     try {
       if (!first.commandId) throw new Error('控制器未返回命令编号，结果未知');
-      const deadline = Date.now() + (step.skill === 'grasp' ? 300_000 : 120_000);
+      const deadline = Date.now() + (step.skill === 'grasp' ? (step.params.demo_stack === true ? 7_200_000 : 300_000) : 120_000);
       let started = false;
       let lastPhase = '';
       let lastProgressAt = 0;

@@ -107,6 +107,13 @@ export function buildPlan(
       ];
       break;
     case 'pick_place':
+      if (process.env.BUSAGENT_INDUSTRIAL_DEMO === '1' && !instruction.needs_clarification
+          && /金属柱|圆柱|钢柱|metal|cylinder|柱体/i.test(instruction.target.category ?? '')
+          && /篮|basket/i.test(instruction.source_text)) {
+        steps = [{ id: 1, skill: 'grasp', params: { target: instruction.target, demo_stack: true },
+          verify: 'scripted industrial placement (demo)' }];
+        break;
+      }
       // Do not execute only the first half of an unsupported compound request.
       return null;
     case 'status_query':

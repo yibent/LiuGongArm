@@ -24,7 +24,18 @@ parser.add_argument(
     action="store_true",
     help="Run dual-view FIND/TRACK without moving the arm toward top-view detections",
 )
+parser.add_argument('--industrial-demo', action='store_true', help='Fixed industrial pick/stack playback; no grasp model')
+parser.add_argument('--demo-count', type=int, choices=range(1, 97), default=48, metavar='1..96')
+parser.add_argument('--demo-clutter', type=int, choices=range(0, 5001), default=96, metavar='0..5000')
+parser.add_argument('--demo-phase-seconds', type=float, default=1.)
+parser.add_argument('--demo-autostart', action='store_true')
+parser.add_argument('--demo-no-vision', action='store_true', help='Isolate rendering/physics performance from vision inference')
 args, _ = parser.parse_known_args()
+import math
+if not math.isfinite(args.demo_phase_seconds) or args.demo_phase_seconds <= 0:
+    parser.error('--demo-phase-seconds must be positive and finite')
+if not args.industrial_demo and (args.demo_autostart or args.demo_no_vision):
+    parser.error('--demo-autostart/--demo-no-vision require --industrial-demo')
 
 simulation_app = SimulationApp({"headless": args.headless})
 
@@ -45,6 +56,7 @@ sys.path.insert(0, str(ROOT / "source"))
 
 from mr_liu.app.run_vision_follow import main
 
+exit_code = 0
 try:
     main(
         simulation_app,
@@ -59,10 +71,19 @@ try:
         control_port=args.control_port,
         follow_target=not args.no_follow,
         grasp_backend=args.grasp_backend,
+        industrial_demo=args.industrial_demo,
+        demo_count=args.demo_count,
+        demo_clutter=args.demo_clutter,
+        demo_phase_seconds=args.demo_phase_seconds,
+        demo_autostart=args.demo_autostart,
+        demo_no_vision=args.demo_no_vision,
     )
 except KeyboardInterrupt:
     print("\nExiting...")
 except Exception:
+    exit_code = 1
     traceback.print_exc()
 finally:
     simulation_app.close()
+
+sys.exit(exit_code)

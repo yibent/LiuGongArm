@@ -39,6 +39,7 @@ def setup(
     *,
     physics_dt: float,
     device: str,
+    industrial_demo: bool = False,
 ) -> tuple[FollowTargetController, So101Arm, GeomPrim, dict[str, SceneCamera]]:
     scene = scene_config()
     stage_utils.create_new_stage()
@@ -49,7 +50,7 @@ def setup(
     configure_render_timing(physics_dt, float(motion_config().get("render_hz", 30)))
     GroundPlane("/World/GroundPlane", positions=[0, 0, 0])
     DistantLight("/World/DistantLight").set_intensities(float(scene["distant_intensity"]))
-    spawn_table_and_so101()
+    spawn_table_and_so101(include_tabletop_props=not industrial_demo)
 
     target_cfg = scene["target"]
     Cube(
@@ -127,6 +128,12 @@ def main(
     control_port: int = 7861,
     follow_target: bool = True,
     grasp_backend: str = "graspgenx",
+    industrial_demo: bool = False,
+    demo_count: int = 48,
+    demo_clutter: int = 96,
+    demo_phase_seconds: float = 1.,
+    demo_autostart: bool = False,
+    demo_no_vision: bool = False,
 ) -> None:
     motion = motion_config()
     physics_dt = float(motion["physics_dt"])
@@ -135,7 +142,13 @@ def main(
         app,
         physics_dt=physics_dt,
         device=physics_device,
+        industrial_demo=industrial_demo,
     )
+    demo_items = demo_ops = None
+    if industrial_demo:
+        import omni.usd
+        from mr_liu.sim.industrial_demo import spawn
+        demo_items, demo_ops = spawn(omni.usd.get_context().get_stage(), demo_count, demo_clutter)
     app.update()
     app_utils.play()
     app.update()
@@ -162,7 +175,20 @@ def main(
     control.motion = MotionCommands(repo_root() / robot_cfg["robot_dir"] / robot_cfg["urdf"], robot_cfg["default_joint_positions"], config=motion.get("commands"))
     control.motion.drive_info = drive_info
     robot_base = XformPrim(robot_cfg["usd_prim_path"])
-    if grasp_backend != "disabled":
+    if industrial_demo:
+        from mr_liu.sim.industrial_demo import IndustrialDemo, IsaacDemoDrive
+        position, orientation = robot_base.get_world_poses()
+        base = np.eye(4)
+        base[:3, 3] = position.numpy()[0]
+        quat = orientation.numpy()[0]
+        base[:3, :3] = Rotation.from_quat([quat[1], quat[2], quat[3], quat[0]]).as_matrix()
+        control.grasp = IndustrialDemo(control, demo_items,
+            IsaacDemoDrive(arm, control.motion, base, demo_ops, demo_items),
+            SimulationManager.get_simulation_time, phase_seconds=demo_phase_seconds)
+        control.set_follow_enabled(False)
+        if demo_autostart:
+            control.grasp.submit({'target': {'category': '金属柱'}, 'demo_stack': True})
+    elif grasp_backend != "disabled":
         from mr_liu.grasp.runtime import GraspRuntime
         from mr_liu.grasp.isaac_session import IsaacGraspSession
         cameras["scene"].enable_instance_segmentation()
@@ -194,10 +220,10 @@ def main(
     host, port = server.start()
     print(f"[mr_liu] Runtime vision control: http://{host}:{port}")
 
-    pipe = _try_load_pipelines(vis_cfg, device=device, memory_store=control.memory_store)
-    if pipe is None:
+    pipe = None if industrial_demo and demo_no_vision else _try_load_pipelines(vis_cfg, device=device, memory_store=control.memory_store)
+    if pipe is None and not (industrial_demo and demo_no_vision):
         control.set_error("Vision models failed to load or weights are missing")
-    else:
+    elif pipe is not None:
         control.set_model_status(pipe.status())
     target_xform = XformPrim(scene_config()["target"]["prim_path"])
     table_z = float(scene_config()["target"]["position"][2])
@@ -313,6 +339,14 @@ def main(
         raise
     finally:
         if control.grasp is not None:
+            if industrial_demo:
+                import json
+                output = repo_root() / 'output/industrial_demo'
+                output.mkdir(parents=True, exist_ok=True)
+                report = dict(control.grasp.status(), clutter=demo_clutter,
+                              vision_enabled=not demo_no_vision, physics_dt=physics_dt)
+                (output / 'latest.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+                print('[industrial-demo] Performance report:', output / 'latest.json')
             control.grasp.close()
         SimulationManager.deregister_callback(callback)
         if worker is not None:

@@ -190,6 +190,7 @@ class VisionRuntimeControl:
 
     def capabilities(self) -> dict[str, Any]:
         from mr_liu.motion.commands import MOTION_SKILLS
+        demo = self.grasp is not None and self.grasp.capabilities().get("demo", False)
         return {
             "skills": ["select_target", "perceive", "follow", "hold", "stop", "status", "capabilities"]
                       + (sorted(MOTION_SKILLS - {"hold", "stop"}) if self.motion is not None else [])
@@ -198,7 +199,7 @@ class VisionRuntimeControl:
                       + (["grasp"] if self.grasp is not None else []),
             "unsupported": ["plan_grasp", "transport", "place", "verify_placement"] + ([] if self.grasp else ["grasp"]),
             "grasp": self.grasp.capabilities() if self.grasp else None,
-            "message": "当前支持识别、跟随、暂停和停止" + (
+            "message": "工业演示：支持金属柱固定取放与篮内码放，未使用抓取模型或物理抓取验证。" if demo else "当前支持识别、跟随、暂停和停止" + (
                 "，以及关节转动、末端移动、归位、夹爪开合、调速和物体相对定位。"
                 if self.motion is not None else "。基础运动控制尚未接入。") + (
                 "支持物体多视角记忆、回忆定位和删除记忆。" if self.memory_store is not None else ""

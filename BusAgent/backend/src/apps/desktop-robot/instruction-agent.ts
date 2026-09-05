@@ -151,7 +151,7 @@ function clarificationFor(intent: RobotIntentName, target: TargetSpec): string |
   if (['find', 'pick', 'pick_place'].includes(intent) && !target.category) {
     return '你希望我处理哪个物体？';
   }
-  if (intent === 'pick_place') {
+  if (intent === 'pick_place' && process.env.BUSAGENT_INDUSTRIAL_DEMO !== '1') {
     return '放置尚未接入；可以单独下达抓取指令。';
   }
   return null;

@@ -183,7 +183,7 @@ export function semanticFrame(raw: unknown, text: string): ParsedInstruction {
     instruction.prepare_last_grasp = true;
   if (f.prepare_last_grasp && f.retry_last_grasp)
     instruction.clarification_question = '先回准备姿态还是重试抓取？请只确认一项。';
-  if (['pick_place', 'unsupported'].includes(f.intent))
+  if (f.intent === 'unsupported' || (f.intent === 'pick_place' && process.env.BUSAGENT_INDUSTRIAL_DEMO !== '1'))
     instruction.clarification_question ||=
       '当前尚未接入搬运放置或这项复杂操作；可以单独下达抓取指令。';
   instruction.needs_clarification = Boolean(instruction.clarification_question);
@@ -215,6 +215,9 @@ export async function understandSemantic(
         role: 'system',
         content:
           PROMPT +
+          (process.env.BUSAGENT_INDUSTRIAL_DEMO === '1'
+            ? '\n当前启用工业演示：覆盖上文放置未接入的限制。支持把金属柱/圆柱放入篮子的pick_place，category填写metal cylinder，不需要篮子格号，不要求数量澄清；控制器按固定顺序处理所有剩余金属柱。pick只处理一根。其他物体或其他目的地不属于该演示，应澄清。坐标和抓取由脚本执行，不生成坐标。'
+            : '') +
           '\n以下更新覆盖上文旧的单动作限制：支持最多4个明确动作的sequence，输出{"intent":"sequence","actions":[原子动作JSON,...]}。按用户先后顺序执行；“同时移动并打开夹爪”按顺序执行并向用户说明，不宣称同时驱动。任一项缺参数或未接入则整组先澄清，不能只做第一项。停止仍优先即时处理，不放进sequence；准备确认、失败重试、持续跟随须单独下达。抓取和原子运动可以组合。新抓取默认使用标签视觉定位、光流粗接近、腕部精抓取和双相机验证，不需要用户事先手动移动到上方。放置当前未实现，不生成放置步骤。' +
           '\n新增intent：scene_inventory（桌面有哪些物品/看看整个场景，无须category），remember（记住某物，category/color/memory_label为用户给的名字），list_memories（记住了哪些物体），recall（再次寻找记住的物体），forget（删除指定记忆）。新增字段memory_id、memory_label；memory_id只能从live_state.object_memories选择真实ID，禁止编造。名称不唯一就提问。记忆是外观不是位置，recall后必须等实际定位反馈；“抓起之前记住的零件A”仍是pick并带memory_id和原类别颜色；相对移动同理。没有保存过不能声称记得。普通对话的“记得刚才说什么吗”不是写视觉记忆。' +
           '\n时序与因果：control_context中的实测状态和task_outcomes优先于历史指令。历史要求不代表仍在执行，取消、失败和完成都是已结束的任务。准备移动仅为回位，不是抓取；准备完成后“现在重新抓取红色方块/再次抓起来”是新的pick，应重新定位，不设retry_last_grasp或prepare_last_grasp。只有live_state.grasp_status.retry_available严格为true且用户明确恢复上次任务时才用retry_last_grasp；旧result中的标记不是当前可恢复证据。当前不可恢复时，明确的新抓取仍按普通pick；只有无法判断是否新开任务的“再试一次”才澄清。上下文可以用来解析物体指代，不得复用历史坐标或把旧的同意当成本轮授权。没有pending_preparation的“同意”不能套用历史准备问题。仅有“好，现在/嗯，接下来”等未说完的开场是chat，不得生成操作。',
