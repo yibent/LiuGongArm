@@ -154,9 +154,12 @@ def main(
         from mr_liu.grasp.runtime import GraspRuntime
         from mr_liu.grasp.isaac_session import IsaacGraspSession
         cameras["scene"].enable_instance_segmentation()
+        for camera in (cameras["scene"], cameras["wrist"]):
+            camera.enable_instance_segmentation(leaf_paths=True)
         control.grasp = GraspRuntime(control, lambda grounded, selected, guard, progress: IsaacGraspSession(
             arm, cameras["wrist"], app, 1/float(motion.get("render_hz", 30)), grounded, selected, guard, progress,
             backend=grasp_backend, output_root=repo_root() / "output/busagent_grasp",
+            scene=cameras["scene"],
         ))
 
     def update_motion():

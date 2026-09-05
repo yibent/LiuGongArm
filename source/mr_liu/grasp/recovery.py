@@ -44,13 +44,31 @@ class RecoveringGraspNode:
                  FailureCode.LIFT_VERIFICATION_FAILED}
 
     def __init__(self, *, attempt_factory, observer, motion, gripper,
-                 config=RecoveryConfig(), trace=None, clock=time.monotonic):
+                 config=RecoveryConfig(), trace=None, clock=time.monotonic,
+                 require_retry_authorization=False):
         self.attempt_factory, self.observer = attempt_factory, observer
         self.motion, self.gripper, self.config = motion, gripper, config
         self.trace, self.clock = trace, clock
         self.active_node = None
         self.attempt_results = []
         self._cancelled = False
+        self.require_retry_authorization = require_retry_authorization
+        self.pending_retry = None
+
+    def retry(self, request_id):
+        """Resume one failed attempt only after a new conversational command.
+
+        All payload, fresh-scene and retreat checks run again; no saved path is
+        trusted after waiting for the operator. Demo auto-recovery is unchanged.
+        """
+        if self.pending_retry is None:
+            raise ValueError("没有可恢复的抓取上下文。")
+        request, result = self.pending_retry
+        self.pending_retry = None
+        try:
+            return self._execute(replace(request, request_id=request_id), previous_result=result)
+        finally:
+            self.active_node = None
 
     def cancel(self):
         self._cancelled = True
@@ -63,6 +81,7 @@ class RecoveringGraspNode:
             self.trace({"timestamp_s": self.clock(), "phase": "recovery", "event": name, **values})
 
     def execute(self, request):
+        self.pending_retry = None
         try:
             return self._execute(request)
         except Exception as exc:
@@ -75,27 +94,31 @@ class RecoveringGraspNode:
         finally:
             self.active_node = None
 
-    def _execute(self, request):
+    def _execute(self, request, previous_result=None):
         self._cancelled = False
         self.attempt_results = []
-        self.observer.reset()
+        if previous_result is None:
+            self.observer.reset()
         started = self.clock()
         deadline = started + min(request.timeout_s or self.config.max_total_s, self.config.max_total_s)
         target, failed = request.target, []
-        initial_scene = None if request.dry_run else self.observer.observe(target)
+        initial_scene = self.observer.latest if previous_result is not None else (None if request.dry_run else self.observer.observe(target))
         result = None
         stop_reason = "attempt_limit"
         for attempt in range(self.config.max_attempts):
             if self._cancelled or self.clock() >= deadline:
                 stop_reason = "cancelled" if self._cancelled else "deadline"
                 break
-            self._event("attempt_start", attempt=attempt + 1, active_views=attempt > 0)
-            self.active_node = self.attempt_factory(attempt, tuple(failed), target)
-            if self._cancelled or self.clock() >= deadline:
-                stop_reason = "cancelled" if self._cancelled else "deadline"
-                break
-            result = self.active_node.execute(replace(request, target=target,
-                                                      timeout_s=max(0.001, deadline - self.clock())))
+            if attempt == 0 and previous_result is not None:
+                result = previous_result
+            else:
+                self._event("attempt_start", attempt=attempt + 1, active_views=attempt > 0)
+                self.active_node = self.attempt_factory(attempt, tuple(failed), target)
+                if self._cancelled or self.clock() >= deadline:
+                    stop_reason = "cancelled" if self._cancelled else "deadline"
+                    break
+                result = self.active_node.execute(replace(request, target=target,
+                                                          timeout_s=max(0.001, deadline - self.clock())))
             self.attempt_results.append(result)
             self._event("attempt_end", attempt=attempt + 1, success=result.success,
                         failure=result.failure.value if result.failure else None,
@@ -159,6 +182,11 @@ class RecoveringGraspNode:
                     or self._cancelled or self.clock() >= deadline):
                 stop_reason = "retreat_path_unverified"
                 break
+            if self.require_retry_authorization and previous_result is None:
+                stop_reason = "awaiting_retry_authorization"
+                self.pending_retry = (request, result)
+                self._event("retry_available", reason=stop_reason)
+                break
             self._event("safe_retreat", xyz_m=retreat[:3, 3].tolist())
             if not self.motion.move_to(retreat, speed_scale=self.config.speed_scale):
                 self.motion.stop()
@@ -189,4 +217,4 @@ class RecoveringGraspNode:
         metrics["total_model_calls"] = sum(int(r.metrics.get("model_calls", 0)) for r in self.attempt_results)
         metrics["total_model_ms"] = sum(float(r.metrics.get("model_total_ms", 0)) for r in self.attempt_results)
         self.active_node = None
-        return replace(result, metrics=metrics)
+        return replace(result, request_id=request.request_id, metrics=metrics)

@@ -54,6 +54,35 @@ class RecoveryTests(unittest.TestCase):
         self.motion.move_to.assert_called_once()
         self.gripper.open.assert_not_called()
 
+    def test_web_failure_waits_for_dialogue_before_retreat_or_second_attempt(self):
+        node = self.node([self.failed, self.succeeded])
+        node.require_retry_authorization = True
+        result = node.execute(self.request)
+        self.assertEqual(result.metrics["recovery_stop_reason"], "awaiting_retry_authorization")
+        self.assertEqual(self.factory.call_count, 1)
+        self.motion.move_to.assert_not_called()
+        self.gripper.open.assert_not_called()
+        result = node.retry("spoken-retry")
+        self.assertTrue(result.success)
+        self.assertEqual(result.request_id, "spoken-retry")
+        self.assertEqual(self.factory.call_count, 2)
+        self.assertEqual(self.factory.call_args.args[0], 1)
+        self.motion.move_to.assert_called_once()
+        with self.assertRaises(ValueError):
+            node.retry("third-attempt")
+
+    def test_dialogue_retry_rechecks_scene_after_waiting(self):
+        node = self.node([self.failed, self.succeeded])
+        node.require_retry_authorization = True
+        node.execute(self.request)
+        self.observer.observe.return_value = None
+        result = node.retry("spoken-retry")
+        self.assertFalse(result.success)
+        self.assertEqual(result.metrics["recovery_stop_reason"], "target_identity_uncertain")
+        self.assertIsNone(node.pending_retry)
+        self.motion.move_to.assert_not_called()
+        self.assertEqual(self.factory.call_count, 1)
+
     def test_possibly_held_payload_blocks_open_move_and_retry(self):
         from dataclasses import replace
         failure = replace(self.failed, failure=FailureCode.LIFT_VERIFICATION_FAILED,

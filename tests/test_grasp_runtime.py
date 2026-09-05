@@ -133,7 +133,7 @@ class GraspRuntimeTests(unittest.TestCase):
 
     def test_pending_grounding_timeout_releases_lane(self):
         self.submit()
-        self.now += 91
+        self.now += self.runtime.timeout_s + 1
         self.runtime.poll()
         self.assertIsNone(self.control.motion.external_owner)
         self.assertEqual(self.control.motion.result("pick")["state"], "failed")
@@ -182,6 +182,52 @@ class GraspRuntimeTests(unittest.TestCase):
         self.assertFalse(self.submit()["ok"])
         self.assertIsNone(self.control.motion.external_owner)
         self.assertIsNone(self.runtime.job)
+
+    def awaiting_retry(self):
+        self.submit()
+        self.ready()
+        self.session.execute.return_value = {"success": False, "retry_available": True,
+            "failure": "target_not_visible", "metrics": {"recovery_stop_reason": "awaiting_retry_authorization"}}
+        self.runtime.poll()
+
+    def test_failure_waits_without_an_automatic_retry_and_accepts_one_spoken_retry(self):
+        self.awaiting_retry()
+        self.assertTrue(self.runtime.status()["retry_available"])
+        self.runtime.poll()
+        self.session.retry.assert_not_called()
+        self.session.hold_for_retry.assert_called_once()
+        self.session.close.assert_not_called()
+        self.assertIsNone(self.control.motion.external_owner)
+        result = self.runtime.submit({"retry_last": True}, "retry")
+        self.assertEqual(result["state"], "accepted")
+        self.session.retry.return_value = {"success": True, "retry_available": False}
+        self.runtime.poll()
+        self.session.retry.assert_called_once_with("retry")
+        self.assertEqual(self.control.motion.result("retry")["state"], "completed")
+        self.session.close.assert_called_once()
+        self.assertFalse(self.runtime.submit({"retry_last": True}, "third")["ok"])
+        self.runtime.pool.submit.assert_called_once()  # no new blind target transaction
+
+    def test_stop_expires_recovery_without_moving_and_cleans_on_main_thread(self):
+        self.awaiting_retry()
+        self.runtime.cancel()
+        self.assertFalse(self.runtime.status()["retry_available"])
+        self.runtime.poll()
+        self.session.close.assert_called_once_with(stop_motion=False)
+        self.session.retry.assert_not_called()
+
+    def test_other_motion_or_timeout_invalidates_previous_grasp_context(self):
+        self.awaiting_retry()
+        self.control.motion.submit("home", {}, "move-after-failure")
+        self.assertFalse(self.runtime.status()["retry_available"])
+        self.runtime.poll()
+        self.session.close.assert_called_once_with(stop_motion=False)
+        self.assertFalse(self.runtime.submit({"retry_last": True}, "retry")["ok"])
+
+    def test_no_modes_and_dual_camera_default(self):
+        self.assertTrue(self.runtime.capabilities()["dual_camera_default"])
+        self.assertFalse(self.runtime.submit({"target": self.target, "recovery_mode": "active"})["ok"])
+        self.factory.assert_not_called()
 
 
 if __name__ == "__main__":

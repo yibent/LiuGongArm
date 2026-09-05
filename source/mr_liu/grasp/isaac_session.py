@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import asdict, is_dataclass
 from enum import Enum
 from pathlib import Path
+import json
 import uuid
 
 import numpy as np
@@ -19,6 +20,36 @@ PHASE_MESSAGES = {
     "lift": "正在抬升目标，等待验证。",
     "verify_lift": "正在验证目标是否随夹爪抬升。",
 }
+
+RECOVERY_MESSAGES = {
+    "attempt_start": "正在开始第{attempt}次抓取尝试。",
+    "safe_retreat": "正在退让，准备重新观察目标。",
+    "target_reacquired": "已重新定位目标，准备再次尝试。",
+    "active_view_move": "正在从侧向观察目标。",
+    "recovery_blocked": "持物状态不确定，已停止恢复并保持夹爪。",
+}
+
+
+class GraspProgressReporter:
+    """Forward factual transitions, not every servo tick or predicted success."""
+    def __init__(self, progress):
+        self.progress, self.last = progress, None
+        self.attempt = 1
+
+    def __call__(self, event):
+        self.attempt = int(event.get("attempt", self.attempt))
+        phase, name = event.get("phase"), event.get("event")
+        message = RECOVERY_MESSAGES.get(name)
+        if message is None and name is None:
+            message = PHASE_MESSAGES.get(phase)
+        if not message:
+            return
+        key = (phase, name, self.attempt)
+        if key == self.last:
+            return
+        self.last = key
+        self.progress(phase, message.format(attempt=self.attempt), attempt=self.attempt,
+                      event=name, recovery_stop_reason=event.get("reason"))
 
 
 def jsonable(value):
@@ -89,7 +120,8 @@ def observation_tool_candidates(T_world_tool, T_world_camera, point, height=.16)
 
 class IsaacGraspSession:
     def __init__(self, arm, wrist, app, physics_dt, grounded, target, guard, progress,
-                 *, backend="graspgenx", output_root=Path("output/busagent_grasp")):
+                 *, backend="graspgenx", output_root=Path("output/busagent_grasp"),
+                 scene=None):
         self.arm, self.wrist, self.app, self.physics_dt = arm, wrist, app, physics_dt
         self.grounded, self.target = grounded, target
         self.guard, self.progress = guard, progress
@@ -97,6 +129,9 @@ class IsaacGraspSession:
         self.executor = None
         self.old_efforts = None
         self.backend_instance = None
+        self.scene = scene
+        self.node = None
+        self.recorder = None
 
     def check(self):
         from isaacsim.core.experimental.utils import app as app_utils
@@ -113,18 +148,17 @@ class IsaacGraspSession:
         from isaacsim.core.experimental.utils import stage as stage_utils
         from pxr import UsdPhysics
         from mr_liu.config import fine_grasp_config
-        from mr_liu.grasp.adapters.isaac_camera import IsaacWristCamera
+        from mr_liu.grasp.adapters.isaac_camera import IsaacWristCamera, IsaacSceneCamera
         from mr_liu.grasp.adapters.isaac_gripper import IsaacGripperController
         from mr_liu.grasp.adapters.isaac_motion import IsaacCumotionExecutor
         from mr_liu.grasp.backends.factory import create_grasp_backend
         from mr_liu.grasp.contracts import FineGraspRequest, TargetSpec
-        from mr_liu.grasp.node import GeneralGraspNode
-        from mr_liu.grasp.segmentation import AppearanceDepthTrackerSegmenter, SeededDepthSegmenter
-        from mr_liu.grasp.settings import FineGraspSettings
-        from mr_liu.grasp.verification import VisionGripperVerifier
-        from mr_liu.grasp.debug import FineGraspDebugRecorder, DebugSegmenter
+        from mr_liu.grasp.live_assembly import assemble_live_grasp
+        from mr_liu.grasp.debug import FineGraspDebugRecorder
 
         self.check()
+        if self.scene is None:
+            raise ValueError("双相机抓取需要固定 RGB-D 相机，未执行运动。")
         object_id = self.grounded.get("object_id")
         if not object_id:
             raise ValueError("顶部相机检测到了目标，但实例分割尚未关联实体；未执行抓取。")
@@ -141,9 +175,8 @@ class IsaacGraspSession:
             # Never silently degrade the live BusAgent path to geometric grasps.
             config["backends"]["graspgenx"]["fallback_backend"] = "none"
             config["backends"]["graspgenx"]["fallback_on_empty"] = False
-        config["fusion"] = {"enabled": False}
-        config["active_views"] = {"enabled": False}
         recorder = FineGraspDebugRecorder(self.output_root / uuid.uuid4().hex)
+        self.recorder = recorder
         self.old_efforts = self.arm.articulation.get_dof_max_efforts()
         # Reuse live calibrated gains; never apply the standalone demo's gains.
         self.executor = IsaacCumotionExecutor(
@@ -172,34 +205,56 @@ class IsaacGraspSession:
             raise ValueError("夹爪未到达观察开度，抓取已停止。")
         camera = GuardedAdapter(IsaacWristCamera(
             self.wrist, ee_pose_provider=self.arm.T_base_ee, advance_frame=self.advance,
+            robot_mask_provider=lambda: self.wrist.instance_mask("/World/SO101", leaf_paths=True),
         ), self.check)
+        scene_camera = GuardedAdapter(IsaacSceneCamera(
+            self.scene, T_base_world=np.eye(4), advance_frame=self.advance,
+            robot_mask_provider=lambda: self.scene.instance_mask("/World/SO101", leaf_paths=True),
+        ), self.check) if self.scene is not None else None
+        report_progress = GraspProgressReporter(self.progress)
 
         def trace(event):
             recorder.trace(event)
-            phase = event.get("phase")
-            if phase in PHASE_MESSAGES:
-                self.progress(phase, PHASE_MESSAGES[phase])
+            report_progress(event)
 
         self.backend_instance = create_grasp_backend(config)
-        node = GeneralGraspNode(
-            camera=camera, motion=motion, gripper=gripper,
-            segmenter=DebugSegmenter(AppearanceDepthTrackerSegmenter(SeededDepthSegmenter()), recorder),
+        target = TargetSpec(object_id=object_id, semantic_label=self.grounded.get("prompt"),
+                            coarse_position_base_m=tuple(point))
+        self.node = assemble_live_grasp(
+            config=config, camera=camera, scene_camera=scene_camera, motion=motion, gripper=gripper,
             backend=GuardedAdapter(self.backend_instance, self.check),
-            verifier=VisionGripperVerifier(), settings=FineGraspSettings.from_mapping(config), trace=trace,
+            recorder=recorder, trace=trace, target=target,
         )
-        result = node.execute(FineGraspRequest(
-            target=TargetSpec(object_id=object_id, semantic_label=self.grounded.get("prompt"),
-                              coarse_position_base_m=tuple(point)),
-            request_id=command_id, timeout_s=45., dry_run=False,
+        result = self.node.execute(FineGraspRequest(
+            target=target, request_id=command_id,
+            timeout_s=110., dry_run=False,
         ))
-        return jsonable(result)
+        return self.result_output(result)
 
-    def close(self):
-        # Main thread only; no automatic opening or retry after a failed grasp.
-        if self.executor:
-            self.executor.stop()
+    def result_output(self, result):
+        output = {**jsonable(result), "retry_available": self.node.pending_retry is not None,
+                  "attempt_results": jsonable(self.node.attempt_results)}
+        (self.recorder.output_dir / f"report-{uuid.uuid4().hex}.json").write_text(
+            json.dumps(output, ensure_ascii=False, indent=2), encoding="utf-8")
+        return output
+
+    def retry(self, command_id):
+        self.check()
+        return self.result_output(self.node.retry(command_id))
+
+    def hold_for_retry(self):
+        self.executor.stop()
         self.arm.articulation.set_dof_velocity_targets([[0.] * len(self.arm.dof_names)])
         if self.old_efforts is not None:
+            self.arm.articulation.set_dof_max_efforts(self.old_efforts)
+
+    def close(self, *, stop_motion=True):
+        # Main thread only; no automatic opening or retry after a failed grasp.
+        if stop_motion and self.executor:
+            self.executor.stop()
+        if stop_motion:
+            self.arm.articulation.set_dof_velocity_targets([[0.] * len(self.arm.dof_names)])
+        if stop_motion and self.old_efforts is not None:
             self.arm.articulation.set_dof_max_efforts(self.old_efforts)
         backend = getattr(self.backend_instance, "primary", self.backend_instance)
         transport = getattr(backend, "transport", None)

@@ -101,6 +101,7 @@ class VisionRuntimeControl:
     def status(self) -> dict[str, Any]:
         motion = self.motion.status() if self.motion is not None else None
         grounding = self.grounding.snapshot() if self.grounding else None
+        grasp_status = self.grasp.status() if self.grasp else None
         with self._lock:
             return {
                 "prompt": self._config.prompt,
@@ -114,6 +115,7 @@ class VisionRuntimeControl:
                 "error": self._error,
                 "motion": motion,
                 "grounding": grounding,
+                "grasp": grasp_status,
                 "capabilities": self.capabilities(),
             }
 
@@ -124,10 +126,11 @@ class VisionRuntimeControl:
                       + (sorted(MOTION_SKILLS - {"hold", "stop"}) if self.motion is not None else [])
                       + (["grasp"] if self.grasp is not None else []),
             "unsupported": ["plan_grasp", "transport", "place", "verify_placement"] + ([] if self.grasp else ["grasp"]),
+            "grasp": self.grasp.capabilities() if self.grasp else None,
             "message": "当前支持识别、跟随、暂停和停止" + (
                 "，以及关节转动、末端移动、归位、夹爪开合、调速和物体相对定位。"
                 if self.motion is not None else "。基础运动控制尚未接入。") + (
-                "支持单物体抓取：顶部RGB-D定位、接近、腕部闭环抓取及抬升验证；未通过泛化验收。放置未实现，夹爪闭合不代表抓取成功。"
+                "支持单物体抓取，默认双RGB-D辅助验证与机器人自遮罩；失败后通过对话确认，符合条件才重新观察并重试一次，持物不确定时停止。未通过泛化验收。放置未实现，夹爪闭合不代表抓取成功。"
                 if self.grasp else "抓取和放置尚未实现，夹爪闭合不代表抓取成功。"),
         }
 
