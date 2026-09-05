@@ -34,8 +34,6 @@ class DemoVideoRecorder:
 
     def __init__(self, output: Path, title: str, fault_m: float = 0., fps: int = 15,
                  *, coarse_fault_m: float = 0.):
-        import imageio_ffmpeg
-
         self.output, self.fps = Path(output), fps
         self.output.parent.mkdir(parents=True, exist_ok=True)
         self.title, self.fault_m = title, fault_m
@@ -44,13 +42,30 @@ class DemoVideoRecorder:
         self.font = ImageFont.truetype("C:/Windows/Fonts/msyh.ttc", 21)
         self.small = ImageFont.truetype("C:/Windows/Fonts/msyh.ttc", 17)
         self.writer_log = self.output.with_suffix(".ffmpeg.log").open("wb")
-        self.process = subprocess.Popen([
-            imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-loglevel", "error",
-            "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", "1280x720",
-            "-r", str(fps), "-i", "pipe:0", "-an", "-c:v", "libx264",
-            "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p",
-            "-movflags", "+faststart", str(self.output),
-        ], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=self.writer_log)
+        self.process = None
+        self.cv_writer = None
+        try:
+            import imageio_ffmpeg
+            self.process = subprocess.Popen([
+                imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-loglevel", "error",
+                "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", "1280x720",
+                "-r", str(fps), "-i", "pipe:0", "-an", "-c:v", "libx264",
+                "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart", str(self.output),
+            ], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=self.writer_log)
+            self.writer_log.write(b"encoder=imageio_ffmpeg/libx264\n")
+        except ImportError:
+            # Isaac Sim's bundled Python does not always include imageio_ffmpeg.
+            # OpenCV's native MP4V writer keeps recording available without
+            # adding a package to the simulator environment.
+            self.cv_writer = cv2.VideoWriter(
+                str(self.output), cv2.VideoWriter_fourcc(*"mp4v"),
+                float(fps), (1280, 720),
+            )
+            if not self.cv_writer.isOpened():
+                self.writer_log.write(b"encoder=opencv unavailable\n")
+                raise RuntimeError("No usable video encoder (imageio_ffmpeg/OpenCV)")
+            self.writer_log.write(b"encoder=opencv/mp4v\n")
         self.started = None
         self.frames = 0
         self.last_frame = None
@@ -102,7 +117,10 @@ class DemoVideoRecorder:
         return np.asarray(canvas)
 
     def _write(self, frame):
-        self.process.stdin.write(np.ascontiguousarray(frame).tobytes())
+        if self.process is not None:
+            self.process.stdin.write(np.ascontiguousarray(frame).tobytes())
+        else:
+            self.cv_writer.write(cv2.cvtColor(np.asarray(frame), cv2.COLOR_RGB2BGR))
         self.frames += 1
 
     def capture(self, overview, wrist, scene):
@@ -131,15 +149,18 @@ class DemoVideoRecorder:
         if self.closed:
             return
         self.closed = True
-        self.process.stdin.close()
-        try:
-            code = self.process.wait(timeout=30)
-        except subprocess.TimeoutExpired:
-            self.process.kill()
-            self.process.wait(timeout=5)
-            raise RuntimeError("Video encoder did not finish")
-        finally:
-            self.writer_log.close()
+        code = 0
+        if self.process is not None:
+            self.process.stdin.close()
+            try:
+                code = self.process.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+                self.process.wait(timeout=5)
+                raise RuntimeError("Video encoder did not finish")
+        elif self.cv_writer is not None:
+            self.cv_writer.release()
+        self.writer_log.close()
         self.output.with_suffix(".video.json").write_text(json.dumps({
             "frames": self.frames, "fps": self.fps, "duration_s": self.frames/self.fps,
             "timing": "wall-clock gaps held; rendering adds overhead; 3 second outcome hold",
