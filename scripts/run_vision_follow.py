@@ -1,6 +1,7 @@
 """Launch SO-101 dual-camera vision follow-target with Isaac Sim 6.0."""
 
 import argparse
+import os
 import sys
 import traceback
 from pathlib import Path
@@ -31,9 +32,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # Keep Isaac Sim's bundled packages ahead of the project venv. Prepending the
 # venv with PYTHONPATH can replace Isaac's torch/rendering stack and stall Kit,
 # while appending it still makes Florence/YOLOE-only packages discoverable.
-venv_site = ROOT / ".venv" / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
+venv_site = ROOT / ".venv" / "Lib" / "site-packages"
+if not venv_site.is_dir():
+    venv_site = ROOT / ".venv" / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
 if venv_site.is_dir() and str(venv_site) not in sys.path:
     sys.path.append(str(venv_site))
+os.environ.setdefault("HF_HOME", str(ROOT / ".cache" / "huggingface"))
+venv_root = ROOT / ".venv"
+if os.name == "nt" and venv_root.is_dir():
+    os.environ["PATH"] = str(venv_root) + ";" + str(venv_root / "Library" / "bin") + ";" + os.environ.get("PATH", "")
 sys.path.insert(0, str(ROOT / "source"))
 
 from mr_liu.app.run_vision_follow import main

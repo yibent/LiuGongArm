@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 
 from .florence_finder import FlorenceFinder
+from .memory import ObjectMemoryStore
 from .pipeline import FindTrackPipeline
 from .types import FrameResult, RuntimeConfig
 
@@ -27,6 +28,7 @@ class MultiViewFindTrackPipeline:
         florence_id: str | None = None,
         device: str | None = None,
         pipelines: Mapping[str, FindTrackPipeline] | None = None,
+        memory_store: ObjectMemoryStore | None = None,
     ) -> None:
         if pipelines is not None:
             self.pipelines = dict(pipelines)
@@ -43,6 +45,7 @@ class MultiViewFindTrackPipeline:
                 florence_id=florence_id,
                 device=device,
                 finder=shared_finder,
+                memory_store=memory_store,
             )
             for view in views
         }
@@ -67,10 +70,11 @@ class MultiViewFindTrackPipeline:
         missing = set(self.pipelines) - set(frames_bgr)
         if missing:
             raise KeyError(f"Missing camera frames: {sorted(missing)}")
-        return {
-            view: pipeline.process_frame(frames_bgr[view], cfg)
-            for view, pipeline in self.pipelines.items()
-        }
+        results = {}
+        for view, pipeline in self.pipelines.items():
+            view_cfg = RuntimeConfig(**{**cfg.__dict__, "memory_view": cfg.memory_view or view})
+            results[view] = pipeline.process_frame(frames_bgr[view], view_cfg)
+        return results
 
     def status(self) -> dict[str, dict]:
         return {view: pipeline.status() for view, pipeline in self.pipelines.items()}

@@ -10,6 +10,7 @@ import numpy as np
 
 from .cv_tracker import CvFeatureTracker
 from .florence_finder import FlorenceFinder, parse_prompts
+from .memory import ObjectMemoryStore
 from .types import Detection, FrameResult, FrameStats, RuntimeConfig
 from .visualize import draw
 from .yoloe_tracker import YoloeVisualTracker
@@ -36,6 +37,7 @@ class FindTrackPipeline:
         *,
         finder: FlorenceFinder | None = None,
         yoloe_tracker: YoloeVisualTracker | None = None,
+        memory_store: ObjectMemoryStore | None = None,
     ):
         self.florence = finder or FlorenceFinder(model_id=florence_id, device=device)
         self.yoloe = yoloe_tracker or YoloeVisualTracker(weights=yoloe_weights, device=device)
@@ -48,6 +50,10 @@ class FindTrackPipeline:
         self._last_slow = -10_000
         self._fps_ema = 0.0
         self._loaded = False
+        self.memory_store = memory_store
+        self._memory_key: tuple[str | None, str | None] = (None, None)
+        self._memory_ready = False
+        self._recovery_yoloe = False
 
     @property
     def loaded(self) -> bool:
@@ -66,6 +72,8 @@ class FindTrackPipeline:
             "florence_id": self.florence.loaded_id,
             "yoloe": self.yoloe.ready,
             "has_target": self._has_target,
+            "memory_ready": self._memory_ready,
+            "recovery_yoloe": self._recovery_yoloe,
             "device": str(self.florence.device),
         }
 
@@ -77,6 +85,9 @@ class FindTrackPipeline:
         self._lost_frames = 0
         self._last_slow = -10_000
         self._fps_ema = 0.0
+        self._memory_key = (None, None)
+        self._memory_ready = False
+        self._recovery_yoloe = False
         self.yoloe.reset()
         self.cv.reset()
 
@@ -92,6 +103,8 @@ class FindTrackPipeline:
             self._has_target = False
             self.yoloe.reset()
             self.cv.reset()
+            self._memory_ready = False
+            self._recovery_yoloe = False
 
         due_interval = (
             cfg.slow_interval > 0
@@ -99,12 +112,52 @@ class FindTrackPipeline:
             and (self._frame_idx - self._last_slow) >= cfg.slow_interval
         )
         lost = self._lost_frames >= cfg.lost_patience
-        need_slow = bool(prompts) and (
+        memory = self.memory_store.get(cfg.memory_id) if self.memory_store and cfg.memory_id else None
+        memory_key = (cfg.memory_id, cfg.memory_view)
+        if memory_key != self._memory_key:
+            self._memory_key = memory_key
+            self._memory_ready = False
+        if memory is not None and not self._memory_ready:
+            # A remembered crop can seed YOLOE before Florence is needed. For a
+            # CV runtime this is a temporary reacquisition backend; successful
+            # detections are handed back to CV on the following frame.
+            sample_view = cfg.memory_view or "scene"
+            sample = next((view for view in reversed(memory.views) if view.view == sample_view), memory.views[-1])
+            image = imread_unicode(sample.image)
+            if image is not None:
+                self.yoloe.load()
+                self.yoloe.set_image_prompt(image, memory.label, conf=cfg.conf)
+                self._memory_ready = True
+                self._has_target = True
+                self._recovery_yoloe = cfg.fast_backend == "cv"
+        bootstrap_dets: list[Detection] = []
+        bootstrap_success = False
+        bootstrap_ms = 0.0
+        if bool(prompts) and cfg.fast_backend == "yoloe" and not self._has_target and not memory:
+            # YOLOE's label vocabulary is the cheap first pass. Florence is
+            # reserved for labels YOLOE cannot localise confidently.
+            try:
+                t_bootstrap = time.perf_counter()
+                self.yoloe.load()
+                self.yoloe.set_text_prompt(prompts)
+                bootstrap_dets = self.yoloe.detect(frame_bgr, conf=cfg.conf)
+                bootstrap_ms = (time.perf_counter() - t_bootstrap) * 1000
+                best_score = max((float(det.score) for det in bootstrap_dets), default=0.0)
+                bootstrap_success = bool(bootstrap_dets) and best_score >= max(float(cfg.conf), 0.55)
+                if bootstrap_success:
+                    self._has_target = True
+                    self.cv.init(frame_bgr, bootstrap_dets)
+                else:
+                    self.yoloe.reset()
+                    bootstrap_dets = []
+            except Exception as exc:  # noqa: BLE001
+                LOGGER.debug("YOLOE text bootstrap failed; using Florence: %s", exc)
+                self.yoloe.reset()
+        need_slow = bool(prompts) and not bootstrap_success and (
             (not self._has_target)
-            or prompt_changed
-            or find_requested
             or lost
             or due_interval
+            or ((prompt_changed or find_requested) and not self._memory_ready)
         )
 
         slow_dets: list[Detection] = []
@@ -112,7 +165,8 @@ class FindTrackPipeline:
         path = "idle"
         message = ""
 
-        if cfg.fast_backend == "yoloe" and not self.yoloe.ready:
+        recovery_requested = lost and cfg.fast_backend == "cv"
+        if (cfg.fast_backend == "yoloe" or recovery_requested or self._recovery_yoloe) and not self.yoloe.ready:
             self.yoloe.load()
 
         if need_slow:
@@ -122,10 +176,11 @@ class FindTrackPipeline:
             self._last_slow = self._frame_idx
             if slow_dets:
                 self.cv.init(frame_bgr, slow_dets)
-                if cfg.fast_backend == "yoloe":
+                if cfg.fast_backend == "yoloe" or recovery_requested or self._recovery_yoloe:
                     self.yoloe.imgsz = cfg.imgsz
                     self.yoloe.conf = cfg.conf
                     self.yoloe.set_visual_prompt(frame_bgr, slow_dets, conf=cfg.conf)
+                    self._recovery_yoloe = cfg.fast_backend == "cv"
                 self._has_target = True
                 self._lost_frames = 0
                 path = "slow"
@@ -138,17 +193,23 @@ class FindTrackPipeline:
         fast_dets: list[Detection] = []
         t_fast = time.perf_counter()
         if self._has_target:
-            if cfg.fast_backend == "yoloe" and self.yoloe.has_prompt:
+            if bootstrap_success:
+                fast_dets = bootstrap_dets
+                path = "fast"
+            elif (cfg.fast_backend == "yoloe" or self._recovery_yoloe) and self.yoloe.has_prompt:
                 if path == "slow":
                     fast_dets = self.yoloe.detect(frame_bgr, conf=cfg.conf)
                 else:
                     fast_dets = self.yoloe.track(frame_bgr, conf=cfg.conf, persist=True)
                     path = "fast"
+                if fast_dets and self._recovery_yoloe:
+                    self.cv.init(frame_bgr, fast_dets)
+                    self._recovery_yoloe = False
             else:
                 fast_dets = self.cv.update(frame_bgr)
                 if path != "slow":
                     path = "fast"
-        fast_ms = (time.perf_counter() - t_fast) * 1000
+        fast_ms = bootstrap_ms + (time.perf_counter() - t_fast) * 1000
 
         if path == "slow" and not fast_dets:
             # On the find frame, surface Florence boxes as the current tracks too.

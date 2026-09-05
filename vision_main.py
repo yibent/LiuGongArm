@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "source"))
+os.environ.setdefault("HF_HOME", str(ROOT / ".cache" / "huggingface"))
 WEIGHTS = ROOT / "yoloe-26x-seg.pt"
 
 
@@ -25,22 +27,31 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--imgsz", type=int, default=640)
     parser.add_argument("--output", type=str, help="标注结果输出路径")
     parser.add_argument("--weights", type=str, default=str(WEIGHTS))
-    parser.add_argument("--florence", type=str, default="florence-community/Florence-2-large")
+    parser.add_argument("--florence", type=str, help="Florence model directory or Hugging Face model ID")
+    parser.add_argument("--memory-id", type=str, help="回放 runs/memories 中的对象记忆")
+    parser.add_argument("--memory-view", choices=["scene", "wrist"], help="回放记忆时优先使用的相机视角")
     return parser.parse_args()
 
 
 def run_cli(args: argparse.Namespace) -> int:
+    from find_and_track.memory import ObjectMemoryStore
     from find_and_track.pipeline import FindTrackPipeline
     from find_and_track.types import RuntimeConfig
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    pipe = FindTrackPipeline(yoloe_weights=args.weights, florence_id=args.florence)
+    pipe = FindTrackPipeline(
+        yoloe_weights=args.weights,
+        florence_id=args.florence,
+        memory_store=ObjectMemoryStore(ROOT / "runs" / "memories"),
+    )
     cfg = RuntimeConfig(
         prompt=args.prompt,
         fast_backend=args.fast,
         slow_interval=args.interval,
         conf=args.conf,
         imgsz=args.imgsz,
+        memory_id=args.memory_id,
+        memory_view=args.memory_view,
     )
     print(f"Loading models… prompt={args.prompt!r} fast={args.fast}", flush=True)
     pipe.load(cfg.fast_backend)
@@ -63,14 +74,22 @@ def run_cli(args: argparse.Namespace) -> int:
 def main() -> int:
     args = parse_args()
     weights = Path(args.weights)
-    if not weights.exists():
+    if args.fast == "yoloe" and not weights.exists():
         print(f"YOLOE weights not found: {weights}", file=sys.stderr)
         return 1
     if args.source and not args.webui:
         return run_cli(args)
     from find_and_track.webui import serve
+    from find_and_track.types import RuntimeConfig
 
-    serve(host=args.host, port=args.port, weights=weights)
+    serve(
+        host=args.host, port=args.port, weights=weights, florence_id=args.florence,
+        config=RuntimeConfig(
+            prompt=args.prompt, fast_backend=args.fast, slow_interval=args.interval,
+            conf=args.conf, imgsz=args.imgsz,
+            memory_id=args.memory_id, memory_view=args.memory_view,
+        ),
+    )
     return 0
 
 

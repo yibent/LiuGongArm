@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import Mock
 
 import numpy as np
 
@@ -70,6 +71,21 @@ class FakeYoloeTracker:
 
 
 class MultiViewVisionTests(unittest.TestCase):
+    def test_memory_uses_per_camera_defaults_or_explicit_view(self) -> None:
+        for requested_view in (None, "wrist"):
+            with self.subTest(view=requested_view):
+                pipelines = {view: Mock() for view in ("scene", "wrist")}
+                multi = MultiViewFindTrackPipeline(pipelines=pipelines)
+                frame = np.zeros((40, 40, 3), dtype=np.uint8)
+                cfg = RuntimeConfig(memory_id="test-memory", memory_view=requested_view)
+                multi.process_frames({"scene": frame, "wrist": frame}, cfg)
+                for view, pipeline in pipelines.items():
+                    view_cfg = pipeline.process_frame.call_args.args[1]
+                    self.assertEqual(view_cfg.memory_id, "test-memory")
+                    self.assertEqual(view_cfg.memory_view, requested_view or view)
+                    self.assertIsNot(view_cfg, cfg)
+                self.assertEqual(cfg.memory_view, requested_view)
+
     def test_prompt_change_refinds_then_both_views_resume_fast_tracking(self) -> None:
         finder = FakeFinder()
         trackers = {name: FakeYoloeTracker() for name in ("scene", "wrist")}
