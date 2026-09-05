@@ -6,25 +6,16 @@
 
 ## 本地体验
 
-仓库根目录拉起 MySQL：
-
-```bash
-docker compose up -d mysql
-```
-
-默认账号与 Host 配置一致：`root` / `root`，库名 `busagent`，宿主机端口 `3307`（避免和本机 MySQL 抢 3306）。
-
-然后启动 Host，并打开语音助手：
+直接启动 Host，无需数据库或 Docker。运行状态仅保存在内存中，重启后清空。
 
 ```bash
 cd backend
 export DASHSCOPE_API_KEY=sk-你的key
-export BUSAGENT_MYSQL_URL=mysql://root:root@127.0.0.1:3307/busagent
 pnpm install
 pnpm dev
 ```
 
-浏览器打开 [http://localhost:3000/](http://localhost:3000/)。前端文件在仓库 `frontend/`，由 Host 同源托管。
+前端单独运行：在另一个终端进入 `frontend/`，执行 `pnpm install` 和 `pnpm dev`，打开终端显示的地址。
 
 ### 机器人指令链路
 
@@ -62,19 +53,19 @@ transcript.final
 - 不通过 HTTP 请求同步返回业务结果。语音转文字以短文本事件流式发给下游；原始音频走 `/v1/stt` WebSocket，不进入事件总线。助手语音由 Qwen-TTS 合成，PCM 同样走该 WebSocket，不进入事件总线。
 - Package 接线是本地 JSON；App 是同一进程中的模块，JSON 描述路由，TypeScript 实现 Agent；配置在 Host 启动时一次性加载，运行期间不热更新；
 - 外部服务主动注册并定期续租；一个 `agent_id` 只允许一个活动实例；
-- Event Bus 使用进程内队列负责投递，MySQL 负责配置快照、事件状态和审计；
+- Event Bus 使用进程内队列负责投递，内存仓库保存配置快照、事件状态和审计；
 - Agent 可以在 App 声明的允许范围内建议下一跳；
 - 普通事件、任务事件和物理副作用事件使用不同的失败与重试策略；
 - 配置安装发现全局 `agent_id` 冲突时直接拒绝。
 - 所有 Agent 都通过 Host 统一的 `/v1/events` 回传事件；
 - 队列粒度为每个 `app_id + agent_id` 一个进程内队列；不使用 Redis；
-- 完整 JSON 事件正文持久化到 MySQL；
+- 完整 JSON 事件正文保存在内存中；
 - 注册租约固定为 30 秒，每 10 秒续租；
 - 重试策略由 Agent Package 声明，App 只能缩小重试范围；
 - 执行器必须发布 `accepted`、`started`、`completed`、`failed`、`unknown` 五类状态事件；
-- MySQL 数据访问层采用 Drizzle ORM。
+- 数据访问层使用进程内 Map 和数组，随 Host 实例创建。
 
-不进行 HTTP 身份认证意味着当前版本假定 Host、Agent 和 MySQL 均处于完全可信的部署边界内。
+不进行 HTTP 身份认证意味着当前版本假定 Host 和 Agent 均处于完全可信的部署边界内。
 
 ## 2. 核心模型
 
@@ -95,7 +86,7 @@ flowchart LR
 - **App**：具体应用定义，描述使用哪些 Agent、向每个 Agent 注入什么配置，以及事件如何连接。
 - **Endpoint**：Agent 接收事件的位置，可以是已注册的进程内类或固定 HTTP URL。
 - **App Runtime**：由 App 配置实例化的运行上下文，持有提示词版本、配置版本和事件路由快照。
-- **Event Bus**：接收、持久化、路由和投递事件，维护因果关系、去重、重试和取消。
+- **Event Bus**：接收、存储、路由和投递事件，维护因果关系、去重、重试和取消。
 
 Package 不包含具体任务编排；App 不重新定义 Agent 的真实能力和权限。App 只能在 Package 声明允许的范围内配置和连接 Agent。
 
@@ -118,7 +109,7 @@ src/
   common/           # ids、errors、clock、configuration
 ```
 
-MySQL 访问层使用 Drizzle ORM。选择它是因为事件和审计数据需要显式 SQL、JSON 字段与索引控制，同时保留 TypeScript 类型推导；代价是比 TypeORM 少一些 Nest 风格的实体抽象，需要团队自行约束 Repository、事务和迁移目录。
+Repository 使用进程内 Map 和数组保存状态，无需外部存储服务、连接配置或迁移。幂等键占用和事件写入在同一个同步步骤内完成，保留运行期间的并发去重语义。
 
 ## 4. Package 配置
 
@@ -329,13 +320,13 @@ Content-Type: application/json
 - 对副作用操作使用额外的幂等键和执行凭证；
 - 路由依据启动时加载的 App 快照，运行中的任务不会发生配置切换。Agent 的下一跳建议必须匹配 App 的允许目标集合，并经过 Host 的结构和策略检查。
 
-### 9.1 进程内队列与 MySQL 的职责
+### 9.1 进程内队列与内存仓库的职责
 
 - 进程内队列：待投递作业、延迟重试、并发限制和优先级；
 - 队列命名固定为 `busagent:{app_id}:{agent_id}`，每个 App 使用的 Agent 都有独立队列；
-- MySQL：Package/App 启动快照、全局 Agent 注册表、完整 JSON 事件、任务状态、幂等记录、死信元数据和审计记录；
-- 进程内队列不是事实来源，重启恢复依赖 MySQL 中的事件和投递状态；
-- 完整事件正文写入 MySQL JSON 字段；音频、图像等大对象仍只保存外部引用，不直接塞入事件正文。
+- 内存仓库：Package/App 启动快照、全局 Agent 注册表、完整 JSON 事件、任务状态、幂等记录、死信元数据和审计记录；
+- 队列和内存仓库均只在当前进程内有效，重启后清空，不恢复未完成投递；
+- 完整事件正文保存在内存；音频、图像等大对象仍只保存外部引用，不直接塞入事件正文。
 
 ### 9.2 事件分类
 
@@ -353,10 +344,10 @@ Package 可以为 Agent 或事件类型声明最大尝试次数、退避策略�
 read local Package JSON -> validate global agent ids -> register expected agents
 read local App JSON -> resolve relative files -> validate routes/config -> create startup snapshot
 await service registrations -> health-check agents -> ready -> receive and route events
-shutdown -> drain queues -> persist state -> stop
+shutdown -> discard pending jobs -> finish in-flight work -> stop
 ```
 
-配置更新不属于运行时操作。Package 或 App 变化必须修改本地文件并重启 Host；启动失败时保留上一轮持久化快照和诊断信息，但不自动混合新旧配置。
+配置更新不属于运行时操作。Package 或 App 变化必须修改本地文件并重启 Host；每次启动重新加载配置文件，不保留上一轮运行状态，也不混合新旧配置。
 
 ## 11. 首期实现顺序
 

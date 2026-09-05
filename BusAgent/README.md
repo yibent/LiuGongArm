@@ -93,8 +93,9 @@ BusAgent 重点解决：
 
 ## 本地体验
 
+无需数据库或 Docker。事件、任务、幂等键和投递状态仅保存在当前进程内，重启后清空；外部 Agent 需重新注册。
+
 ```bash
-docker compose up -d mysql
 cd backend
 export DASHSCOPE_API_KEY=sk-你的key
 pnpm install

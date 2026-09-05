@@ -1,8 +1,8 @@
 /**
  * In-process delivery queue: one per app_id + agent_id.
  *
- * Replaces BullMQ/Redis. Jobs live in memory while the host is up; MySQL
- * delivery rows remain the source of truth for restart recovery.
+ * Jobs and delivery records live only in memory while the host is up.
+ * Restarting the host begins with an empty queue.
  *
  * Semantics kept from the previous BullMQ worker:
  * - lower `priority` runs first (then FIFO);
@@ -90,8 +90,8 @@ export class InProcessQueue<T> {
   }
 
   /**
-   * Stop accepting work, drop waiting/delayed jobs (they remain in MySQL for
-   * recovery), and wait for in-flight processors to finish.
+   * Stop accepting work, discard waiting/delayed jobs, and wait for
+   * in-flight processors to finish.
    */
   async close(): Promise<void> {
     this.closed = true;

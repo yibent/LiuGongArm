@@ -7,7 +7,7 @@ import { toSerializableSnapshot } from './startup-snapshot.js';
 import { SnapshotsRepository } from '../persistence/repositories/snapshots.repository.js';
 import type { ResolvedApp } from './app-loader.js';
 
-/** Persists the startup Package/App snapshots to MySQL (spec §4, §10). */
+/** Stores the startup Package/App snapshots in memory (spec §4, §10). */
 @Injectable()
 export class SnapshotsWriter {
   constructor(private readonly snapshotsRepo: SnapshotsRepository) {}

@@ -17,18 +17,18 @@
 - 每个 `agent_id` 只允许一个活动实例；
 - Agent 可以是进程内 TypeScript 类，也可以是外部 HTTP 服务；
 - HTTP Endpoint URL 直接写入 Package；
-- 不使用 HTTP 身份认证，部署边界内的 Host、Agent 和 MySQL 均视为可信；
+- 不使用 HTTP 身份认证，部署边界内的 Host 和 Agent 均视为可信；
 - 业务结果仍是异步事件；语音转文字可以把已锁定的短文本以 `transcript.delta` 连续发布；
 - 原始音频不进事件总线，走 Host WebSocket `/v1/stt`，STT 使用通义千问实时识别 `wss://dashscope.aliyuncs.com/api-ws/v1/realtime`（模型 `qwen3-asr-flash-realtime`）；
 - 所有 Agent 都向 Host 的统一 `POST /v1/events` 发布事件；
-- 进程内队列负责投递、延迟重试和并发限制，MySQL 负责持久化事实；
+- 进程内队列负责投递、延迟重试和并发限制，内存仓库保存本次运行的状态；
 - 队列粒度为每个 `app_id + agent_id` 一个进程内队列；不使用 Redis 或外部作业队列；
-- 完整 JSON 事件正文存入 MySQL；大型媒体只存外部引用；
+- 完整 JSON 事件正文存入内存；大型媒体只存外部引用；
 - Agent 注册租约 TTL 固定 30 秒，每 10 秒续租；
 - 重试上限和默认策略由 Package 声明，App 只能进一步收紧；
 - Agent 可在 App 允许目标集合内建议下一跳；Host 负责最终检查和投递；
 - 物理执行器必须发布 `accepted`、`started`、`completed`、`failed`、`unknown` 事件；
-- MySQL 数据访问层使用 Drizzle ORM。
+- 数据访问层使用进程内 Map 和数组，随 Host 实例创建。
 
 ## 2. 非目标
 
@@ -60,7 +60,7 @@ Adapters
   - InProcessAgentAdapter
   - HttpAgentAdapter
       |
-In-process queues ---------- MySQL + Drizzle
+In-process queues ---------- In-memory repositories
 delivery / retries             events / snapshots / audit
 ```
 
@@ -82,7 +82,6 @@ src/
     in-process/
     http/
   persistence/
-    db/
     repositories/
   leases/
   supervision/
@@ -111,7 +110,6 @@ backend-config/
 BUSAGENT_CONFIG_DIR=./backend-config
 BUSAGENT_PACKAGE_DIR=./backend-config/packages
 BUSAGENT_APP_FILE=./backend-config/apps/desktop-robot.app.json
-BUSAGENT_MYSQL_URL=mysql://root:root@127.0.0.1:3307/busagent
 BUSAGENT_EVENT_INGRESS_PATH=/v1/events
 BUSAGENT_REGISTRATION_PATH=/internal/registrations
 DASHSCOPE_API_KEY=
@@ -125,7 +123,7 @@ Host 启动流程：
 2. 校验 JSON Schema、版本、路径和全局 `agent_id` 唯一性；
 3. 读取 App JSON 及其目录内的 prompt/config 文件；
 4. 校验 App 引用的 Agent、事件类型、路由目标和配置 Schema；
-5. 将 Package/App 快照写入 MySQL；
+5. 将 Package/App 快照保存在内存；
 6. 注册进程内 Agent 类，等待外部 Agent 注册；
 7. 为当前 App 的每个 Agent 初始化进程内投递队列；
 8. 只有所需 Agent 均健康时才将 App 标记为 `ready`；
@@ -325,7 +323,7 @@ agentClasses.register("DialogueAgent", dialogueAgentInstance);
 
 Package 只能引用已注册的 `registration_key`，不能根据配置字符串动态加载任意代码。
 
-## 10. 队列、持久化和重试
+## 10. 队列、内存状态和重试
 
 队列名固定为：
 
@@ -333,7 +331,7 @@ Package 只能引用已注册的 `registration_key`，不能根据配置字符�
 busagent:{app_id}:{agent_id}
 ```
 
-进程内队列负责待投递作业、延迟重试、并发限制和优先级。MySQL + Drizzle 负责：
+进程内队列负责待投递作业、延迟重试、并发限制和优先级。内存仓库负责：
 
 - Package/App 启动快照；
 - 全局 Agent 注册表和租约记录；
@@ -341,7 +339,7 @@ busagent:{app_id}:{agent_id}
 - 事件投递记录、任务状态和幂等记录；
 - 死信元数据、审计和 trace 索引。
 
-进程内队列不是事实来源；关闭或重启后根据 MySQL 中的投递记录重建队列。事件正文使用 MySQL JSON 字段，大型音频、图像和文件只保留外部引用。
+队列和仓库均只在当前进程内有效。关闭或重启后清空事件、投递、任务、幂等键、注册租约、死信和审计状态，不恢复未完成任务；外部 Agent 需重新注册。事件正文保存在内存，大型音频、图像和文件只保留外部引用。
 
 | 事件类型 | 默认处理 |
 | --- | --- |
@@ -376,17 +374,17 @@ Agent 的下一跳建议必须经过以下检查：
 read local Package JSON -> validate global agent ids -> register expected agents
 read local App JSON -> resolve relative files -> validate routes/config -> create startup snapshot
 await service registrations -> health-check agents -> ready -> receive and route events
-shutdown -> drain queues -> persist state -> stop
+shutdown -> discard pending jobs -> finish in-flight work -> stop
 ```
 
-配置变化必须修改本地文件并重启 Host。启动失败时保留上一轮 MySQL 快照和诊断信息，但不混合新旧配置。
+配置变化必须修改本地文件并重启 Host。每次启动重新加载配置文件，不保留上一轮运行状态，也不混合新旧配置。
 
 ## 13. 实现顺序
 
-1. 添加 Drizzle、MySQL 驱动和进程内投递队列；
+1. 添加内存仓库和进程内投递队列；
 2. 定义 Package、App、Event Envelope 的 Zod Schema；
 3. 实现启动加载、路径安全检查和全局 Agent 冲突检测；
-4. 实现 MySQL migration、Repository 和启动快照；
+4. 实现内存 Repository 和启动快照；
 5. 实现全局 Agent Registry、注册租约和单实例约束；
 6. 实现 `InProcessAgentAdapter` 与 `HttpAgentAdapter`；
 7. 实现进程内队列、统一 `/v1/events`、`202` 投递确认和幂等；
@@ -406,5 +404,5 @@ shutdown -> drain queues -> persist state -> stop
 - App 重试覆盖不能超过 Package 上限；
 - 旧任务版本结果不会推进当前任务；
 - 物理动作出现 `unknown` 后不会自动重放；
-- MySQL 可恢复事件状态、配置快照、死信和审计记录；
-- 关闭和重启后，未完成投递根据 MySQL 状态恢复到进程内队列。
+- 当前进程内可查询事件状态、配置快照和死信，并保留审计记录；
+- 关闭和重启后，运行状态全部清空，未完成投递不恢复。

@@ -37,7 +37,7 @@ interface BuildEventInput {
 /**
  * Unified event ingress (spec §8): every agent — in-process or HTTP — publishes
  * through this path. The host generates the eventId, receive time and trace,
- * persists the full JSON body to MySQL, applies idempotency/task-version gates
+ * stores the full JSON body in memory, applies idempotency/task-version gates
  * and routes the event to the App's allowed targets.
  */
 @Injectable()
@@ -186,9 +186,8 @@ export class EventBus {
           ? 'dropped'
           : 'ingested';
 
-    // The idempotency claim and the event row persist in one transaction, so
-    // concurrent publishes carrying the same idempotency_key cannot both be
-    // routed (spec §14): the unique key is the gate, not a check-then-insert.
+    // The idempotency claim and event insertion run synchronously without
+    // yielding, so concurrent publishes with the same key cannot both route.
     // A replay (key already claimed by an earlier event) is audited and dropped.
     const claim =
       event.idempotencyKey !== undefined

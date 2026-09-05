@@ -10,7 +10,6 @@ const EnvSchema = z.object({
   BUSAGENT_CONFIG_DIR: z.string().min(1).optional(),
   BUSAGENT_PACKAGE_DIR: z.string().min(1).optional(),
   BUSAGENT_APP_FILE: z.string().min(1).optional(),
-  BUSAGENT_MYSQL_URL: z.string().url().optional(),
   BUSAGENT_EVENT_INGRESS_PATH: z.string().min(1).optional(),
   BUSAGENT_REGISTRATION_PATH: z.string().min(1).optional(),
   BUSAGENT_PORT: z.coerce.number().int().min(1).max(65535).optional(),
@@ -32,7 +31,6 @@ export class HostConfig {
   readonly configDir: string;
   readonly packageDir: string;
   readonly appFile: string;
-  readonly mysqlUrl: string;
   readonly eventIngressPath: string;
   readonly registrationPath: string;
   readonly port: number;
@@ -51,7 +49,6 @@ export class HostConfig {
     configDir: string;
     packageDir: string;
     appFile: string;
-    mysqlUrl: string;
     eventIngressPath: string;
     registrationPath: string;
     port: number;
@@ -69,7 +66,6 @@ export class HostConfig {
     this.configDir = values.configDir;
     this.packageDir = values.packageDir;
     this.appFile = values.appFile;
-    this.mysqlUrl = values.mysqlUrl;
     this.eventIngressPath = values.eventIngressPath;
     this.registrationPath = values.registrationPath;
     this.port = values.port;
@@ -107,7 +103,6 @@ export class HostConfig {
       configDir,
       packageDir,
       appFile,
-      mysqlUrl: e.BUSAGENT_MYSQL_URL ?? 'mysql://root:root@127.0.0.1:3307/busagent',
       eventIngressPath: e.BUSAGENT_EVENT_INGRESS_PATH ?? '/v1/events',
       registrationPath: e.BUSAGENT_REGISTRATION_PATH ?? '/internal/registrations',
       port: e.BUSAGENT_PORT ?? DEFAULT_PORT,

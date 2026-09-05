@@ -31,10 +31,9 @@
 
 ## 本地开发
 
-先启动 MySQL 和后端：
+直接启动后端（无需数据库或 Docker）：
 
 ```bash
-docker compose up -d mysql
 cd backend
 pnpm install
 pnpm dev

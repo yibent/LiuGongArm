@@ -28,7 +28,7 @@ export interface AppSnapshot {
   packageIds: string[];
 }
 
-/** Serializable form used for MySQL snapshots and the snapshot hash. */
+/** Serializable form used for in-memory snapshots and the snapshot hash. */
 export interface SerializableSnapshot {
   snapshotSha256: string;
   createdAt: string;

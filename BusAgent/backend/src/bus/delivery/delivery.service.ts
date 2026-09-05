@@ -8,28 +8,20 @@ import { LeaseManager } from '../../leases/lease-manager.service.js';
 import { RuntimeState } from '../../app/runtime-state.service.js';
 import { AgentAdapterFactory } from '../../adapters/agent-adapter-factory.js';
 import { EventsRepository } from '../../persistence/repositories/events.repository.js';
-import {
-  DeliveriesRepository,
-  type RecoverableDelivery,
-} from '../../persistence/repositories/deliveries.repository.js';
+import { DeliveriesRepository } from '../../persistence/repositories/deliveries.repository.js';
 import { DeadLettersRepository } from '../../persistence/repositories/dead-letters.repository.js';
-import { fromMysqlDatetime } from '../../persistence/db/mysql-datetime.js';
 import { TaskService } from '../tasks/task.service.js';
 import { PhysicalActionState } from '../physical/physical-action-state.service.js';
-import {
-  QueueManager,
-  type DeliveryJob,
-} from '../queue/queue-manager.service.js';
+import { QueueManager, type DeliveryJob } from '../queue/queue-manager.service.js';
 import { eventKindOf } from '../event-kind.js';
 import { resolveRetry } from './retry-policy.js';
 
 const FALLBACK_RETRY = { max_attempts: 1, backoff_ms: 0, dead_letter: true };
 
 /**
- * In-process delivery worker (spec §10): hydrates the event from MySQL, re-checks
+ * In-process delivery worker (spec §10): loads the event from memory, re-checks
  * task/lease state, delivers through the target adapter, honours retry limits
- * and dead-letters exhausted deliveries. MySQL is the source of truth; the
- * in-process queue is reconstructed on startup from delivery rows.
+ * and dead-letters exhausted deliveries. All state is scoped to this process and discarded on restart.
  */
 @Injectable()
 export class DeliveryService implements OnModuleDestroy {
@@ -68,86 +60,6 @@ export class DeliveryService implements OnModuleDestroy {
     this.logger.info(
       `delivery queues ready app=${snapshot.appId} agents=[${snapshot.agentIds.join(', ')}]`,
     );
-  }
-
-  /**
-   * Re-queues deliveries that still owe a job after a restart (spec §14).
-   * Only deliveries for agents still in the current App snapshot are recovered;
-   * a removed agent has no worker and its jobs would sit forever. Delayed
-   * retries honour `next_attempt_at` when it is still in the future.
-   */
-  async recoverFromMysql(): Promise<void> {
-    const snapshot = this.runtime.current;
-    const pending = await this.deliveriesRepo.findRecoverable();
-    for (const delivery of pending) {
-      if (delivery.appId !== snapshot.appId || !snapshot.agents.has(delivery.agentId)) {
-        await this.deliveriesRepo.recordAttempt(delivery.id, {
-          status: 'dead',
-          attempts: delivery.attempts,
-          lastError: 'agent no longer in the app snapshot; delivery not recovered',
-          updatedAt: this.clock.now(),
-        });
-        continue;
-      }
-      if (delivery.attempts >= delivery.maxAttempts) {
-        await this.deliveriesRepo.recordAttempt(delivery.id, {
-          status: 'dead',
-          attempts: delivery.attempts,
-          lastError: 'max attempts already exhausted; delivery not recovered',
-          updatedAt: this.clock.now(),
-        });
-        continue;
-      }
-      const queue = this.queueManager.ensure(delivery.appId, delivery.agentId);
-      if (queue.has(delivery.id)) {
-        continue;
-      }
-      const event = await this.eventsRepo.findById(delivery.eventId);
-      if (!event) {
-        continue;
-      }
-      const entry = snapshot.agents.get(delivery.agentId);
-      const kind = eventKindOf(event, this.registry);
-      const effective = resolveRetry(
-        entry?.packageRetry ?? FALLBACK_RETRY,
-        entry?.retryOverride,
-        kind,
-      );
-      queue.enqueue(
-        {
-          id: delivery.id,
-          data: {
-            eventId: delivery.eventId,
-            agentId: delivery.agentId,
-            appId: delivery.appId,
-          },
-          attemptsMade: delivery.attempts,
-          maxAttempts: delivery.maxAttempts,
-          priority: event.priority,
-          backoffMs: effective.backoffMs,
-        },
-        this.enqueueDelayMs(delivery, effective.backoffMs),
-      );
-    }
-  }
-
-  /**
-   * Delay before a recovered job runs: honour a future `next_attempt_at`,
-   * otherwise run immediately for a never-attempted row, else the policy backoff.
-   */
-  private enqueueDelayMs(delivery: RecoverableDelivery, policyMs: number): number {
-    if (delivery.nextAttemptAt) {
-      const remaining =
-        new Date(fromMysqlDatetime(delivery.nextAttemptAt)).getTime() -
-        this.clock.nowMs();
-      if (remaining > 0) {
-        return remaining;
-      }
-    }
-    if (delivery.attempts === 0) {
-      return 0;
-    }
-    return policyMs;
   }
 
   private async process(job: DeliveryJob): Promise<void> {

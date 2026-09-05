@@ -19,16 +19,14 @@ import { SnapshotsWriter } from '../app/snapshots-writer.js';
 import { RuntimeState } from '../app/runtime-state.service.js';
 import { RegistryService } from '../registry/registry.service.js';
 import { LeaseManager } from '../leases/lease-manager.service.js';
-import { MigrationRunner } from '../persistence/db/migrate.js';
-import { DatabaseConnection } from '../persistence/db/client.js';
 import { AgentsRepository } from '../persistence/repositories/agents.repository.js';
 import { DeliveryService } from '../bus/delivery/delivery.service.js';
 
 /**
  * Host startup lifecycle (spec §4, §12):
  * load packages -> install (global agent_id conflict detection) -> load/validate
- * app -> persist snapshots -> register in-process agents -> init delivery queues
- * -> recover from MySQL -> await required service registrations -> ready.
+ * app -> store snapshots in memory -> register in-process agents -> init delivery queues
+ * -> await required service registrations -> ready.
  *
  * Any validation failure aborts startup: the process must not run with a
  * partial configuration.
@@ -50,8 +48,6 @@ export class HostRuntimeService
     private readonly runtime: RuntimeState,
     private readonly registry: RegistryService,
     private readonly leases: LeaseManager,
-    private readonly migrations: MigrationRunner,
-    private readonly db: DatabaseConnection,
     private readonly agentsRepo: AgentsRepository,
     private readonly delivery: DeliveryService,
   ) {}
@@ -70,7 +66,6 @@ export class HostRuntimeService
     this.state = 'stopping';
     this.logger.info(`Host shutting down (signal=${signal ?? 'unknown'})`);
     await this.delivery.shutdown();
-    await this.db.close().catch(() => undefined);
   }
 
   get currentState(): string {
@@ -79,9 +74,6 @@ export class HostRuntimeService
 
   private async start(): Promise<void> {
     this.logger.info('BusAgent host starting');
-
-    await this.migrations.up();
-    this.logger.info('database schema ready');
 
     const packages: LoadedPackage[] = await loadPackages(this.config.packageDir);
     this.logger.info(`loaded ${packages.length} package(s)`);
@@ -99,7 +91,6 @@ export class HostRuntimeService
 
     this.registerInProcessAgents();
     this.delivery.init(snapshot);
-    await this.delivery.recoverFromMysql();
 
     // Readiness is awaited separately by the entrypoint (main.ts) after the
     // HTTP server is bound, so external agents can actually reach
