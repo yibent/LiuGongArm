@@ -57,6 +57,17 @@ class Rig:
 
 
 class FinePlaceTests(unittest.TestCase):
+    def test_sim_shutdown_watchdog_precedes_native_teardown(self):
+        script=Path(__file__).resolve().parents[1]/'scripts/run_fine_grasp_demo.py'
+        tree=ast.parse(script.read_text(encoding='utf-8'))
+        calls=[n for n in ast.walk(tree) if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute)]
+        watchdog=next(n for n in calls if n.func.attr=='dump_traceback_later')
+        close=next(n for n in calls if n.func.attr=='close' and isinstance(n.func.value,ast.Name)
+                   and n.func.value.id=='simulation_app')
+        self.assertLess(watchdog.lineno,close.lineno)
+        self.assertEqual(ast.literal_eval(watchdog.args[0]),45.)
+        self.assertTrue(ast.literal_eval(next(k.value for k in watchdog.keywords if k.arg=='exit')))
+
     def test_stationary_release_budget_allows_slow_check_only_when_still(self):
         r=Rig();opening=r.opening_safe
         r.robot_state=lambda:SimpleNamespace(T_base_ee=r.pose.copy(),timestamp_s=r.t,

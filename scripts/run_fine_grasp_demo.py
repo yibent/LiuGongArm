@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import faulthandler
 import json
 import hashlib
 import subprocess
@@ -84,7 +85,7 @@ ARGS = _parse_args()
 
 from isaacsim import SimulationApp
 
-simulation_app = SimulationApp({"headless": ARGS.headless})
+simulation_app = SimulationApp({"headless": ARGS.headless,"shutdown_watchdog_timeout":45.})
 
 import cv2
 import isaacsim.core.experimental.utils.app as app_utils
@@ -753,6 +754,15 @@ finally:
             simulation_app.update()
             time.sleep(0.01)
     # Isaac 6 fast shutdown exits here, before the SystemExit below.
-    simulation_app.close(exit_code=exit_code)
+    # All our RGB-D/video writers are closed above. Kit can deadlock before its
+    # own late shutdown watchdog is armed (e.g. while stopping Replicator).
+    # The C-level timer also works when native teardown holds the GIL. A timeout
+    # dumps stacks and exits nonzero; it never rewrites physical success reports.
+    print('[BusAgent] Reports/video flushed; starting bounded Isaac shutdown',flush=True)
+    faulthandler.dump_traceback_later(45.,exit=True)
+    try:
+        simulation_app.close(exit_code=exit_code)
+    finally:
+        faulthandler.cancel_dump_traceback_later()
 
 raise SystemExit(exit_code)

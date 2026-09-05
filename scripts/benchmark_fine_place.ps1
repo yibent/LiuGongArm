@@ -21,7 +21,7 @@ foreach ($case in $matrix.cases) {
 New-Item -ItemType Directory -Path $Output -Force | Out-Null
 Copy-Item -LiteralPath $Manifest -Destination (Join-Path $Output 'manifest.json')
 $benchCommit=(& git -C $benchRoot rev-parse HEAD)
-$benchDirty=(& git -C $benchRoot status --porcelain)
+$benchDirty=@(& git -C $benchRoot status --porcelain)
 $results=@()
 foreach ($case in $matrix.cases) {
     $run=Join-Path $Output $case.name
@@ -42,7 +42,7 @@ foreach ($case in $matrix.cases) {
         $grasp=Get-Content -LiteralPath (Join-Path $run 'report.json') -Raw | ConvertFrom-Json
     }
     $results+=[PSCustomObject]@{
-        name=$case.name;exit_code=$runExit;wall_s=((Get-Date)-$started).TotalSeconds
+        name=$case.name;exit_code=$runExit;process_success=($runExit -eq 0);wall_s=((Get-Date)-$started).TotalSeconds
         grasp_success=($null -ne $grasp -and $grasp.result.success)
         success=($null -ne $place -and $place.result.success -and $place.result.released -and $place.result.verified)
         released=($null -ne $place -and $place.result.released)
@@ -53,4 +53,4 @@ foreach ($case in $matrix.cases) {
     [IO.File]::WriteAllText((Join-Path $Output 'summary.json'),($summary | ConvertTo-Json -Depth 20))
 }
 $results | Select-Object name,success,released,failure,wall_s | Format-Table -AutoSize
-if (@($results | Where-Object {-not $_.success}).Count) {exit 2}
+if (@($results | Where-Object {-not $_.success -or -not $_.process_success}).Count) {exit 2}

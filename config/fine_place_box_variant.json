@@ -1,0 +1,16 @@
+{
+  "name": "place_rectangular_box_seed11",
+  "shape": "cube",
+  "dimensions_m": [0.04, 0.028, 0.03],
+  "position_m": [0.324, -0.198, 1.065],
+  "seed": 11,
+  "yaw_deg": 12.0,
+  "mass_kg": 0.035,
+  "color_rgb": [0.85, 0.12, 0.08],
+  "material": "matte",
+  "light_scale": 0.8,
+  "metadata": {
+    "purpose": "Development shape/pose/light variation, not unseen-object generalization acceptance",
+    "stable_base": "Physical rectangular solid with flat bottom; geometry still estimated from RGB-D"
+  }
+}

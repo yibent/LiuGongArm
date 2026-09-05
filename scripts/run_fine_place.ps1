@@ -1,5 +1,6 @@
 param(
     [string]$GraspLabel = 'red cube',
+    [string]$CaseJson = '',
     [string]$Destination = 'blue square',
     [ValidateSet('region','tray')][string]$Fixture = 'region',
     [ValidateSet('on','inside')][string]$Relation = 'on',
@@ -64,6 +65,7 @@ try {
         '-PlaceBackend',$PlaceBackend,'-AnyPlaceUrl',"http://127.0.0.1:$AnyPlacePort",
         '-ReleaseMaxAgeS',"$ReleaseMaxAgeS",'-PlaceFixtureX',"$FixtureX",'-PlaceFixtureY',"$FixtureY")
     if ($RecordVideo) {$placeArgs+='-RecordVideo'}
+    if ($CaseJson) {$placeArgs+=@('-CaseJson',$CaseJson)}
     if ($NoHeadless) {$placeArgs+='-NoHeadless'}
     # Do not hold an inherited native pipe open through orphaned model helpers
     # if Isaac terminates its launcher. Read diagnostics from the per-run logs.
