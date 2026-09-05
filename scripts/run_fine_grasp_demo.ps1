@@ -2,6 +2,11 @@ param(
     [ValidateSet("geometric", "graspgenx")]
     [string]$Backend = "graspgenx",
     [switch]$NoHeadless,
+    [switch]$KeepOpen,
+    [switch]$RecordVideo,
+    [string]$CaseJson = "",
+    [ValidateRange(0, 120)]
+    [double]$StartDelayS = 0,
     [int]$Port = 5556,
     [string]$Output = "",
     [switch]$Benchmark,
@@ -9,6 +14,12 @@ param(
     [string]$Perception = "single",
     [ValidateSet("depth", "sam2")]
     [string]$Segmenter = "depth",
+    [ValidateSet("off", "assisted", "active")]
+    [string]$Recovery = "off",
+    [int]$DropInitialWristFrames = 0,
+    [double]$TestTargetShiftM = 0,
+    [ValidateSet("overhead", "oblique")]
+    [string]$SceneView = "overhead",
     [string]$Manifest = "",
     [ValidateSet("development", "acceptance")]
     [string]$Split = "development",
@@ -27,6 +38,10 @@ $GripperConfigRoot = Join-Path $ModelRoot "ext\gripper_descriptions"
 $OutputRoot = Join-Path $ProjectRoot "output\graspgenx_server"
 $ServerProcess = $null
 $WarmupProcess = $null
+
+if (($KeepOpen -or $StartDelayS -gt 0) -and ($Benchmark -or -not $NoHeadless)) {
+    throw "-KeepOpen and -StartDelayS require -NoHeadless and a single demo (no -Benchmark)"
+}
 
 if ([string]::IsNullOrWhiteSpace($Output)) {
     $RunStamp = Get-Date -Format "yyyyMMdd_HHmmss"
@@ -148,8 +163,14 @@ try {
     if ($NoHeadless) {
         $DemoArgs += "--no-headless"
     }
+    if ($KeepOpen) { $DemoArgs += "--keep-open" }
+    if ($RecordVideo) { $DemoArgs += "--record-video" }
+    if (-not [string]::IsNullOrWhiteSpace($CaseJson)) { $DemoArgs += @("--case-json", $CaseJson) }
+    if ($StartDelayS -gt 0) { $DemoArgs += @("--start-delay-s", "$StartDelayS") }
     $DemoArgs += @("--perception", $Perception)
     $DemoArgs += @("--segmenter", $Segmenter)
+    $DemoArgs += @("--recovery", $Recovery, "--drop-initial-wrist-frames", "$DropInitialWristFrames",
+                   "--test-target-shift-m", "$TestTargetShiftM", "--scene-view", $SceneView)
     if (-not [string]::IsNullOrWhiteSpace($Manifest)) {
         if (-not $Benchmark) { throw "-Manifest requires -Benchmark" }
         $DemoArgs += @("--manifest", $Manifest, "--split", $Split)

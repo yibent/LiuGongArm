@@ -17,10 +17,19 @@ from mr_liu.grasp.benchmark import (
     load_case,
     render_markdown,
     write_case,
+    validate_frozen_case_bytes,
 )
 
 
 class BenchmarkCaseTests(unittest.TestCase):
+    def test_frozen_manifest_accepts_only_transport_newlines(self):
+        import hashlib
+        lf = b'{"seed": 1}\n'
+        crlf = lf.replace(b'\n', b'\r\n')
+        self.assertTrue(validate_frozen_case_bytes(lf, hashlib.sha256(crlf).hexdigest()))
+        self.assertTrue(validate_frozen_case_bytes(crlf, hashlib.sha256(lf).hexdigest()))
+        self.assertFalse(validate_frozen_case_bytes(b'{"seed": 2}\n', hashlib.sha256(lf).hexdigest()))
+
     def test_legacy_default_case_is_unchanged(self):
         case = default_demo_case()
         self.assertEqual(case.shape, "cube")
@@ -79,6 +88,29 @@ class BenchmarkCaseTests(unittest.TestCase):
 
 
 class BenchmarkReportTests(unittest.TestCase):
+    def test_recovery_is_not_necessarily_a_regrasp(self):
+        report = self._report()
+        report['result']['metrics']['grasp_attempts'] = 1
+        report['attempt_results'] = [{'success': False}, {'success': True}]
+        report['attempt_physics'] = [{'actual_target_lift_m': 0.0}, {'actual_target_lift_m': 0.08}]
+        row = classify_report(report)
+        self.assertFalse(row['first_attempt_success'])
+        self.assertTrue(row['recovered_success'])
+        self.assertFalse(row['successful_regrasp'])
+        report['result']['metrics']['grasp_attempts'] = 2
+        self.assertTrue(classify_report(report)['successful_regrasp'])
+
+    def test_attempted_trials_use_actual_close_commands(self):
+        report = self._report(success=False, lift=0.0, failure='grasp_not_detected')
+        unknown = classify_report(report)
+        report['result']['metrics']['close_commanded'] = 0
+        no_close = classify_report(report)
+        report['result']['metrics']['close_commanded'] = 1
+        closed = classify_report(report)
+        summary = aggregate_runs([unknown, no_close, closed])
+        self.assertEqual(summary['attempted_trials'], 1)
+        self.assertEqual(summary['attempt_count_unknown_trials'], 1)
+
     @staticmethod
     def _report(*, success=True, lift=0.08, failure=None, selected_backend=None, fallback=None):
         selected = None

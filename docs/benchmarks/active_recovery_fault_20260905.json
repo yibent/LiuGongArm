@@ -1,0 +1,256 @@
+{
+  "purpose": "Explicit first-close displacement. Oblique legacy cube is an unpaired smoke test, not the frozen cube case.",
+  "rows": [
+    {
+      "artifact": "output/recovery_comparison/close_shift_20260905/off/001_cube_seed0/report.json",
+      "report_sha256": "30a70bf1611699f2bcd5641793ec31b8a2316ac2820a4af77a80279416962308",
+      "provenance": {
+        "git_commit": "2f954cad49f47d230f569b5fd05ea89db5e02ff6",
+        "source_sha256": "9e5d33ba6adf23aee70eb49877b0b13d493ca32a2b4f3c6e4559bbea06484813",
+        "config_sha256": "4aaeb8a75e8b993cdd41a3f1b339046a3f2a717f2ba99584c1f51985f59267af",
+        "model_seed": 0,
+        "segmenter": "depth"
+      },
+      "scene_view": null,
+      "recovery_mode": "off",
+      "benchmark_case": {
+        "name": "cube",
+        "shape": "cube",
+        "dimensions_m": [
+          0.036,
+          0.036,
+          0.036
+        ],
+        "position_m": [
+          0.32234097227292036,
+          -0.19690911546651874,
+          1.068
+        ],
+        "seed": 0,
+        "yaw_deg": -2.772200419166273,
+        "mass_kg": 0.035,
+        "color_rgb": [
+          0.85,
+          0.12,
+          0.08
+        ],
+        "material": "matte",
+        "fragile": false,
+        "thin": false,
+        "reflective": false,
+        "expected_feasible": true,
+        "mesh_path": null,
+        "light_scale": 1,
+        "metadata": {}
+      },
+      "perturbation_m": 0.04,
+      "perturbation_applied": true,
+      "physical_lift_m": 2.384185791015625e-7,
+      "node_success": false,
+      "failure": "grasp_not_detected",
+      "metrics": {
+        "backend": "graspgenx+geometric_antipodal_fallback",
+        "observations": 22,
+        "replans": 0,
+        "servo_steps": 20,
+        "candidates": 128,
+        "close_commanded": 1,
+        "model_calls": 1,
+        "model_total_ms": 719,
+        "active_view_moves": 0,
+        "max_observation_age_ms": 15.99999999962165,
+        "model_latency_ms": 719,
+        "rejected_pinch_center_mismatch": 30,
+        "rejected_approach_disconnected": 77,
+        "rejected_ik_unreachable": 1,
+        "rejected_table_clearance": 1,
+        "registration_residual_m": 0.0004596281107218958,
+        "registration_inlier_ratio": 0.98779296875,
+        "max_observed_centroid_jump_m": 0.0006445148532967433,
+        "final_translation_error_m": 0.0044288468151148595,
+        "final_rotation_error_deg": 1.438566623751478,
+        "close_confidence": 0.45,
+        "visual_target": 1,
+        "holding_signal": 0,
+        "elapsed_s": 14.28099999999904
+      },
+      "attempt_physics": []
+    },
+    {
+      "artifact": "output/recovery_comparison/close_shift_20260905/active/001_cube_seed0/report.json",
+      "report_sha256": "18d8dc57293c438c06ae0b4bbeba11d4298766be41e10de7bdc63142e9f736ed",
+      "provenance": {
+        "git_commit": "2f954cad49f47d230f569b5fd05ea89db5e02ff6",
+        "source_sha256": "9e5d33ba6adf23aee70eb49877b0b13d493ca32a2b4f3c6e4559bbea06484813",
+        "config_sha256": "4aaeb8a75e8b993cdd41a3f1b339046a3f2a717f2ba99584c1f51985f59267af",
+        "model_seed": 0,
+        "segmenter": "depth"
+      },
+      "scene_view": null,
+      "recovery_mode": "active",
+      "benchmark_case": {
+        "name": "cube",
+        "shape": "cube",
+        "dimensions_m": [
+          0.036,
+          0.036,
+          0.036
+        ],
+        "position_m": [
+          0.32234097227292036,
+          -0.19690911546651874,
+          1.068
+        ],
+        "seed": 0,
+        "yaw_deg": -2.772200419166273,
+        "mass_kg": 0.035,
+        "color_rgb": [
+          0.85,
+          0.12,
+          0.08
+        ],
+        "material": "matte",
+        "fragile": false,
+        "thin": false,
+        "reflective": false,
+        "expected_feasible": true,
+        "mesh_path": null,
+        "light_scale": 1,
+        "metadata": {}
+      },
+      "perturbation_m": 0.04,
+      "perturbation_applied": true,
+      "physical_lift_m": 0.07772326469421387,
+      "node_success": false,
+      "failure": "lift_verification_failed",
+      "metrics": {
+        "backend": "graspgenx+geometric_antipodal_fallback",
+        "observations": 27,
+        "replans": 0,
+        "servo_steps": 20,
+        "candidates": 128,
+        "close_commanded": 1,
+        "model_calls": 1,
+        "model_total_ms": 625,
+        "active_view_moves": 2,
+        "max_observation_age_ms": 15.99999999962165,
+        "fusion_views": 4,
+        "fusion_points": 598,
+        "fusion_free_conflict_ratio": 0.0051635111876075735,
+        "fusion_reset": "none",
+        "model_latency_ms": 625,
+        "rejected_pinch_center_mismatch": 26,
+        "rejected_ik_unreachable": 19,
+        "rejected_approach_disconnected": 62,
+        "rejected_table_clearance": 3,
+        "registration_residual_m": 0.0007761161215616218,
+        "registration_inlier_ratio": 1,
+        "max_observed_centroid_jump_m": 0.00035472565996301925,
+        "final_translation_error_m": 0.0019195607094719793,
+        "final_rotation_error_deg": 0.773268607677037,
+        "close_confidence": 0.65,
+        "lift_motion_completed": 1,
+        "lift_confidence": 0,
+        "holding_signal": 1,
+        "gripper_not_fully_closed": 1,
+        "wrist_verification_success": 0,
+        "scene_target_lift_m": 0.0625838041305542,
+        "scene_follow_error_m": 0.01875543406696305,
+        "scene_verification": "inconclusive",
+        "elapsed_s": 39.85900000000038,
+        "recovery_attempts": 2,
+        "recovery_stop_reason": "attempt_limit",
+        "first_attempt_node_success": 0,
+        "grasp_attempts": 2,
+        "total_servo_steps": 40,
+        "total_active_view_moves": 2,
+        "total_model_calls": 2,
+        "total_model_ms": 1375
+      },
+      "attempt_physics": [
+        {
+          "attempt": 1,
+          "actual_target_lift_m": 0
+        },
+        {
+          "attempt": 2,
+          "actual_target_lift_m": 0.08150160312652588
+        }
+      ]
+    },
+    {
+      "artifact": "output/active_recovery_dev/oblique_close_shift/report.json",
+      "report_sha256": "f86372e9c9833e8f4037ad33420582f3f991f185a73eb5416361dd598dd24c0a",
+      "provenance": {
+        "git_commit": "2f954cad49f47d230f569b5fd05ea89db5e02ff6",
+        "source_sha256": "e1071a10814d34e7079a579416b89dd1db8ca4aa4a1bdb478441cf85cb59c13b",
+        "config_sha256": "4aaeb8a75e8b993cdd41a3f1b339046a3f2a717f2ba99584c1f51985f59267af",
+        "model_seed": 0,
+        "segmenter": "depth"
+      },
+      "scene_view": "oblique",
+      "recovery_mode": "active",
+      "benchmark_case": null,
+      "perturbation_m": 0.04,
+      "perturbation_applied": true,
+      "physical_lift_m": 0.08182322978973389,
+      "node_success": true,
+      "failure": null,
+      "metrics": {
+        "backend": "graspgenx+geometric_antipodal_fallback",
+        "observations": 27,
+        "replans": 0,
+        "servo_steps": 20,
+        "candidates": 128,
+        "close_commanded": 1,
+        "model_calls": 1,
+        "model_total_ms": 656,
+        "active_view_moves": 2,
+        "max_observation_age_ms": 15.99999999962165,
+        "fusion_views": 4,
+        "fusion_points": 647,
+        "fusion_free_conflict_ratio": 0.012539184952978056,
+        "fusion_reset": "none",
+        "model_latency_ms": 656,
+        "rejected_ik_unreachable": 23,
+        "rejected_pinch_center_mismatch": 22,
+        "rejected_observed_finger_collision": 9,
+        "rejected_approach_disconnected": 51,
+        "rejected_table_clearance": 3,
+        "registration_residual_m": 0.0007838793398810194,
+        "registration_inlier_ratio": 1,
+        "max_observed_centroid_jump_m": 0.0003094537595215878,
+        "final_translation_error_m": 0.0014388884616807706,
+        "final_rotation_error_deg": 0.664349040365771,
+        "close_confidence": 0.65,
+        "lift_motion_completed": 1,
+        "lift_confidence": 0.85,
+        "holding_signal": 1,
+        "gripper_not_fully_closed": 1,
+        "wrist_verification_success": 0,
+        "scene_target_lift_m": 0.07227858211707994,
+        "scene_follow_error_m": 0.009164892388631796,
+        "scene_verification": "confirmed",
+        "elapsed_s": 39.01499999999942,
+        "recovery_attempts": 2,
+        "recovery_stop_reason": "succeeded",
+        "first_attempt_node_success": 0,
+        "grasp_attempts": 2,
+        "total_servo_steps": 39,
+        "total_active_view_moves": 2,
+        "total_model_calls": 2,
+        "total_model_ms": 1609
+      },
+      "attempt_physics": [
+        {
+          "attempt": 1,
+          "actual_target_lift_m": 1.1920928955078125e-7
+        },
+        {
+          "attempt": 2,
+          "actual_target_lift_m": 0.08182334899902344
+        }
+      ]
+    }
+  ]
+}

@@ -7,6 +7,7 @@ import json
 import hashlib
 import subprocess
 import sys
+import time
 import traceback
 from dataclasses import asdict, is_dataclass
 from enum import Enum
@@ -16,6 +17,12 @@ from pathlib import Path
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--headless", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--keep-open", action="store_true",
+                        help="Keep the GUI open with physics paused after the test")
+    parser.add_argument("--start-delay-s", type=float, default=0.,
+                        help="Pause before the grasp test so the viewer can get ready")
+    parser.add_argument("--record-video", action="store_true",
+                        help="Record overview + two RGB-D RGB panels to demo.mp4 (adds render cost)")
     parser.add_argument(
         "--backend", choices=("geometric", "graspgenx"), default="geometric"
     )
@@ -24,6 +31,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--perception", choices=("single", "multiview"), default="single")
     parser.add_argument("--planner", choices=("graspmoe", "diffusion"), default="graspmoe")
     parser.add_argument("--segmenter", choices=("depth", "sam2"), default="depth")
+    parser.add_argument("--recovery", choices=("off", "assisted", "active"), default="off")
+    parser.add_argument("--scene-view", choices=("overhead", "oblique"), default="overhead")
+    parser.add_argument("--drop-initial-wrist-frames", type=int, default=0,
+                        help="Explicit test-only transient camera fault after the initial diagnostic capture")
+    parser.add_argument("--test-target-shift-m", type=float, default=0.,
+                        help="Simulation-only world-X target perturbation before first close (<= 5 cm)")
     parser.add_argument(
         "--case-json",
         type=Path,
@@ -34,7 +47,12 @@ def _parse_args() -> argparse.Namespace:
         type=Path,
         help="Per-run output directory (default: output/fine_grasp_demo)",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if (args.keep_open or args.start_delay_s) and args.headless:
+        parser.error("--keep-open and --start-delay-s require --no-headless")
+    if not 0. <= args.start_delay_s <= 120.:
+        parser.error("--start-delay-s must be between 0 and 120")
+    return args
 
 
 ARGS = _parse_args()
@@ -56,7 +74,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "source"))
 
 from mr_liu.config import fine_grasp_config, motion_config, scene_config
-from mr_liu.grasp.adapters.isaac_camera import IsaacWristCamera, T_world_opencv_from_ros_pose
+from mr_liu.grasp.adapters.isaac_camera import IsaacWristCamera, IsaacSceneCamera, T_world_opencv_from_ros_pose
 from mr_liu.grasp.adapters.isaac_gripper import IsaacGripperController
 from mr_liu.grasp.adapters.isaac_motion import IsaacCumotionExecutor
 from mr_liu.grasp.backends.factory import create_grasp_backend
@@ -70,14 +88,17 @@ from mr_liu.grasp.contracts import FineGraspRequest, ObjectProperties, TargetSpe
 from mr_liu.grasp.debug import DebugSegmenter, FineGraspDebugRecorder
 from mr_liu.grasp.node import GeneralGraspNode
 from mr_liu.grasp.segmentation import AppearanceDepthTrackerSegmenter, SeededDepthSegmenter
-from mr_liu.grasp.identity import GeometricIdentitySegmenter, RemotePromptSegmenter
+from mr_liu.grasp.identity import GeometricIdentitySegmenter, RemotePromptSegmenter, RobotMaskedSegmenter
+from mr_liu.grasp.recovery import RecoveringGraspNode, RecoveryConfig
+from mr_liu.grasp.scene_observer import SceneTargetObserver, SceneAssistedVerifier
 from mr_liu.grasp.backends.graspgenx import ZmqGraspGenXTransport
 from mr_liu.grasp.settings import FineGraspSettings
-from mr_liu.grasp.transforms import invert_transform, transform_points
+from mr_liu.grasp.transforms import invert_transform, transform_points, look_at_opencv, matrix_to_quaternion_wxyz
 from mr_liu.grasp.verification import VisionGripperVerifier
 from mr_liu.perception.camera import spawn_configured_cameras
 from mr_liu.robot.so101 import So101Arm
 from mr_liu.sim.spawn import spawn_table_and_so101
+from mr_liu.sim.grasp_faults import OneShotPreCloseShift
 
 
 TARGET_PATH = "/World/FineGraspTarget"
@@ -88,6 +109,7 @@ TARGET_POSITION = CASE.position_m
 # the wrist optical axis about 10 cm above the target and nearly normal to the
 # tabletop, matching the intended fast-loop -> fine-loop handoff condition.
 FINE_ENTRY_JOINTS = (-0.5408, -0.5510, 0.8902, 0.8826, -0.0982, 0.0)
+VIDEO = None
 
 
 def _jsonable(value):
@@ -162,6 +184,7 @@ def _configure_arm_drives(arm: So101Arm, config: dict[str, object]) -> None:
 
 
 def main() -> int:
+    global VIDEO
     if ARGS.case_json:
         np.random.seed(CASE.seed)
     grasp_cfg = fine_grasp_config().copy()
@@ -186,7 +209,41 @@ def main() -> int:
     # are restored only after the wrist reaches the fine-loop handoff pose.
     target_rigid.set_world_poses(positions=[[0.0, 0.0, 2.0]])
     cameras = spawn_configured_cameras()
+    if ARGS.scene_view == "oblique":
+        mount = cameras["scene"].config["recovery_oblique"]
+        pose = look_at_opencv(mount["position"], mount["target"])
+        cameras["scene"]._cam.set_world_pose(position=pose[:3, 3],
+            orientation=matrix_to_quaternion_wxyz(pose[:3, :3]), camera_axes="ros")
     wrist_scene_camera = cameras["wrist"]
+    overview_camera = None
+    if ARGS.record_video:
+        from isaacsim.sensors.camera import Camera
+        from mr_liu.sim.demo_video import DemoVideoRecorder
+        # Recording-only camera, deliberately excluded from the sensor registry
+        # passed to the controller. Never used for segmentation or verification.
+        overview_camera = Camera(prim_path="/World/DemoOnly/Overview", frequency=60,
+                                 resolution=(832, 624))
+        overview_camera.initialize()
+        overview_camera.set_focal_length(1.8)
+        overview_camera.set_clipping_range(0.01, 10.)
+        overview_pose = look_at_opencv([0.65, -0.90, 1.50], [0.22, -0.10, 1.18])
+        overview_camera.set_world_pose(position=overview_pose[:3, 3],
+            orientation=matrix_to_quaternion_wxyz(overview_pose[:3, :3]), camera_axes="ros")
+        VIDEO = DemoVideoRecorder(OUTPUT / "demo.mp4", CASE.name, ARGS.test_target_shift_m)
+    recording_active = False
+    control_ticks = 0
+
+    def capture_video():
+        if VIDEO is not None and recording_active:
+            VIDEO.capture(overview_camera.get_rgba(), wrist_scene_camera.rgb_rgba(),
+                          cameras["scene"].rgb_rgba())
+
+    def advance_observation_frame():
+        simulation_app.update()
+        capture_video()
+    if ARGS.recovery != "off":
+        for scene_camera in cameras.values():
+            scene_camera.enable_instance_segmentation(leaf_paths=True)
     SimulationManager.setup_simulation(
         # CPU PhysX keeps articulated USD transforms synchronized with RTX
         # sensors. cuMotion itself still runs on CUDA. GPU/Fabric mode requires
@@ -216,7 +273,14 @@ def main() -> int:
     # at the closed-loop boundary; using physics-only ticks here preserves the
     # eye-in-hand semantics while avoiding hundreds of redundant renders.
     def advance_control_physics() -> None:
-        SimulationManager.step(steps=1)
+        nonlocal control_ticks
+        control_ticks += 1
+        if recording_active and control_ticks % 4 == 0:
+            # Replace (not add to) this physics tick with a rendered app tick,
+            # so closing/lifting/sideways motion is visible between observations.
+            advance_observation_frame()
+        else:
+            SimulationManager.step(steps=1)
 
     executor = IsaacCumotionExecutor(
         arm,
@@ -287,8 +351,10 @@ def main() -> int:
     camera = IsaacWristCamera(
         wrist_scene_camera,
         ee_pose_provider=arm.T_base_ee,
-        advance_frame=simulation_app.update,
+        advance_frame=advance_observation_frame,
         model_seed=CASE.seed,
+        robot_mask_provider=(lambda: wrist_scene_camera.instance_mask("/World/SO101", leaf_paths=True))
+                            if ARGS.recovery != "off" else None,
     )
     initial_observation = camera.capture(target)
     if initial_observation is None:
@@ -305,7 +371,7 @@ def main() -> int:
     )
     seed_segmenter = SeededDepthSegmenter(depth_tolerance_m=0.010, max_radius_px=180)
     initial_mask = seed_segmenter.segment(initial_observation, target)
-    if initial_mask is None or not initial_mask.any():
+    if (initial_mask is None or not initial_mask.any()) and ARGS.recovery == "off":
         actual_target = _pose(XformPrim(TARGET_PATH))
         point_camera = transform_points(
             invert_transform(initial_observation.T_base_camera),
@@ -324,11 +390,13 @@ def main() -> int:
             f"depth_finite={int(np.isfinite(initial_observation.depth_m).sum())}"
         )
     cv2.imwrite(
-        str(OUTPUT / "initial_mask.png"), initial_mask.astype(np.uint8) * 255
+        str(OUTPUT / "initial_mask.png"), (np.zeros_like(initial_observation.depth_m, np.uint8)
+                                         if initial_mask is None else initial_mask.astype(np.uint8) * 255)
     )
 
     target_xform = XformPrim(TARGET_PATH)
     initial_target_position = _pose(target_xform)
+    attempt_physics = []
     segmenter = AppearanceDepthTrackerSegmenter(seed_segmenter)
     if ARGS.segmenter == "sam2":
         segmenter = RemotePromptSegmenter(ZmqGraspGenXTransport("127.0.0.1", ARGS.graspgenx_port, 60000),
@@ -336,6 +404,20 @@ def main() -> int:
     if ARGS.perception == "multiview":
         segmenter = GeometricIdentitySegmenter(segmenter)
     recorder = FineGraspDebugRecorder(OUTPUT / "debug")
+    def shift_sim_target(delta):
+        # Test instrument changes the physical scene only, never target hints,
+        # candidates, camera evidence, verifier output or recovery decisions.
+        position = np.asarray(_pose(target_xform), dtype=float) + np.asarray(delta)
+        target_rigid.set_world_poses(positions=[position])
+        target_rigid.set_velocities(linear_velocities=[[0., 0., 0.]], angular_velocities=[[0., 0., 0.]])
+    fault = OneShotPreCloseShift(ARGS.test_target_shift_m, shift_sim_target)
+    def trace_event(event):
+        recorder.trace(event)
+        if VIDEO is not None:
+            VIDEO.trace(event)
+        injected = fault.on_event(event)
+        if injected is not None:
+            recorder.trace(injected)
     segmenter = DebugSegmenter(segmenter, recorder)
     grasp_cfg["backends"]["graspgenx"]["port"] = ARGS.graspgenx_port
     node = GeneralGraspNode(
@@ -346,8 +428,84 @@ def main() -> int:
         gripper=gripper,
         verifier=VisionGripperVerifier(),
         settings=FineGraspSettings.from_mapping(grasp_cfg),
-        trace=recorder.trace,
+        trace=trace_event,
     )
+    if ARGS.drop_initial_wrist_frames:
+        class TransientCameraFault:
+            def __init__(self, source, count):
+                self.source, self.remaining = source, count
+            def capture(self, target):
+                if self.remaining > 0:
+                    self.remaining -= 1
+                    return None
+                return self.source.capture(target)
+        camera = TransientCameraFault(camera, ARGS.drop_initial_wrist_frames)
+        node.camera = camera
+    if ARGS.recovery != "off":
+        import copy
+        external_camera = IsaacSceneCamera(
+            cameras["scene"], T_base_world=np.eye(4), advance_frame=advance_observation_frame,
+            robot_mask_provider=lambda: cameras["scene"].instance_mask("/World/SO101", leaf_paths=True),
+        )
+        observer = SceneTargetObserver(external_camera,
+            table_height_m=grasp_cfg["selection"]["table_height_m"],
+            require_robot_mask=True,
+            recorder=FineGraspDebugRecorder(OUTPUT / "overhead"))
+
+        def attempt_factory(index, failed, current_target):
+            config = copy.deepcopy(grasp_cfg)
+            active = index > 0 or ARGS.perception == "multiview"
+            config["fusion"] = {"enabled": active}
+            config["active_views"] = {"enabled": active}
+            if active:
+                config["selection"]["max_elongated_axis_error_deg"] = 180.0
+            inner = AppearanceDepthTrackerSegmenter(
+                SeededDepthSegmenter(depth_tolerance_m=0.010, max_radius_px=180))
+            if ARGS.segmenter == "sam2":
+                inner = RemotePromptSegmenter(ZmqGraspGenXTransport("127.0.0.1", ARGS.graspgenx_port, 60000),
+                                              SeededDepthSegmenter(depth_tolerance_m=0.010, max_radius_px=180))
+            if active:
+                inner = GeometricIdentitySegmenter(inner)
+            inner = RobotMaskedSegmenter(inner, require_mask=True)
+            attempt_recorder = FineGraspDebugRecorder(OUTPUT / f"attempt_{index + 1}" / "debug")
+            def trace_attempt(event):
+                attempt_recorder.trace(event)
+                trace_event({**event, "attempt": index + 1})
+            return GeneralGraspNode(camera=camera, segmenter=DebugSegmenter(inner, attempt_recorder),
+                backend=create_grasp_backend(config), motion=executor, gripper=gripper,
+                verifier=SceneAssistedVerifier(observer, executor, current_target),
+                settings=FineGraspSettings.from_mapping(config), trace=trace_attempt, failed_grasps=failed)
+
+        def recovery_trace(event):
+            recorder.trace(event)
+            if VIDEO is not None:
+                VIDEO.trace(event)
+            if event.get("event") == "attempt_end":
+                # Independent benchmark instrumentation only; never fed to the
+                # observer, controller, verifier or retry policy.
+                attempt_physics.append({"attempt": event["attempt"],
+                    "actual_target_lift_m": _pose(target_xform)[2] - initial_target_position[2]})
+        node = RecoveringGraspNode(attempt_factory=attempt_factory, observer=observer,
+                                  motion=executor, gripper=gripper, trace=recovery_trace,
+                                  config=RecoveryConfig(max_attempts=2 if ARGS.recovery == "active" else 1))
+    if not ARGS.headless:
+        from isaacsim.core.utils.viewports import set_camera_view
+        # Presentation camera only: never used as a perception input.
+        set_camera_view(eye=[0.95, -0.95, 1.65], target=[0.22, -0.10, 1.18],
+                        camera_prim_path="/OmniverseKit_Persp")
+    if ARGS.start_delay_s:
+        app_utils.pause()
+        print(f"[BusAgent] Grasp starts in {ARGS.start_delay_s:g} seconds", flush=True)
+        deadline = time.monotonic() + ARGS.start_delay_s
+        while simulation_app.is_running() and time.monotonic() < deadline:
+            simulation_app.update()
+            time.sleep(0.01)
+        if not simulation_app.is_running():
+            return 1
+        app_utils.play()
+    print("[BusAgent] Starting closed-loop grasp test", flush=True)
+    recording_active = ARGS.record_video
+    capture_video()
     result = node.execute(
         FineGraspRequest(target=target, request_id="isaac-demo", dry_run=ARGS.dry_run)
     )
@@ -371,6 +529,13 @@ def main() -> int:
             "segmenter": ARGS.segmenter,
         },
         "perception_mode": ARGS.perception,
+        "recovery_mode": ARGS.recovery,
+        "scene_view": ARGS.scene_view,
+        "fault_initial_wrist_frames": ARGS.drop_initial_wrist_frames,
+        "test_target_shift_m": ARGS.test_target_shift_m,
+        "test_target_shift_applied": fault.applied,
+        "attempt_results": _jsonable(getattr(node, "attempt_results", [])),
+        "attempt_physics": attempt_physics,
         "effective_config": grasp_cfg,
         "result": _jsonable(result),
         "initial_target_position_m": initial_target_position,
@@ -389,6 +554,14 @@ def main() -> int:
     if ARGS.case_json:
         report["benchmark_case"] = CASE.to_dict()
     (OUTPUT / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+    if VIDEO is not None:
+        report["video"] = {"path": "demo.mp4", "recording_overhead": True,
+                           "overview_is_perception_input": False}
+        (OUTPUT / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+        outcome = (f"成功：实际抬升 {report['actual_target_lift_m']*100:.1f} cm" if result.success
+                   else f"未成功 / 安全停止：{getattr(result.failure, 'value', result.failure)}")
+        VIDEO.finish(overview_camera.get_rgba(), wrist_scene_camera.rgb_rgba(),
+                     cameras["scene"].rgb_rgba(), outcome)
     print(json.dumps(report["result"], indent=2))
     return 0 if result.success else 2
 
@@ -403,6 +576,19 @@ except Exception:  # persist all Kit/Python failures for headless regressions
     (OUTPUT / "error.txt").write_text(error, encoding="utf-8")
     print(error, file=sys.stderr, flush=True)
 finally:
+    if VIDEO is not None:
+        try:
+            VIDEO.close()
+        except Exception:
+            exit_code = 1
+            print(traceback.format_exc(), file=sys.stderr, flush=True)
+    if ARGS.keep_open and simulation_app.is_running():
+        app_utils.pause()
+        print(f"[BusAgent] Test finished (exit {exit_code}); GUI kept open, physics paused. "
+              f"Report: {OUTPUT / 'report.json'}", flush=True)
+        while simulation_app.is_running():
+            simulation_app.update()
+            time.sleep(0.01)
     # Isaac 6 fast shutdown exits here, before the SystemExit below.
     simulation_app.close(exit_code=exit_code)
 

@@ -50,6 +50,9 @@ class FineGraspDebugRecorder:
             timestamp_s=observation.timestamp_s,
             T_base_ee=observation.T_base_ee,
             T_ee_camera=observation.T_ee_camera,
+            robot_self_mask=(np.zeros(depth.shape, bool) if observation.metadata.get("robot_self_mask") is None
+                             else np.asarray(observation.metadata["robot_self_mask"], bool)),
+            has_robot_self_mask=observation.metadata.get("robot_self_mask") is not None,
         )
         overlay = rgb.copy()
         overlay[mask_bool] = (0.35 * overlay[mask_bool] + 0.65 * np.asarray([40, 255, 40])).astype(np.uint8)

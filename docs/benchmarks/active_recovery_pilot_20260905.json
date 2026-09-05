@@ -1,0 +1,399 @@
+{
+  "purpose": "Paired development pilot, procedural proxies, not generalization acceptance",
+  "provenance": {
+    "git_commit": "1f93c77791f8f328942c2790daae5a18c05b2afa",
+    "git_dirty": false,
+    "profiles": [
+      "off",
+      "assisted",
+      "active"
+    ],
+    "backend": "graspgenx",
+    "segmenter": "depth",
+    "fault_initial_wrist_frames": 0,
+    "manifest_sha256": "02e79a5a6425fd231bc8f37f9e30415ba027cea40ea2972a093d96d8487f874b"
+  },
+  "comparison": {
+    "off": {
+      "trials": 5,
+      "successes": 1,
+      "first_attempt_successes": 1,
+      "recovered_successes": 0,
+      "successful_regrasps": 0,
+      "false_successes": 0,
+      "attempted_trials": 5,
+      "active_view_moves": 0,
+      "metrics": {
+        "alignment_error_mm": {
+          "mean": 3.9916992842086545,
+          "median": 4.056811680161434,
+          "p95": 4.824558518958646
+        },
+        "model_latency_ms": {
+          "mean": 772,
+          "median": 750,
+          "p95": 860
+        },
+        "cycle_time_s": {
+          "mean": 15.640399999999499,
+          "median": 14.4529999999977,
+          "p95": 19.70300000000134
+        },
+        "actual_lift_m": {
+          "mean": 0.048889780044555665,
+          "median": 0.051908135414123535,
+          "p95": 0.08085441589355469
+        }
+      },
+      "failure_counts": {
+        "gripper_failure": 1,
+        "verification_false_negative": 3
+      }
+    },
+    "assisted": {
+      "trials": 5,
+      "successes": 2,
+      "first_attempt_successes": 2,
+      "recovered_successes": 0,
+      "successful_regrasps": 0,
+      "false_successes": 0,
+      "attempted_trials": 5,
+      "active_view_moves": 0,
+      "metrics": {
+        "alignment_error_mm": {
+          "mean": 4.156827565953839,
+          "median": 4.276736672592506,
+          "p95": 4.849406039594865
+        },
+        "model_latency_ms": {
+          "mean": 821.8,
+          "median": 781,
+          "p95": 953
+        },
+        "cycle_time_s": {
+          "mean": 17.81880000000019,
+          "median": 16.7029999999977,
+          "p95": 22.21900000000096
+        },
+        "actual_lift_m": {
+          "mean": 0.04169776439666748,
+          "median": 0.0510106086730957,
+          "p95": 0.0830237865447998
+        }
+      },
+      "failure_counts": {
+        "gripper_failure": 1,
+        "lift_verification_failed": 1,
+        "verification_false_negative": 1
+      }
+    },
+    "active": {
+      "trials": 5,
+      "successes": 2,
+      "first_attempt_successes": 2,
+      "recovered_successes": 0,
+      "successful_regrasps": 0,
+      "false_successes": 0,
+      "attempted_trials": 5,
+      "active_view_moves": 0,
+      "metrics": {
+        "alignment_error_mm": {
+          "mean": 3.8696933282714143,
+          "median": 4.289266311819763,
+          "p95": 4.90399425020557
+        },
+        "model_latency_ms": {
+          "mean": 822,
+          "median": 766,
+          "p95": 953
+        },
+        "cycle_time_s": {
+          "mean": 17.737600000000384,
+          "median": 16.4220000000023,
+          "p95": 21.53099999999904
+        },
+        "actual_lift_m": {
+          "mean": 0.049431228637695314,
+          "median": 0.053357481956481934,
+          "p95": 0.08323431015014648
+        }
+      },
+      "failure_counts": {
+        "gripper_failure": 1,
+        "verification_false_negative": 2
+      }
+    }
+  },
+  "rows": [
+    {
+      "profile": "active",
+      "case": "apple",
+      "seed": 0,
+      "node_success": false,
+      "physical_lift_m": 0.07441818714141846,
+      "failure": "lift_verification_failed",
+      "recovery_reason": "payload_uncertain_do_not_open",
+      "attempts": 1,
+      "closes": 1,
+      "active_views": 0,
+      "branch": "obb",
+      "cycle_s": 21.0779999999977,
+      "model_ms": 953,
+      "source_sha256": "34919299826617bf3f882a002dbd2162453c9bdb9557a2ca12860539e810c33c",
+      "report_sha256": "4838f69b51b8e69f3a608df0e95bf7265f91707cc9f1e3bff09b5f3eb83103a1",
+      "artifact": "active/001_apple_seed0/report.json"
+    },
+    {
+      "profile": "active",
+      "case": "coffee_mug",
+      "seed": 0,
+      "node_success": true,
+      "physical_lift_m": 0.053357481956481934,
+      "failure": null,
+      "recovery_reason": "succeeded",
+      "attempts": 1,
+      "closes": 1,
+      "active_views": 0,
+      "branch": "obb",
+      "cycle_s": 21.53099999999904,
+      "model_ms": 906,
+      "source_sha256": "34919299826617bf3f882a002dbd2162453c9bdb9557a2ca12860539e810c33c",
+      "report_sha256": "8082014ff4d4033af32c8e1094dc0c11a01dbafe0318b903762753fc95e6cb9b",
+      "artifact": "active/002_coffee_mug_seed0/report.json"
+    },
+    {
+      "profile": "active",
+      "case": "cube",
+      "seed": 0,
+      "node_success": true,
+      "physical_lift_m": 0.08323431015014648,
+      "failure": null,
+      "recovery_reason": "succeeded",
+      "attempts": 1,
+      "closes": 1,
+      "active_views": 0,
+      "branch": "obb",
+      "cycle_s": 16.4220000000023,
+      "model_ms": 766,
+      "source_sha256": "34919299826617bf3f882a002dbd2162453c9bdb9557a2ca12860539e810c33c",
+      "report_sha256": "3a3a5988598cb3d5126b79766a3fbc4806ed54173f3091b3e1e40fe6d2f975c7",
+      "artifact": "active/003_cube_seed0/report.json"
+    },
+    {
+      "profile": "active",
+      "case": "hammer",
+      "seed": 0,
+      "node_success": false,
+      "physical_lift_m": 0.036145687103271484,
+      "failure": "lift_verification_failed",
+      "recovery_reason": "retreat_path_unverified",
+      "attempts": 1,
+      "closes": 1,
+      "active_views": 0,
+      "branch": "obb",
+      "cycle_s": 15.46900000000096,
+      "model_ms": 735,
+      "source_sha256": "34919299826617bf3f882a002dbd2162453c9bdb9557a2ca12860539e810c33c",
+      "report_sha256": "4186994255927b67bd7edd1413d8438133a2dbde6b43ce3c6ab2fa5621892a37",
+      "artifact": "active/004_hammer_seed0/report.json"
+    },
+    {
+      "profile": "active",
+      "case": "wrench",
+      "seed": 0,
+      "node_success": false,
+      "physical_lift_m": 4.76837158203125e-7,
+      "failure": "gripper_failure",
+      "recovery_reason": "non_retryable_failure",
+      "attempts": 1,
+      "closes": 1,
+      "active_views": 0,
+      "branch": "obb",
+      "cycle_s": 14.18800000000192,
+      "model_ms": 750,
+      "source_sha256": "34919299826617bf3f882a002dbd2162453c9bdb9557a2ca12860539e810c33c",
+      "report_sha256": "eee8f67948ff382c57b7e17be479f1d74eda2277da0931186ff07461466c569d",
+      "artifact": "active/005_wrench_seed0/report.json"
+    },
+    {
+      "profile": "assisted",
+      "case": "apple",
+      "seed": 0,
+      "node_success": false,
+      "physical_lift_m": 0.07445347309112549,
+      "failure": "lift_verification_failed",
+      "recovery_reason": "attempt_limit",
+      "attempts": 1,
+      "closes": 1,
+      "active_views": 0,
+      "branch": "obb",
+      "cycle_s": 21.406000000002678,
+      "model_ms": 953,
+      "source_sha256": "34919299826617bf3f882a002dbd2162453c9bdb9557a2ca12860539e810c33c",
+      "report_sha256": "5b8bd9f5cdb374aa7592a8b1b741120beda48906d614a5d07dbdbf0a02a53a7d",
+      "artifact": "assisted/001_apple_seed0/report.json"
+    },
+    {
+      "profile": "assisted",
+      "case": "coffee_mug",
+      "seed": 0,
+      "node_success": true,
+      "physical_lift_m": 0.0510106086730957,
+      "failure": null,
+      "recovery_reason": "succeeded",
+      "attempts": 1,
+      "closes": 1,
+      "active_views": 0,
+      "branch": "obb",
+      "cycle_s": 22.21900000000096,
+      "model_ms": 922,
+      "source_sha256": "34919299826617bf3f882a002dbd2162453c9bdb9557a2ca12860539e810c33c",
+      "report_sha256": "58da3bcac6a2fd48127a3791451a156a5ba8c2d4521f7c726cde66e69fb8feac",
+      "artifact": "assisted/002_coffee_mug_seed0/report.json"
+    },
+    {
+      "profile": "assisted",
+      "case": "cube",
+      "seed": 0,
+      "node_success": true,
+      "physical_lift_m": 0.0830237865447998,
+      "failure": null,
+      "recovery_reason": "succeeded",
+      "attempts": 1,
+      "closes": 1,
+      "active_views": 0,
+      "branch": "obb",
+      "cycle_s": 16.7029999999977,
+      "model_ms": 735,
+      "source_sha256": "34919299826617bf3f882a002dbd2162453c9bdb9557a2ca12860539e810c33c",
+      "report_sha256": "4a16d75a02c7f8ed103844610188811d96a0edabc575bb766840010141cdd9c1",
+      "artifact": "assisted/003_cube_seed0/report.json"
+    },
+    {
+      "profile": "assisted",
+      "case": "hammer",
+      "seed": 0,
+      "node_success": false,
+      "physical_lift_m": 2.384185791015625e-7,
+      "failure": "lift_verification_failed",
+      "recovery_reason": "attempt_limit",
+      "attempts": 1,
+      "closes": 1,
+      "active_views": 0,
+      "branch": "obb",
+      "cycle_s": 14.890999999999622,
+      "model_ms": 781,
+      "source_sha256": "34919299826617bf3f882a002dbd2162453c9bdb9557a2ca12860539e810c33c",
+      "report_sha256": "50389e56ee9b8b5ba1afe356c73f9f5193fb29114bd887c41d5ae75ef790ca1e",
+      "artifact": "assisted/004_hammer_seed0/report.json"
+    },
+    {
+      "profile": "assisted",
+      "case": "wrench",
+      "seed": 0,
+      "node_success": false,
+      "physical_lift_m": 7.152557373046875e-7,
+      "failure": "gripper_failure",
+      "recovery_reason": "non_retryable_failure",
+      "attempts": 1,
+      "closes": 1,
+      "active_views": 0,
+      "branch": "obb",
+      "cycle_s": 13.875,
+      "model_ms": 718,
+      "source_sha256": "34919299826617bf3f882a002dbd2162453c9bdb9557a2ca12860539e810c33c",
+      "report_sha256": "432098b056c6f48b8bd49716777926f4c1a2744bb637a89db5171879cee3d01b",
+      "artifact": "assisted/005_wrench_seed0/report.json"
+    },
+    {
+      "profile": "off",
+      "case": "apple",
+      "seed": 0,
+      "node_success": false,
+      "physical_lift_m": 0.07546842098236084,
+      "failure": "lift_verification_failed",
+      "recovery_reason": null,
+      "attempts": null,
+      "closes": 1,
+      "active_views": null,
+      "branch": "obb",
+      "cycle_s": 19.295999999998457,
+      "model_ms": 765,
+      "source_sha256": "34919299826617bf3f882a002dbd2162453c9bdb9557a2ca12860539e810c33c",
+      "report_sha256": "d3fc4ad805f5dbabc673c789a2628e773177396bb4e683cfd790e318afa43f25",
+      "artifact": "off/001_apple_seed0/report.json"
+    },
+    {
+      "profile": "off",
+      "case": "coffee_mug",
+      "seed": 0,
+      "node_success": true,
+      "physical_lift_m": 0.051908135414123535,
+      "failure": null,
+      "recovery_reason": null,
+      "attempts": null,
+      "closes": 1,
+      "active_views": null,
+      "branch": "obb",
+      "cycle_s": 19.70300000000134,
+      "model_ms": 860,
+      "source_sha256": "34919299826617bf3f882a002dbd2162453c9bdb9557a2ca12860539e810c33c",
+      "report_sha256": "97401630e65bdd47d690d43a17a2d5f452fefac6312c949ad7721c99279d66d6",
+      "artifact": "off/002_coffee_mug_seed0/report.json"
+    },
+    {
+      "profile": "off",
+      "case": "cube",
+      "seed": 0,
+      "node_success": false,
+      "physical_lift_m": 0.08085441589355469,
+      "failure": "lift_verification_failed",
+      "recovery_reason": null,
+      "attempts": null,
+      "closes": 1,
+      "active_views": null,
+      "branch": "obb",
+      "cycle_s": 14.4529999999977,
+      "model_ms": 735,
+      "source_sha256": "34919299826617bf3f882a002dbd2162453c9bdb9557a2ca12860539e810c33c",
+      "report_sha256": "8e5f3f8b8170e1b16f0c207e76c800195092203fa4ad4ce63539b66b4da022ae",
+      "artifact": "off/003_cube_seed0/report.json"
+    },
+    {
+      "profile": "off",
+      "case": "hammer",
+      "seed": 0,
+      "node_success": false,
+      "physical_lift_m": 0.036217331886291504,
+      "failure": "lift_verification_failed",
+      "recovery_reason": null,
+      "attempts": null,
+      "closes": 1,
+      "active_views": null,
+      "branch": "obb",
+      "cycle_s": 12.671999999998661,
+      "model_ms": 750,
+      "source_sha256": "34919299826617bf3f882a002dbd2162453c9bdb9557a2ca12860539e810c33c",
+      "report_sha256": "5098bba5fc8e2ec7c47e43c4eb1c526aa2a84edea6f3dc2c835e502585a80b07",
+      "artifact": "off/004_hammer_seed0/report.json"
+    },
+    {
+      "profile": "off",
+      "case": "wrench",
+      "seed": 0,
+      "node_success": false,
+      "physical_lift_m": 5.960464477539062e-7,
+      "failure": "gripper_failure",
+      "recovery_reason": null,
+      "attempts": null,
+      "closes": 1,
+      "active_views": null,
+      "branch": "obb",
+      "cycle_s": 12.078000000001339,
+      "model_ms": 750,
+      "source_sha256": "34919299826617bf3f882a002dbd2162453c9bdb9557a2ca12860539e810c33c",
+      "report_sha256": "40458d5b4aeaa40ae1464e47ee3066ff0d71de74c4c6ec744a233ca997ec61b8",
+      "artifact": "off/005_wrench_seed0/report.json"
+    }
+  ]
+}

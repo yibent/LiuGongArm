@@ -31,6 +31,21 @@ def make_transform(rotation: np.ndarray | None = None, translation: np.ndarray |
     return assert_transform(T)
 
 
+def look_at_opencv(position: np.ndarray, target: np.ndarray) -> np.ndarray:
+    """Fixed camera pose: +X image-right, +Y image-down, +Z forward."""
+    position, target = np.asarray(position, dtype=float), np.asarray(target, dtype=float)
+    forward = target - position
+    if forward.shape != (3,) or not np.isfinite(forward).all() or np.linalg.norm(forward) < 1e-6:
+        raise ValueError("Invalid camera look-at baseline")
+    forward /= np.linalg.norm(forward)
+    right = np.cross(forward, [0., 0., 1.])
+    if np.linalg.norm(right) < 1e-6:
+        right = np.cross(forward, [0., 1., 0.])
+    right /= np.linalg.norm(right)
+    down = np.cross(forward, right)
+    return make_transform(np.column_stack((right, down, forward)), position)
+
+
 def invert_transform(T_destination_source: np.ndarray) -> np.ndarray:
     T = assert_transform(T_destination_source)
     result = np.eye(4, dtype=np.float64)

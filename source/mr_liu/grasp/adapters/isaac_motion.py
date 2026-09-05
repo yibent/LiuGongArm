@@ -234,6 +234,9 @@ class IsaacCumotionExecutor:
         q_goal = self._ik_seed_cache.get(self._pose_key(T_base_ee))
         if q_goal is None:
             return None
+        return self._world_ee_pose_from_joints(q_goal)
+
+    def _world_ee_pose_from_joints(self, q_goal):
         kinematics = self.controller.cumotion_robot.kinematics
         tool_frame = str(robot_config()["tool_frame"])
         goal = kinematics.pose(q_goal, tool_frame)
@@ -255,6 +258,46 @@ class IsaacCumotionExecutor:
             R_world_robot @ rotation_robot,
             base_position_np + R_world_robot @ position_robot,
         )
+
+    def clear_grasp_plan(self):
+        """Invalidate insertion/escape paths after an attempt, not calibration."""
+        self._active_waypoints = []
+        self._active_waypoint_index = 0
+        self._active_grasp_q = None
+        self._active_grasp_pose = None
+        self._plan_cache.clear()
+        self._transition_cache.clear()
+
+    def is_observation_path_safe(self, target, points_base, finger):
+        """Check fingers along the actual joint path in addition to world IK.
+
+        This is an observed-surface test with the configured finger-box model,
+        not a guarantee about unobserved space or unmodeled hardware.
+        """
+        plan = self._plan(target)
+        if plan is None:
+            return False
+        q0 = self._arm_values(self.articulation.get_dof_positions)
+        if isinstance(plan, _JointStepPlan):
+            waypoints = [q0, plan.q_target]
+        elif hasattr(plan, "get_waypoints_count"):
+            waypoints = [q0] + [np.asarray(plan.get_waypoint_by_index(i)).reshape(-1)
+                                for i in range(plan.get_waypoints_count())]
+        else:
+            return False
+        previous = self._world_ee_pose_from_joints(q0)
+        for start, end in zip(waypoints, waypoints[1:]):
+            steps = max(1, int(np.ceil(np.max(np.abs(end - start)) / 0.005)))
+            for alpha in np.linspace(0, 1, steps + 1):
+                q = start + alpha * (end - start)
+                if (self._collision_inspector.in_self_collision(q)
+                        or self._collision_inspector.in_collision_with_obstacle(q)):
+                    return False
+                pose = self._world_ee_pose_from_joints(q)
+                if finger.path_collision_count(points_base, previous, pose):
+                    return False
+                previous = pose
+        return True
 
     def is_grasp_transition_reachable(
         self, T_base_pregrasp: np.ndarray, T_base_grasp: np.ndarray

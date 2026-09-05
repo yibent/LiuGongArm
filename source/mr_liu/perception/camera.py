@@ -184,17 +184,20 @@ class SceneCamera:
             raise RuntimeError(f"Camera {self.which!r} has not been spawned")
         return np.asarray(self._cam.get_intrinsics_matrix(device="cpu"), dtype=np.float64)
 
-    def enable_instance_segmentation(self) -> None:
+    def enable_instance_segmentation(self, *, leaf_paths: bool = False) -> None:
         """Attach a non-colorized ground-truth instance annotator for sim tests."""
         if self._cam is None:
             raise RuntimeError(f"Camera {self.which!r} has not been spawned")
-        self._cam.add_instance_segmentation_to_frame({"colorize": False})
+        if leaf_paths:
+            self._cam.add_instance_id_segmentation_to_frame({"colorize": False})
+        else:
+            self._cam.add_instance_segmentation_to_frame({"colorize": False})
 
-    def instance_mask(self, object_id: str) -> np.ndarray | None:
+    def instance_mask(self, object_id: str, *, leaf_paths: bool = False) -> np.ndarray | None:
         """Return the synchronized simulator mask whose label/path matches ``object_id``."""
         if self._cam is None:
             return None
-        payload = self.instance_frame()
+        payload = self.instance_frame(leaf_paths=leaf_paths)
         if not isinstance(payload, dict):
             return None
         data = np.asarray(payload.get("data"))
@@ -213,16 +216,17 @@ class SceneCamera:
                 except (TypeError, ValueError):
                     continue
         if not matching:
-            return None
+            return np.zeros(data.shape, dtype=bool) if leaf_paths else None
         return np.isin(data, matching)
 
-    def instance_frame(self):
+    def instance_frame(self, *, leaf_paths: bool = False):
         if self._cam is None:
             return None
         frame = self._cam.get_current_frame()
         # Isaac 6 normalizes annotator names by removing the _fast suffix.
-        payload = frame.get("instance_segmentation")
-        return payload if payload is not None else frame.get("instance_segmentation_fast")
+        key = "instance_id_segmentation" if leaf_paths else "instance_segmentation"
+        payload = frame.get(key)
+        return payload if payload is not None else frame.get(key + "_fast")
 
     def unproject(self, pixels: np.ndarray, depth: np.ndarray) -> np.ndarray:
         if self._cam is None:

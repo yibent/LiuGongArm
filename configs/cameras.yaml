@@ -12,6 +12,11 @@ scene:
   focal_length: 1.8
   clipping_range: [0.01, 10.0]
   annotators: [rgb, distance_to_image_plane, semantic_segmentation]
+  # Optional fixed observer overlooking the work area from outside arm reach.
+  # This is a camera-mount experiment, not an object-specific viewpoint.
+  recovery_oblique:
+    position: [0.65, -0.65, 1.75]
+    target: [0.35, -0.15, 1.08]
 wrist:
   parent_prim_path: /World/SO101/gripper
   prim_path: /World/SO101/gripper/WristRGBD
