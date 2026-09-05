@@ -77,7 +77,11 @@ def _run_place_after_grasp(*, result, initial_observation, initial_mask, target,
         records.append(data)
         trace(data)
         print("[FinePlace] "+json.dumps(data,ensure_ascii=False),flush=True)
-        (output/"trace.json").write_text(json.dumps(records,indent=2,ensure_ascii=False),encoding="utf-8")
+        # Per-event evidence is already durably appended by trace() to the
+        # shared debug/trace.jsonl. Rewriting a growing JSON array on every
+        # safety check can itself expire the just-validated observation.
+        if data.get('phase') in {'place_bootstrap','place_handoff','place_failed','place_succeeded'}:
+            (output/"trace.json").write_text(json.dumps(records,indent=2,ensure_ascii=False),encoding="utf-8")
     if not result.success or result.selected_grasp is None:
         raise PlaceError("grasp_handoff_unverified")
     if initial_mask is None or initial_mask.sum()<80:

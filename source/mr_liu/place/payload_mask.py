@@ -13,6 +13,12 @@ class Sam2PayloadRefiner:
         self.tracking=track_between_inference
         self.flow=OpticalFlowTracker()
         self.model_key=None;self.model_timestamp_s=0.;self.tracked_frames=0
+        self.last_was_tracking=False
+
+    def request_model_refresh(self):
+        if not self.last_was_tracking:return False
+        self.key=self.model_key=None;self.last_was_tracking=False
+        return True
 
     @staticmethod
     def validate_mask(mask,seed):
@@ -39,6 +45,7 @@ class Sam2PayloadRefiner:
                 except PlaceError:tracked=None
                 if tracked is not None:
                     self.key,self.mask=key,tracked.copy();self.tracked_frames+=1
+                    self.last_was_tracking=True
                     self.trace({'phase':'place_track_payload','sequence':obs.sequence,
                                 'model_sequence':self.model_key[1],**self.flow.diagnostic,
                                 'elapsed_s':time.monotonic()-started})
@@ -53,6 +60,7 @@ class Sam2PayloadRefiner:
                     'sequence':obs.sequence,'elapsed_s':time.monotonic()-started,
                     'score':score,'pixels':int(mask.sum())})
         self.key,self.mask=key,mask.copy()
+        self.last_was_tracking=False
         if self.tracking:
             self.flow.initialize(obs.rgb,mask)
             self.model_key=key;self.model_timestamp_s=obs.timestamp_s;self.tracked_frames=0

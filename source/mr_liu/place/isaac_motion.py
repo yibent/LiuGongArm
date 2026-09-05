@@ -299,8 +299,19 @@ class IsaacPlaceMotion:
                 # The released object stays in the world; it must not be moved
                 # along with the retreating wrist's attachment transform.
                 contact_payload=replace(original,T_ee_object=invert_transform(current)@object_pose)
-        if not self._safe(goal,held,evidence,opening,contact_payload=contact_payload):
+        refreshed_mask=False
+        def check(observation):
+            nonlocal refreshed_mask
+            if self._safe(goal,held,observation,opening,contact_payload=contact_payload):return True
+            refresh=getattr(self.mask_refiner,'request_model_refresh',None)
+            if (held is not None and not refreshed_mask
+                    and self.last_failure=='observed_surface_finger_collision'
+                    and refresh is not None and refresh()):
+                refreshed_mask=True;self._points_cache={}
+                self.trace({'phase':'place_reobserve_after_tracked_contour_collision'})
+                return None  # No motion: require new model evidence and full check.
             return False
+        if check(evidence) is False:return False
         # A slow IK check cannot authorize motion against an old observation.
         if self.refresh_destination is None:
             self.last_failure = "missing_fresh_observation_provider"
@@ -310,8 +321,9 @@ class IsaacPlaceMotion:
             if np.linalg.norm(fresh.center_base_m-evidence.center_base_m)>.008:
                 self.last_failure = "destination_changed_during_plan"
                 return False
-            if not self._safe(goal,held,fresh,opening,contact_payload=contact_payload):
-                return False
+            checked=check(fresh)
+            if checked is False:return False
+            if checked is None:continue
             if time.monotonic()-fresh.observation.timestamp_s <= .35:
                 break
             # Timing failure alone permits bounded reobservation, never motion

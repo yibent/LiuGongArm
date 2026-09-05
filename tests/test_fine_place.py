@@ -57,6 +57,20 @@ class Rig:
 
 
 class FinePlaceTests(unittest.TestCase):
+    def test_tracked_contour_collision_requires_new_model_and_full_preflight(self):
+        obs=SimpleNamespace(timestamp_s=10.)
+        e=SimpleNamespace(observation=obs,center_base_m=np.zeros(3))
+        executor=SimpleNamespace(clear_grasp_plan=lambda:None,move_to=Mock(return_value=True))
+        refiner=SimpleNamespace(request_model_refresh=Mock(return_value=True))
+        refresh=Mock(return_value=e)
+        motion=IsaacPlaceMotion(executor,None,refresh_destination=refresh,mask_refiner=refiner)
+        def rejected(*a,**k):motion.last_failure='observed_surface_finger_collision';return False
+        motion._safe=Mock(side_effect=rejected)
+        with patch('mr_liu.place.isaac_motion.time.monotonic',return_value=10.):
+            self.assertFalse(motion.move_checked(np.eye(4),Rig().held,e))
+        refiner.request_model_refresh.assert_called_once();executor.move_to.assert_not_called()
+        self.assertEqual(motion._safe.call_count,2)
+
     def test_payload_flow_is_current_frame_bounded_and_identity_checked(self):
         from mr_liu.place.payload_mask import Sam2PayloadRefiner
         r=Rig();seed=np.zeros((80,100),bool);seed[20:40,20:40]=True
