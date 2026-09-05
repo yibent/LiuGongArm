@@ -20,6 +20,26 @@ Isaac 保留自己的 Python/Torch；只在项目 `.venv` 增加 msgpack、msgpa
 - Gripper 配置位于 `_vendor/GraspGenX/ext/gripper_descriptions`。
   当前点云/sweep-volume 推理不需要上游演示媒体或网格资产；未下载可选 LFS 演示媒体。
 
+## 固定模型配置
+
+两份模型 YAML 原样采用提交 `ac3221fd966bad7dd44d44c4d0110500f352301a`
+中的 `handoff/grasp-deployment/snapshots/model/graspgenx/{gen,dis}/config.yaml`，
+存放于启动器实际读取的 `_models/graspgenx/checkpoints/release/{gen,dis}/config.yaml`。
+它们现在由 Git 交付；模型权重、缓存、其他模型目录仍被忽略。
+
+- `gen/config.yaml` SHA-256：`16aedbdc23441a1db818261b865f55bd71451d6224fc514615e0d1ab744b7dcb`。
+- `dis/config.yaml` SHA-256：`43cf8ea0ade67d938040bde0df318b3f4c9c19e4f88d97052dc175df2c28c8e7`。
+
+2026-09-05 对照：GPU 服务器实际模型进程的 `--config` 指向上述 release 目录，
+两份 YAML 的字节哈希已与该提交一致，因此本次无需替换服务器文件或重启服务。
+这里只固定配套的模型配置，不回退 `configs/fine_grasp.yaml` 中的在线候选筛选、
+时限设置，也不改相机标定、机械臂驱动或抓取后保持逻辑。
+
+上游来源为 `adithyamurali/GraspGenXModel` 的固定 revision
+`7c834043c11a11417e31d6d5ea9355801e40a2c1`，这两份 YAML 不是项目重新训练的配置。
+文件沿用上游适用授权，不重新声明为本项目自有许可证；来源与授权说明见指定提交的
+`handoff/grasp-deployment/THIRD_PARTY.md`。
+
 ## 启动与检查
 
 在项目目录执行（先确认本机 5556 没有已有实例，避免重复启动）：

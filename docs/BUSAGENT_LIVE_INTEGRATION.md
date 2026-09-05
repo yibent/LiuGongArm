@@ -33,6 +33,13 @@
 
 启动独立视觉服务时不能继承 Kit 的 `PYTHONHOME/PYTHONPATH/LD_LIBRARY_PATH`，否则可能混用 Python ABI。
 
+前端在本地 `BusAgent/frontend` 执行 `pnpm build`，将完整 `dist/` 同步到服务器后，
+从项目目录运行 `BUSAGENT_NODE_BIN=/root/gpufree-data/tools/node/bin/node bash scripts/run_web_frontend.sh`。
+此入口通过 Vite preview 提供已构建页面，供当前 GPU 联调使用；代理固定默认到后端 3100，
+并严格占用 5173，避免误连远程桌面的 3000 端口。不要在只部署了构建产物的服务器恢复
+`vite` 开发模式：它会重新编译源码并要求完整的 lucide-react、Tailwind 等开发依赖。
+恢复后应检查页面实际脚本/CSS、`/v1/robot/status` 和 `/v1/stt` WebSocket，不能仅检查 HTML 返回 200。
+
 ## 未实现的边界
 
 放置、搬运到料格、任意长任务和自主无限重试未接入；不将“打开夹爪”伪装成已验证放置。绿色方块仍是控制标记。多目标抓取需明确单个目标。当前视觉记忆不保证在多个同类实例中唯一识别，歧义时停止并询问。模拟场景成功不代表真机或通用抓取验收。
