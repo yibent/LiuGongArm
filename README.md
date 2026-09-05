@@ -125,6 +125,7 @@ FineGrasp 的架构、Isaac 闭环 demo、失败排查和真机前置条件见
 | 腕部 RGB-D 精细抓取闭环（默认 GraspGenX，不自动几何回退） | `scripts\run_fine_grasp_demo.bat` |
 | 拖绿立方体，臂跟随（一期） | `scripts\run_follow_target.bat` |
 | 场景相机 → FIND/TRACK → 立方体 → 臂 | `scripts\run_vision_follow.bat` |
+| 杂乱桌面/多障碍物/碰撞拒绝基准 | `scripts\run_clutter_grasp_benchmark.py`（说明见 `docs\CLUTTER_COLLISION_BENCHMARK.md`） |
 | 只加载桌 + SO-101 | `run_hello_world.bat` |
 | Kit GUI + 工程扩展 | `launch_isaac_sim.bat` |
 | 独立视觉 WebUI（不开仿真，默认 :7860） | `scripts\run_yoloe_webui.bat` |

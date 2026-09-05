@@ -50,6 +50,11 @@ def _parse_args() -> argparse.Namespace:
         help="Optional parameterized physical benchmark case (legacy cube by default)",
     )
     parser.add_argument(
+        "--clutter-case-json",
+        type=Path,
+        help="Optional deterministic clutter/collision scene JSON",
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         help="Per-run output directory (default: output/fine_grasp_demo)",
@@ -109,12 +114,14 @@ from mr_liu.grasp.verification import VisionGripperVerifier
 from mr_liu.perception.camera import spawn_configured_cameras
 from mr_liu.robot.so101 import So101Arm
 from mr_liu.sim.spawn import spawn_table_and_so101
+from mr_liu.sim.clutter import load_scene, spawn_clutter_scene
 from mr_liu.sim.grasp_faults import OneShotPreCloseShift, OneShotCoarseShift
 
 
 TARGET_PATH = "/World/FineGraspTarget"
 OUTPUT = ARGS.output.resolve() if ARGS.output else ROOT / "output" / "fine_grasp_demo"
 CASE: BenchmarkCase = load_case(ARGS.case_json) if ARGS.case_json else default_demo_case()
+CLUTTER_SCENE = load_scene(ARGS.clutter_case_json) if ARGS.clutter_case_json else None
 TARGET_POSITION = CASE.position_m
 # A collision-free handoff pose found from the SO-101 URDF kinematics. It puts
 # the wrist optical axis about 10 cm above the target and nearly normal to the
@@ -213,8 +220,10 @@ def main() -> int:
     stage_utils.create_new_stage()
     GroundPlane("/World/GroundPlane", positions=[0, 0, 0])
     DistantLight("/World/DistantLight").set_intensities(float(scene["distant_intensity"]) * CASE.light_scale)
-    # Isolated development fixture, not the live app's multi-object workspace.
+    # Isolated development fixture, optionally augmented with a deterministic
+    # clutter layout whose bodies are included in the cuMotion world.
     spawn_table_and_so101(include_tabletop_props=False)
+    clutter_paths = spawn_clutter_scene(CLUTTER_SCENE) if CLUTTER_SCENE is not None else []
     target_rigid = _spawn_target()
     simulation_app.update()
     # Keep large/tall benchmark objects out of the arm's startup sweep.  They
@@ -630,6 +639,8 @@ def main() -> int:
         "coarse_approach": coarse_report,
         "recovery_mode": ARGS.recovery,
         "scene_view": ARGS.scene_view,
+        "clutter_scene": None if CLUTTER_SCENE is None else CLUTTER_SCENE.to_dict(),
+        "clutter_prim_paths": clutter_paths,
         "fault_initial_wrist_frames": ARGS.drop_initial_wrist_frames,
         "test_target_shift_m": ARGS.test_target_shift_m,
         "test_target_shift_applied": fault.applied,
