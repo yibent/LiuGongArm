@@ -19,7 +19,7 @@ drive_damping:
   wrist_flex: 1.95
   wrist_roll: 0.525
   gripper: 0.12
-drive_max_velocity_deg_s: 120
+drive_max_velocity_deg_s: 240
 gripper_max_velocity_deg_s: 180
 solver_position_iterations: 64
 solver_velocity_iterations: 4

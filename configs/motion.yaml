@@ -41,7 +41,7 @@ rmp_overrides:
   target_rmp/accel_p_gain: 130.0
   target_rmp/accel_d_gain: 120.0
   target_rmp/max_metric_scalar: 12000.0
-  joint_velocity_cap_rmp/max_velocity: 1.6
+  joint_velocity_cap_rmp/max_velocity: 2.2
 
 obstacle_obb_margin: 0.02
 exclude_from_obstacles:
