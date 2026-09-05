@@ -2,6 +2,10 @@
 
 ## BusAgent：精细抓取模块交接入口
 
+**当前开发线请先读 [当前成果与工程交接](docs/FINE_GRASP_CURRENT_HANDOFF.md)**：
+包含双 RGB-D 分工、主动恢复逻辑、一键 GUI/无头视频、BusAgent 装配与失败处理，
+以及最新 4/5 cm 扰动、杯子/水果/锤子结果。下文保留旧基线背景，不作为最新状态。
+
 新增 `GeneralGraspNode` / `FineGraspSkill`：机械臂靠近目标后，以腕部 RGB-D 持续观测，
 通过 GraspGenX 候选、IK/碰撞筛选和小步伺服完成接近、闭爪、抬升与验证。
 已发布旧基线的头顶相机已升级 RGB-D，但当时尚未参与抓取决策。

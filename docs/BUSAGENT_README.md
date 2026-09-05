@@ -2,6 +2,9 @@
 
 更新：2026-09-05。代码基线：`2c7b53f`，开发分支：`codex/fine-grasp-loop`。
 
+当前增强开发线的最新交接入口是 [当前成果与工程交接](FINE_GRASP_CURRENT_HANDOFF.md)。
+本文保留旧基线接口/安装背景；主动恢复和最新测试结果以新入口为准。
+
 后续实验开发线 `codex/active-grasp-recovery` 的双相机辅助与失败后“左顾右盼”机制，
 见 [主动恢复说明](ACTIVE_GRASP_RECOVERY.md)。本文原始基线的未实现项不覆盖该实验分支；
 新能力默认关闭，也尚未完成泛化验收。

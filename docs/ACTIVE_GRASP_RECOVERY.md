@@ -1,6 +1,7 @@
 # 实验开发线：双 RGB-D 主动抓取恢复（左顾右盼）
 
 分支：`codex/active-grasp-recovery`；基于已发布的 `2c6bfbe`。
+最新运行交接、录制结果和重心适配缺口见 [当前成果与工程交接](FINE_GRASP_CURRENT_HANDOFF.md)。
 本页描述新的实验能力；原始基线和接入契约见 [BusAgent README](BUSAGENT_README.md)。
 没有宣称工业工具、真实杯子/水果或真机泛化已通过验收。
 本文“头顶”泛指固定外部 RGB-D，可选垂直俯视 `overhead` 或斜上方 `oblique`。
