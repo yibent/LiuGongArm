@@ -1,5 +1,21 @@
 # MR Liu + YOLOE
 
+## BusAgent：精细抓取模块交接入口
+
+新增 `GeneralGraspNode` / `FineGraspSkill`：机械臂靠近目标后，以腕部 RGB-D 持续观测，
+通过 GraspGenX 候选、IK/碰撞筛选和小步伺服完成接近、闭爪、抬升与验证。
+仿真头顶相机也已升级 RGB-D，但尚未参与抓取决策。
+
+**请先读 [BusAgent 接入 README](docs/BUSAGENT_README.md)**：包含已开发内容、
+实际模型评估、环境要求、一键 demo、Python 接入代码、失败处理和后续增强计划。
+
+当前是开发基线（`2c7b53f`），不是泛化验收通过的发布版。基线 82 项单测和双 RGB-D
+运行检查通过；本次交接文档增加 2 项示例/链接测试，共 84 项通过。
+最新 cube 实际抬升约 8 cm，但节点视觉验证失败，仍需修复。
+真实工业工具、咖啡杯、水果的 unseen-object 抓取能力尚未验收。
+
+以下保留原仿真/视觉工程说明。
+
 机械臂仿真工程：Isaac Sim 桌面 SO-101 + cuMotion follow-target，接入 Florence-2 FIND 与 YOLOE / OpenCV TRACK，并提供桌面顶视与腕部两路 RGB-D 相机。
 
 合并自：

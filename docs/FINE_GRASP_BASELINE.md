@@ -69,5 +69,6 @@ RGB-D NPZ 在 Isaac 6 中保存 `render_reference=[numerator, denominator]`，
    在相同冻结对象/姿态/种子上比较基础与优化版本。
 
 目前仍有接触几何近似、局部跟踪和遮挡验证问题；此前的代理物体成绩不能代替
-工业工具、咖啡杯、水果等真实 unseen-object 测试。先保存本地基线提交；
-GitHub 推送仍遵守用户此前要求的泛化证据门槛。
+工业工具、咖啡杯、水果等真实 unseen-object 测试。本地基线已保存为 `2c7b53f`。
+用户随后明确要求编写 BusAgent README 并推送开发基线；这次推送不代表泛化验收通过。
+当前交接入口见 [BUSAGENT_README.md](BUSAGENT_README.md)。

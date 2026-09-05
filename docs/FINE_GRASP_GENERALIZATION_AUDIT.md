@@ -53,6 +53,9 @@ axis and handle heuristics that have not passed full regression. In particular:
    Report attempt coverage, false rejection, false success, physical lift, cycle
    time, selected proposal branch and failures, not only conditional success.
 
-GitHub push is authorized only after independent evaluation supports preliminary
-generalization. Local progress commits are authorized before that gate. No real
-hardware success may be inferred from simulation.
+The original push gate required preliminary generalization evidence. On
+2026-09-05 the user explicitly requested a BusAgent README and GitHub push of
+the development baseline before further enhancements. This authorizes publishing
+the checkpoint, not claiming that it passes the generalization gate. No real
+hardware success may be inferred from simulation. See BUSAGENT_README.md for the
+current handoff and FINE_GRASP_BASELINE.md for the latest failed verification.

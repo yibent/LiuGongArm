@@ -2,6 +2,10 @@
 
 本文说明 BusAgent 的通用精细抓取节点、eye-in-hand 数据契约、闭环执行逻辑、Isaac Sim 运行与真机接入前置条件。模型选择与许可证证据见 [MODEL_EVALUATION.md](MODEL_EVALUATION.md)。
 
+当前接入入口与状态以 [BUSAGENT_README.md](BUSAGENT_README.md) 和
+[FINE_GRASP_BASELINE.md](FINE_GRASP_BASELINE.md) 为准。以下早期运行数据保留为历史证据，
+不能当作 `2c7b53f` 基线的验收结果；当前仍有抬升视觉验证失败。
+
 ## 能力边界与当前证据
 
 `GeneralGraspNode` 接管机械臂已经到达目标附近后的阶段。它接收上游目标提示，用腕部 RGB-D 的新观测完成局部分割、抓取候选生成、可行性筛选、pre-grasp、逐步视觉伺服、闭合、抬升和验证。候选生成器、相机、分割器、运动执行器、夹爪和验证器都是可替换依赖；BusAgent 的请求与结果类型不随底层模型改变。
@@ -49,7 +53,7 @@ $env:OMNI_KIT_ACCEPT_EULA='YES'; & 'D:\isaac\env_isaacsim60\python.exe' `
   scripts\run_fine_grasp_demo.py --headless --backend graspgenx --graspgenx-port 5556
 ```
 
-Kit/Isaac 的宿主进程退出码在部分失败路径上可能仍为 0。自动化必须读取 wrapper 打印的 run 目录内 `report.json` 的 `result.success` 和 `actual_target_lift_m`，不能只看进程退出码。若直接运行 Python 且未传 `--output`，才会写入可覆盖的旧默认目录 `output/fine_grasp_demo/`。若 Python/Kit 抛出异常，查看相同 run 目录中的 `error.txt`。
+`2c7b53f` 修正了 Isaac 6 快速关闭掩盖失败退出码的问题：0 为节点成功、2 为节点失败、1 为捕获到的 Python 异常。自动化仍必须读取 run 目录内 `report.json` 的 `result.success` 和 `actual_target_lift_m`，不能只看进程退出码。若直接运行 Python 且未传 `--output`，会写入可覆盖的旧默认目录 `output/fine_grasp_demo/`。若 Python/Kit 抛出异常，查看相同 run 目录中的 `error.txt`。
 
 运行参数：
 
@@ -158,7 +162,7 @@ T_camera_grasp = inverse(T_base_camera(k)) @ T_base_grasp_model
 
 这是因为 GraspGenX 的 MoE 分支把输入坐标的重力/竖直轴用于抓取族构造。腕部相机随手臂旋转，直接把 camera `+Z` 当作固定重力轴会生成方向错误的候选；基座系 `+Z` 才是本场景稳定的重力轴。模型输出转回当前 camera frame 后仍满足 BusAgent 的 `GraspCandidate` 契约。`scene_depth` 模式保留相机系像素/内参语义，配置校验要求它使用 `inference_frame: camera`。
 
-Isaac 适配器每次 capture 先推进两个 render frame，再同时读取 RGB、深度、相机 world pose 和 EE pose，以补偿 Isaac 6.0 RTX annotator 的一帧延迟。它还检查推导出的 `T_ee_camera` 在运动中是否保持刚性。仿真 CPU PhysX 用于保持 articulation USD transform 与 RTX sensor 同步；cuMotion 仍可使用 CUDA。
+Isaac 腕部适配器每次 capture 至少推进两个 application update，最多等待 16 次，从同一个采集回调读取 RGB、深度与 camera_params 渲染位姿，待其与 live pose 一致后使用；不再拼接独立读取的 annotator 与最新 live pose。它还检查推导出的 `T_ee_camera` 在运动中是否保持刚性。仿真 CPU PhysX 用于保持 articulation USD transform 与 RTX sensor 同步；cuMotion 仍可使用 CUDA。
 
 真机必须把 RGB、深度和用于 FK 的关节状态同步到同一采样时刻。`LeRobotWristCamera` 默认 `require_synchronized_snapshot=True`，接受两种严格输入：注入返回 `SynchronizedLeRobotRGBD(observation, rgb, depth, timestamp_s)` 的 driver-owned provider；或在同一个 LeRobot observation 中提供 `<camera_key>`、`<camera_key>_depth` 和 `<camera_key>_timestamp`。传给 `ee_pose_from_observation` 的正是该 snapshot 的 observation。缺少同步 provider/同 observation timestamp 时默认直接报错，不再把锁外 camera buffer 与旧关节拼接。
 
@@ -181,7 +185,7 @@ OBSERVE -> GENERATE -> PREGRASP -> SERVO -> CLOSE -> VERIFY_CLOSE
 2. `GENERATE`：低频后端从当前腕部点云生成多候选。GraspGenX object-points 默认先转到基座/重力对齐坐标供 MoE 推理，再把抓取转回当前相机系，并做 SE(3) 清洗、聚类、共识加分和跨观测滞回；geometric 后端直接用当前相机系目标点云 PCA 产生侧向 antipodal 候选。
 3. 选择器依次过滤旧候选、低分、夹爪宽度、桌面间隙、pre-grasp/grasp IK、碰撞和 pre-grasp 到 grasp 的局部路径。目标接触只在 grasp/servo 阶段允许。
 4. `PREGRASP`：夹爪打开后移动到沿抓取接近轴后退 60 mm 的位姿。
-5. `SERVO`：每一步都重新读取腕部图像。轻量 tracker 用新观测更新目标平移，保留低频模型的姿态和接触偏置；单步平移不超过 6 mm、旋转不超过 3°。默认要求误差小于 4 mm/5° 连续 3 帧。
+5. `SERVO`：每一步都重新读取腕部图像。轻量 tracker 用新观测更新目标平移，保留低频模型的姿态和接触偏置；单步平移不超过 6 mm、旋转不超过 3°。默认要求误差小于 5 mm/5° 连续 3 帧。
 6. 当 active target 被轻量 tracker 修正到相对原方案平移超过 15 mm，且距离上次模型调用至少 0.5 s 时，退出快环重新生成。配置还保留 12° 姿态阈值，但当前 tracker 只更新平移，因此该阈值要到接入可靠的局部姿态 tracker 后才会实际触发。单帧 centroid jump 超过 35 mm 时该样本不更新 active target，只记录 outlier；正常样本的创新再限幅到 4 mm。默认最多 6 次 replan、40 个伺服步、总计 45 s。
 7. `CLOSE`：按物品策略闭合。`VERIFY_CLOSE` 组合夹爪非空宽度、stall/contact 和腕部视觉；允许小物体被手指完全遮挡。
 8. `LIFT`：基座 `+Z` 抬升 80 mm。`VERIFY_LIFT` 比较最新腕部图像中的目标基座系高度，并结合夹爪状态。
