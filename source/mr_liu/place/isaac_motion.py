@@ -14,17 +14,45 @@ from .appearance import appearance_matches
 
 
 class HeldSweep:
-    def __init__(self, held, width, *, opening=False):
+    def __init__(self, held, width, *, opening=False, reference_pose=None,max_distance_m=None):
         self.held = held
         self.width = width
         self.opening = opening
+        self.reference_pose,self.max_distance_m=reference_pose,max_distance_m
+        self._tree_points=None;self._last_pose=None;self._last_count=0
 
     def collision_count(self, points, pose):
+        if self.reference_pose is not None:
+            from .contracts import PlaceError
+            if np.linalg.norm(pose[:3,3]-self.reference_pose[:3,3])>self.max_distance_m:
+                raise PlaceError('nonlocal_ik_path')
+            cosine=(np.trace(pose[:3,:3]@self.reference_pose[:3,:3].T)-1)/2
+            if np.arccos(np.clip(cosine,-1,1))>np.deg2rad(10):
+                raise PlaceError('nonlocal_ik_rotation')
+        if self._tree_points is not points:
+            self._tree=cKDTree(points);self._tree_points=points;self._last_pose=None
+        if self._last_pose is not None and np.array_equal(pose,self._last_pose):
+            return self._last_count
         widths = np.linspace(self.width,.075,12) if self.opening else [self.width]
-        count = max(FingerGeometry(open_width_m=float(w)).collision_count(points,pose) for w in widths)
+        # Exact conservative broad phase: each sphere contains its entire box,
+        # including the original margin. Keep the unchanged narrow-phase test.
+        centers,radii=[],[]
+        for width in widths:
+            finger=FingerGeometry(open_width_m=float(width))
+            for center,half in finger.boxes():
+                centers.append(pose[:3,:3]@center+pose[:3,3])
+                radii.append(np.linalg.norm(half+finger.margin_m)+1e-9)
         if self.held is not None:
-            local = transform_points(invert_transform(pose @ self.held.T_ee_object),points)
+            centers.append((pose@self.held.T_ee_object)[:3,3])
+            radii.append(np.linalg.norm(self.held.half_extents_m+.001)+1e-9)
+        hits=self._tree.query_ball_point(centers,radii)
+        indices=np.unique(np.concatenate(hits)).astype(int) if any(len(v) for v in hits) else np.empty(0,int)
+        nearby=points[indices]
+        count = max(FingerGeometry(open_width_m=float(w)).collision_count(nearby,pose) for w in widths)
+        if self.held is not None:
+            local = transform_points(invert_transform(pose @ self.held.T_ee_object),nearby)
             count += int(np.all(np.abs(local)<self.held.half_extents_m+.001,axis=1).sum())
+        self._last_pose=pose.copy();self._last_count=count
         return count
 
     def path_collision_count(self, points, start, end):
@@ -34,10 +62,11 @@ class HeldSweep:
 
 
 class IsaacPlaceMotion:
-    def __init__(self, executor, gripper, *, refresh_destination=None, trace=lambda e:None):
+    def __init__(self, executor, gripper, *, refresh_destination=None, trace=lambda e:None, mask_refiner=None):
         self.executor, self.gripper = executor, gripper
         self.refresh_destination, self.trace = refresh_destination,trace
         self.last_failure = None
+        self.mask_refiner=mask_refiner
         self.executor.clear_grasp_plan()
 
     def robot_state(self):
@@ -52,6 +81,15 @@ class IsaacPlaceMotion:
         # volume only needs the local 18 cm neighbourhood of this <=6 mm step.
         near=np.linalg.norm(points-self.robot_state().T_base_ee[:3,3],axis=1)<.18
         points,rows,cols=points[near],rows[near],cols[near]
+        robot=getattr(evidence.observation,"metadata",{}).get("robot_self_mask")
+        if robot is not None:
+            # One-pixel registration guard around the known robot silhouette.
+            # Full calibrated robot collision remains checked by cuMotion; do
+            # not interpret these uncertain self-boundary samples as external
+            # objects or apply this guard to the destination support geometry.
+            guard=cv2.dilate(np.asarray(robot,np.uint8),np.ones((3,3),np.uint8)).astype(bool)
+            keep=~guard[rows,cols]
+            points,rows,cols=points[keep],rows[keep],cols[keep]
         if held is None:
             return points
         pose = self.robot_state().T_base_ee @ held.T_ee_object
@@ -69,11 +107,21 @@ class IsaacPlaceMotion:
             from .contracts import PlaceError
             raise PlaceError("held_collision_mask_uncertain")
         own=labels[rows,cols]==components[0]
+        owned_mask=labels==components[0]
+        if self.mask_refiner is not None:
+            owned_mask=self.mask_refiner(evidence.observation,owned_mask)
+            proposed=owned_mask[rows,cols]
+            roi=np.all(np.abs(local)<held.half_extents_m+.012,axis=1)
+            if np.sum(proposed&~roi)>max(3,.05*np.sum(proposed)):
+                from .contracts import PlaceError
+                raise PlaceError('held_mask_outside_attachment_roi')
+            # A model mask never erases the observed support plane.
+            own=proposed&roi&(np.abs(points[:,2]-evidence.support_z_m)>.003)
         # Registered RGB/depth still has mixed-color edge pixels (anti-aliasing
         # in Isaac, finite color/depth registration on hardware). Admit only a
         # two-pixel ring with <=5 mm measured 3D continuity, never missing depth
         # or the observed support plane. This is bounded association uncertainty.
-        ring=cv2.dilate((labels==components[0]).astype(np.uint8),np.ones((3,3),np.uint8),iterations=2).astype(bool)
+        ring=cv2.dilate(owned_mask.astype(np.uint8),np.ones((3,3),np.uint8),iterations=2).astype(bool)
         nearby=cKDTree(points[own]).query(points,k=1)[0]<.005
         edge=(ring[rows,cols]&nearby
               & np.all(np.abs(local)<held.half_extents_m+.012,axis=1)
@@ -81,25 +129,32 @@ class IsaacPlaceMotion:
         own |= edge
         return points[~own]
 
-    def _safe(self, goal, held, evidence, opening=False):
+    def _safe(self, goal, held, evidence, opening=False,width_override=None):
         self.last_failure = None
+        started=time.monotonic()
         if held is not None:
             corners = transform_points(held.T_ee_object,box_corners(held.half_extents_m))
             # Explicit calibrated V1 envelope: reject long/back-projecting tools.
             if np.any(held.half_extents_m>.030) or corners[:,2].min()<-.050:
                 self.last_failure = "payload_outside_calibrated_tool_corridor"
                 return False
-        width = self.gripper.state().width_m
+        width = self.gripper.state().width_m if width_override is None else width_override
         if width is None:
             self.last_failure = "gripper_width_unknown"
             return False
         points = self._points(evidence,held)
-        sweep = HeldSweep(held,width,opening=opening)
+        points_s=time.monotonic()-started
+        current=self.robot_state().T_base_ee
+        limit=max(.010,1.5*np.linalg.norm(goal[:3,3]-current[:3,3])+.002)
+        sweep = HeldSweep(held,width,opening=opening,reference_pose=current,max_distance_m=limit)
         if not self.executor.is_observation_path_safe(goal,points,sweep):
             self.last_failure = self.executor.last_observation_path_rejection
             self.trace({"phase":"place_path_rejected","reason":self.last_failure,
                         "ik":getattr(self.executor,"last_plan_diagnostic",{}),"goal":goal.tolist()})
             return False
+        self.trace({'phase':'place_path_checked','points_s':points_s,'elapsed_s':time.monotonic()-started,
+                    'observation_age_s':time.monotonic()-evidence.observation.timestamp_s,
+                    'profile':getattr(self.executor,'last_observation_path_profile',{})})
         return True
 
     def opening_safe(self, held, evidence):
@@ -111,7 +166,7 @@ class IsaacPlaceMotion:
         retreat = pose.copy()
         retreat[2,3] += .045
         # Reserve a retreat corridor before release. Revalidate it after opening.
-        return self._safe(retreat,None,evidence,opening=True)
+        return self._safe(retreat,None,evidence,width_override=.075)
 
     def move_checked(self, goal, held, evidence, *, opening=False):
         self.executor.clear_grasp_plan()

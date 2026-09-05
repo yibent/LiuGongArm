@@ -54,6 +54,110 @@ class Rig:
 
 
 class FinePlaceTests(unittest.TestCase):
+    def test_swept_volume_broad_phase_matches_exhaustive_collision_test(self):
+        from scipy.spatial.transform import Rotation
+        from mr_liu.grasp.contact import FingerGeometry
+        from mr_liu.grasp.transforms import transform_points,invert_transform
+        r=Rig();random=np.random.default_rng(42)
+        for opening in (False,True):
+            pose=np.eye(4);pose[:3,:3]=Rotation.from_euler('xyz',[12,4,75],degrees=True).as_matrix()
+            points=random.uniform(-.15,.15,(3000,3));widths=np.linspace(.03,.075,12) if opening else [.03]
+            expected=max(FingerGeometry(open_width_m=w).collision_count(points,pose) for w in widths)
+            local=transform_points(invert_transform(pose@r.held.T_ee_object),points)
+            expected+=np.all(np.abs(local)<r.held.half_extents_m+.001,axis=1).sum()
+            sweep=HeldSweep(r.held,.03,opening=opening)
+            self.assertEqual(sweep.collision_count(points,pose),expected)
+            self.assertEqual(sweep.collision_count(points,pose),expected)
+
+    def test_background_recording_drains_and_uses_no_pickled_optional_pose(self):
+        from tempfile import TemporaryDirectory
+        from mr_liu.place.recording import AsyncRGBDRecorder
+        r=Rig()
+        with TemporaryDirectory() as directory:
+            writer=AsyncRGBDRecorder(directory,max_pending=2)
+            for _ in range(4):writer(r.obs())
+            self.assertEqual(writer.close(),[])
+            paths=list(Path(directory).glob('*.npz'));self.assertEqual(len(paths),4)
+            for path in paths:
+                with np.load(path) as data:
+                    for key in data.files:np.asarray(data[key])
+
+    def test_near_endpoint_does_not_allow_a_large_ik_detour(self):
+        sweep=HeldSweep(None,.075,reference_pose=np.eye(4),max_distance_m=.010)
+        pose=np.eye(4);pose[0,3]=.011
+        with self.assertRaisesRegex(PlaceError,'nonlocal_ik_path'):
+            sweep.collision_count(np.empty((0,3)),pose)
+
+    def test_near_endpoint_does_not_allow_a_large_rotation_detour(self):
+        from scipy.spatial.transform import Rotation
+        sweep=HeldSweep(None,.075,reference_pose=np.eye(4),max_distance_m=.010)
+        pose=np.eye(4);pose[:3,:3]=Rotation.from_euler('z',20,degrees=True).as_matrix()
+        with self.assertRaisesRegex(PlaceError,'nonlocal_ik_rotation'):
+            sweep.collision_count(np.empty((0,3)),pose)
+
+    def test_warmup_mask_is_discarded_and_cannot_authorize_live_use(self):
+        from mr_liu.place.payload_mask import Sam2PayloadRefiner
+        r=Rig();obs=r.obs();seed=np.ones(obs.depth_m.shape,bool)
+        transport=Mock();transport._request.return_value={'sequence':obs.sequence,'mask':None,'segmentation_score':.3}
+        refiner=Sam2PayloadRefiner(transport);refiner.warm(obs,seed)
+        self.assertIsNone(refiner.mask);self.assertIsNone(refiner.key)
+        with self.assertRaisesRegex(PlaceError,'held_mask_model_uncertain'):refiner(obs,seed)
+        self.assertEqual(transport._request.call_count,2)
+
+    def test_payload_model_checks_frame_identity_and_caches_same_observation(self):
+        from mr_liu.place.payload_mask import Sam2PayloadRefiner
+        r=Rig();obs=r.obs();seed=np.zeros(obs.depth_m.shape,bool);seed[20:40,20:40]=True
+        transport=Mock();transport._request.return_value={'sequence':obs.sequence,'mask':seed,'segmentation_score':.95}
+        refiner=Sam2PayloadRefiner(transport)
+        np.testing.assert_array_equal(refiner(obs,seed),seed)
+        refiner(obs,seed);self.assertEqual(transport._request.call_count,1)
+        transport._request.return_value['sequence']=-1
+        with self.assertRaisesRegex(PlaceError,'held_mask_frame_mismatch'):refiner(r.obs(),seed)
+
+    def test_payload_model_cannot_mask_the_whole_table(self):
+        from mr_liu.place.payload_mask import Sam2PayloadRefiner
+        r=Rig();obs=r.obs();seed=np.zeros(obs.depth_m.shape,bool);seed[20:40,20:40]=True
+        transport=Mock();transport._request.return_value={'sequence':obs.sequence,
+            'mask':np.ones(seed.shape,bool),'segmentation_score':.99}
+        with self.assertRaisesRegex(PlaceError,'held_mask_identity_mismatch'):
+            Sam2PayloadRefiner(transport)(obs,seed)
+
+    def test_payload_model_low_score_is_not_a_motion_permit(self):
+        from mr_liu.place.payload_mask import Sam2PayloadRefiner
+        r=Rig();obs=r.obs();seed=np.ones(obs.depth_m.shape,bool)
+        transport=Mock();transport._request.return_value={'sequence':obs.sequence,'mask':seed,'segmentation_score':.3}
+        with self.assertRaisesRegex(PlaceError,'held_mask_model_uncertain'):
+            Sam2PayloadRefiner(transport)(obs,seed)
+
+    def test_isolated_depth_ghost_is_missing_not_replaced_by_background(self):
+        from mr_liu.place.geometry import depth_consistency_mask
+        depth=np.ones((20,20));depth[10,10]=.85
+        valid=depth_consistency_mask(depth)
+        self.assertFalse(valid[10,10]);self.assertTrue(valid[10,11])
+        self.assertEqual(depth[10,10],.85)
+        depth[8:12,8:12]=.85
+        self.assertTrue(depth_consistency_mask(depth)[8,8])
+
+    def test_payload_occlusion_does_not_translate_destination_center(self):
+        r=Rig();obs=r.obs();mask=np.ones(obs.depth_m.shape,bool)
+        original=support_evidence(obs,mask)
+        depth=obs.depth_m.copy();depth[:,60:]=.95
+        occluded=support_evidence(replace(obs,depth_m=depth),mask)
+        np.testing.assert_allclose(original.center_base_m,occluded.center_base_m,atol=1e-6)
+        self.assertLess(len(occluded.surface_points),len(original.surface_points))
+
+    def test_robot_boundary_guard_is_one_pixel_and_not_a_large_roi(self):
+        rows,cols=np.indices((8,8));rows=rows.ravel();cols=cols.ravel()
+        points=np.c_[(cols-4)*.001,(rows-4)*.001,np.full(64,1.1)]
+        robot=np.zeros((8,8),bool);robot[4,4]=True
+        pose=np.eye(4);pose[2,3]=1.1
+        executor=SimpleNamespace(clear_grasp_plan=lambda:None,robot_state=lambda:SimpleNamespace(T_base_ee=pose))
+        evidence=SimpleNamespace(observation=SimpleNamespace(metadata={'robot_self_mask':robot}))
+        with patch('mr_liu.place.isaac_motion.scene_cloud',return_value=(points,rows,cols)):
+            result=IsaacPlaceMotion(executor,None)._points(evidence,None)
+        self.assertEqual(len(result),55)
+        self.assertTrue(np.any(np.all(result==points[(rows==4)&(cols==6)][0],axis=1)))
+
     def test_payload_mask_keeps_support_and_depth_separated_obstacle(self):
         rgb=np.zeros((16,16,3),np.uint8);rgb[:]=[20,40,200]
         rgb[5:10,5:10]=[180,80,60]

@@ -9,8 +9,26 @@ from mr_liu.grasp.transforms import transform_points
 from .contracts import PlaceError, DestinationEvidence
 
 
+def depth_consistency_mask(depth):
+    """Reject isolated depth samples; never invent replacement depth values.
+
+    Three agreeing neighbours preserve sampled surface corners but reject
+    one-pixel reprojection ghosts. Subpixel/thin geometry is not certified by
+    this sensor model and must remain uncertain, not become a place target.
+    """
+    depth=np.asarray(depth,float)
+    valid=np.isfinite(depth)&(depth>.02)&(depth<3.)
+    padded=np.pad(np.where(valid,depth,np.nan),1,constant_values=np.nan)
+    agreement=np.zeros(depth.shape,np.uint8)
+    h,w=depth.shape
+    for dy,dx in product(range(3),repeat=2):
+        if (dy,dx)==(1,1):continue
+        agreement += np.abs(padded[dy:dy+h,dx:dx+w]-depth)<.008
+    return valid&(agreement>=3)
+
+
 def scene_cloud(obs):
-    valid = np.isfinite(obs.depth_m) & (obs.depth_m > .02) & (obs.depth_m < 3.)
+    valid = depth_consistency_mask(obs.depth_m)
     robot = obs.metadata.get("robot_self_mask")
     if robot is not None:
         if np.asarray(robot).shape != valid.shape:
@@ -95,7 +113,17 @@ def support_evidence(obs, mask, *, relation="on", offset=(0., 0.)):
         raise PlaceError("support_or_container_uncertain")
     z = float(np.median(surface[:,2]))
     if relation != "relative":
-        center_xy = np.median(surface[:,:2], axis=0)
+        # Track the polygon's calibrated projection, not the centroid of its
+        # remaining visible depth. Payload occlusion must not look like a
+        # destination translation. This projection is only an identity/center
+        # estimate; actual support coverage still uses measured surface points.
+        pixels=np.column_stack(np.nonzero(mask))
+        v,u=np.median(pixels,axis=0)
+        ray=obs.T_base_camera[:3,:3]@np.linalg.solve(obs.intrinsics.matrix,[u,v,1.])
+        origin=obs.T_base_camera[:3,3]
+        if abs(ray[2])<1e-6 or (z-origin[2])/ray[2]<=0:
+            raise PlaceError("support_projection_invalid")
+        center_xy=(origin+ray*((z-origin[2])/ray[2]))[:2]
     return DestinationEvidence(obs, surface, points, np.r_[center_xy,z], z, mask)
 
 

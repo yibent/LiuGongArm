@@ -55,6 +55,7 @@ class ReproducibleServer(GraspGenXZMQServer):
         index = int(np.argmax(scores))
         score = float(scores[index])
         return {"mask": masks[index].astype(bool) if score >= 0.60 else None,
+                "sequence": request.get("sequence"),
                 "segmentation_score": score, "grounding_used": grounding_used,
                 "segmentation_ms": (time.perf_counter() - started) * 1000}
 

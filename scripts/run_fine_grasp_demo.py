@@ -516,7 +516,14 @@ def main() -> int:
         target_rigid.set_world_poses(positions=[position])
         target_rigid.set_velocities(linear_velocities=[[0., 0., 0.]], angular_velocities=[[0., 0., 0.]])
     fault = OneShotPreCloseShift(ARGS.test_target_shift_m, shift_sim_target)
+    grasp_attachment_ee = None
     def trace_event(event):
+        nonlocal grasp_attachment_ee
+        if event.get("phase") == "lift":
+            # Measured proprioception after closure, before carrying motion.
+            # A model's proposed EE rotation is not the achieved five-axis pose.
+            grasp_attachment_ee=arm.T_base_ee().copy()
+            event={**event,"measured_attachment_T_base_ee":grasp_attachment_ee.tolist()}
         recorder.trace(event)
         if VIDEO is not None:
             VIDEO.trace(event)
@@ -673,7 +680,8 @@ def main() -> int:
             place_result = run_place_after_grasp(result=result,initial_observation=initial_observation,
                 initial_mask=initial_mask,target=target,camera=camera,scene=place_scene,executor=executor,
                 gripper=gripper,port=ARGS.locator_port,label=ARGS.place_label,relation=ARGS.place_relation,
-                output=OUTPUT/"place",trace=trace_event,stable_base_asserted=CASE.shape=="cube")
+                output=OUTPUT/"place",trace=trace_event,stable_base_asserted=CASE.shape=="cube",
+                grasp_attachment_ee=grasp_attachment_ee,graspgenx_port=ARGS.graspgenx_port)
         except Exception as exc:
             executor.stop()
             place_result = PlaceResult(False,"handoff","isaac-fine-place",

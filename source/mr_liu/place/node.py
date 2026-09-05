@@ -66,7 +66,7 @@ class GeneralPlaceNode:
                              cfg.boundary_margin_m+held.uncertainty_m)
             if request.relation == "relative":
                 xy=destination.center_base_m[:2].copy()
-                if not footprint_supported(destination,xy,held.half_extents_m[:2],cfg.boundary_margin_m+held.uncertainty_m):
+                if not footprint_supported(destination,xy,initial_radius,cfg.boundary_margin_m+held.uncertainty_m):
                     raise PlaceError("requested_relative_position_infeasible")
             local_xy = xy - destination.center_base_m[:2]
             anchor = destination.center_base_m.copy()
@@ -157,7 +157,8 @@ class GeneralPlaceNode:
                 raise PlaceError("cancelled")
             if not self.motion.opening_safe(held,latest):
                 raise PlaceError("release_space_changed")
-            if self.clock()-payload.observation.timestamp_s > cfg.max_age_s:
+            if max(self.clock()-payload.observation.timestamp_s,
+                   self.clock()-latest.observation.timestamp_s) > cfg.max_age_s:
                 raise PlaceError("release_observation_stale_after_check")
             # released means opening may have begun, even if actuator fails.
             released = True

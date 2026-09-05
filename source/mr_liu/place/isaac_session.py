@@ -13,6 +13,8 @@ from .geometry import scene_cloud
 from .perception import FlorencePlaceLocator, RGBDPlacePerception
 from .isaac_motion import IsaacPlaceMotion
 from .node import GeneralPlaceNode
+from .payload_mask import Sam2PayloadRefiner
+from .recording import AsyncRGBDRecorder
 
 
 def spawn_place_fixture(kind="region", *, x=.25, y=-.198):
@@ -51,9 +53,24 @@ def spawn_place_fixture(kind="region", *, x=.25, y=-.198):
     return paths
 
 
-def run_place_after_grasp(*, result, initial_observation, initial_mask, target, camera, scene,
+def run_place_after_grasp(**kwargs):
+    writer=AsyncRGBDRecorder(kwargs['output'])
+    result=None
+    try:
+        result=_run_place_after_grasp(**kwargs,observation_recorder=writer)
+        return result
+    finally:
+        errors=writer.close()
+        if errors:
+            print('[FinePlace] recording errors: '+repr(errors),flush=True)
+            # Debug I/O errors do not rewrite the physical released state.
+            if result is not None:result.metrics['recording_errors']=errors
+
+
+def _run_place_after_grasp(*, result, initial_observation, initial_mask, target, camera, scene,
                           executor, gripper, port, label, relation, output, trace,
-                          stable_base_asserted=False):
+                          stable_base_asserted=False, grasp_attachment_ee=None, graspgenx_port=5556,
+                          observation_recorder):
     output = Path(output); output.mkdir(parents=True,exist_ok=True)
     records=[]
     def event(data):
@@ -61,17 +78,15 @@ def run_place_after_grasp(*, result, initial_observation, initial_mask, target, 
         trace(data)
         print("[FinePlace] "+json.dumps(data,ensure_ascii=False),flush=True)
         (output/"trace.json").write_text(json.dumps(records,indent=2,ensure_ascii=False),encoding="utf-8")
-    def capture(obs):
-        tag=f"{obs.camera_frame}_{obs.sequence:04d}"
-        cv2.imwrite(str(output/(tag+".png")),obs.rgb[:,:,::-1])
-        np.savez_compressed(output/(tag+".npz"),rgb=obs.rgb,depth_m=obs.depth_m,
-            K=obs.intrinsics.matrix,T_base_camera=obs.T_base_camera,
-            robot_self_mask=obs.metadata.get("robot_self_mask"),
-            T_base_ee=obs.T_base_ee,T_ee_camera=obs.T_ee_camera,sequence=obs.sequence,timestamp_s=obs.timestamp_s)
     if not result.success or result.selected_grasp is None:
         raise PlaceError("grasp_handoff_unverified")
     if initial_mask is None or initial_mask.sum()<80:
         raise PlaceError("initial_payload_geometry_unavailable")
+    from mr_liu.grasp.backends.graspgenx import ZmqGraspGenXTransport
+    refiner=Sam2PayloadRefiner(ZmqGraspGenXTransport('127.0.0.1',graspgenx_port,60000),trace=event)
+    # Load the local tiny model without granting any move/release permission.
+    # The live contour is recomputed against a new scene observation later.
+    refiner.warm(initial_observation,initial_mask)
     mask=initial_mask & np.isfinite(initial_observation.depth_m) & (initial_observation.depth_m>0)
     original=transform_points(initial_observation.T_base_camera,
         deproject_depth(initial_observation.depth_m,initial_observation.intrinsics,mask))
@@ -97,19 +112,22 @@ def run_place_after_grasp(*, result, initial_observation, initial_mask, target, 
     pose=np.eye(4)
     pose[:3,3]=center
     ee=executor.robot_state().T_base_ee
-    # SelectedGrasp has already been mapped to the calibrated physical EE by
-    # selection.py. Applying ee_pose_for_grasp again doubles the jaw offset.
-    grasp_ee=result.selected_grasp.T_base_grasp
-    pose=ee @ invert_transform(grasp_ee) @ pose
+    # Use measured achieved attachment pose, never the network's requested EE
+    # pose. A five-axis IK solution can have a different unconstrained yaw.
+    if grasp_attachment_ee is None:
+        raise PlaceError("measured_attachment_pose_missing")
+    pose=ee @ invert_transform(grasp_attachment_ee) @ pose
     held=HeldObject(target.object_id,invert_transform(ee)@pose,half,ref,anchor,time.monotonic(),stable_base_asserted)
-    perception=RGBDPlacePerception(scene,camera,FlorencePlaceLocator(port),trace=event,recorder=capture)
+    perception=RGBDPlacePerception(scene,camera,FlorencePlaceLocator(port),trace=event,recorder=observation_recorder)
     event({"phase":"place_bootstrap","expected_pose":pose.tolist(),"half_extents_m":half.tolist(),
-           "source_center_m":center.tolist(),"support_z_m":support})
+           "source_center_m":center.tolist(),"support_z_m":support,
+           "measured_attachment_T_base_ee":np.asarray(grasp_attachment_ee).tolist()})
     measured=perception.payload(held,pose)
     held=replace(held,T_ee_object=invert_transform(executor.robot_state().T_base_ee)@measured.T_base_object,
                  verified_at_s=time.monotonic())
     request=PlaceRequest(label,relation,request_id="isaac-fine-place")
-    motion=IsaacPlaceMotion(executor,gripper,refresh_destination=lambda:perception.destination(request),trace=event)
+    motion=IsaacPlaceMotion(executor,gripper,refresh_destination=lambda:perception.destination(request),trace=event,
+                           mask_refiner=refiner)
     event({"phase":"place_handoff","half_extents_m":half.tolist(),"T_ee_object":held.T_ee_object.tolist(),
            "support_z_from_rgbd_m":support,"stable_base_asserted_by_fixture":stable_base_asserted,
            "limitations":"compact stable-base fixture, translation registration; not arbitrary object rotation tracking"})

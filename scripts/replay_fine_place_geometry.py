@@ -19,6 +19,7 @@ def main():
     parser=argparse.ArgumentParser()
     parser.add_argument("run",type=Path)
     parser.add_argument("--collision",action="store_true",help="Recheck recorded start/goal local volumes, not full joint-path IK")
+    parser.add_argument("--sam2-probe",action="store_true",help="Use the separately generated local SAM2 probe mask")
     args=parser.parse_args()
     directory=args.run/"place"
     trace=json.loads((directory/"trace.json").read_text(encoding="utf-8"))
@@ -54,20 +55,29 @@ def main():
             half_extents_m=np.array(handoff["half_extents_m"]),chromaticity=np.median(colors,axis=0))
         ee=np.array(report["actual_final_ee"])
         executor=SimpleNamespace(clear_grasp_plan=lambda:None,robot_state=lambda:SimpleNamespace(T_base_ee=ee))
-        motion=IsaacPlaceMotion(executor,None)
+        refiner=None
+        if args.sam2_probe:
+            probe=np.load(directory/f'sam2_probe_{seq:04d}.npz')
+            refiner=lambda observation,seed:probe['mask']
+        motion=IsaacPlaceMotion(executor,None,mask_refiner=refiner)
         points=motion._points(SimpleNamespace(observation=obs,support_z_m=evidence.support_z_m),held)
         sweep=HeldSweep(held,report["gripper"]["width_m"])
         goal=np.array(next(e for e in reversed(trace) if e["phase"]=="place_path_rejected")["goal"])
         result["collision_replay"]={"external_points":len(points),
             "start_count":sweep.collision_count(points,ee),"goal_count":sweep.collision_count(points,goal),
             "note":"Recorded measured final pose approximates stopped start; not a fresh motion authorization"}
-        local=transform_points(invert_transform(ee@held.T_ee_object),points)
+        local=transform_points(invert_transform(goal@held.T_ee_object),points)
         hit=np.all(np.abs(local)<held.half_extents_m+.001,axis=1)
+        from mr_liu.grasp.contact import FingerGeometry
+        fingers=transform_points(invert_transform(goal),points)
+        for center,half in FingerGeometry(open_width_m=report['gripper']['width_m']).boxes():
+            hit |= np.all(np.abs(fingers-center)<half+.001,axis=1)
         cam=transform_points(invert_transform(obs.T_base_camera),points[hit])
         pix=cam@obs.intrinsics.matrix.T
         pix=np.rint(pix[:,:2]/pix[:,2:]).astype(int)
-        result["collision_replay"]["payload_hits_rgb"]=obs.rgb[pix[:,1],pix[:,0]][:50].tolist()
-        result["collision_replay"]["payload_hits_pixel"]=pix.tolist()
+        result["collision_replay"]["goal_hits_rgb"]=obs.rgb[pix[:,1],pix[:,0]][:50].tolist()
+        result["collision_replay"]["goal_hits_pixel"]=pix.tolist()
+        result["collision_replay"]["goal_hits_base_m"]=points[hit].tolist()
         from scipy.spatial import cKDTree
         allpts,_,_=scene_cloud(obs)
         near=np.linalg.norm(allpts-ee[:3,3],axis=1)<.18

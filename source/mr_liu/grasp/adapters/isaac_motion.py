@@ -289,7 +289,11 @@ class IsaacCumotionExecutor:
         not a guarantee about unobserved space or unmodeled hardware.
         """
         self.last_observation_path_rejection = None
+        started=time.monotonic()
+        profile={"plan_s":0.,"world_s":0.,"surface_s":0.,"samples":0}
+        self.last_observation_path_profile=profile
         plan = self._plan(target)
+        profile["plan_s"]=time.monotonic()-started
         if plan is None:
             self.last_observation_path_rejection = "ik_or_joint_path_infeasible"
             return False
@@ -303,21 +307,28 @@ class IsaacCumotionExecutor:
             self.last_observation_path_rejection = "unsupported_plan_type"
             return False
         previous = self._world_ee_pose_from_joints(q0)
+        profile["waypoints"]=len(waypoints)
+        profile["max_joint_delta_rad"]=float(max(np.max(np.abs(q-q0)) for q in waypoints))
         for start, end in zip(waypoints, waypoints[1:]):
             steps = max(1, int(np.ceil(np.max(np.abs(end - start)) / 0.005)))
             for alpha in np.linspace(0, 1, steps + 1):
                 q = start + alpha * (end - start)
+                checking=time.monotonic();profile["samples"]+=1
                 if self._collision_inspector.in_self_collision(q):
                     self.last_observation_path_rejection = "self_collision"
                     return False
                 if self._collision_inspector.in_collision_with_obstacle(q):
                     self.last_observation_path_rejection = "world_collision"
                     return False
+                profile["world_s"]+=time.monotonic()-checking
+                checking=time.monotonic()
                 pose = self._world_ee_pose_from_joints(q)
                 if finger.path_collision_count(points_base, previous, pose):
                     self.last_observation_path_rejection = "observed_surface_finger_collision"
                     return False
+                profile["surface_s"]+=time.monotonic()-checking
                 previous = pose
+        profile["elapsed_s"]=time.monotonic()-started
         return True
 
     def is_grasp_transition_reachable(
