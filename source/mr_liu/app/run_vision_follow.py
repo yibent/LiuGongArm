@@ -130,6 +130,23 @@ def main(
         slow_interval=max(0, int(slow_interval)),
     )
     control = VisionRuntimeControl(vis_cfg, follow_enabled=follow_target)
+    from mr_liu.config import robot_config
+    from mr_liu.motion.commands import MotionCommands
+    from scipy.spatial.transform import Rotation
+    robot_cfg = robot_config()
+    control.motion = MotionCommands(repo_root() / robot_cfg["robot_dir"] / robot_cfg["urdf"], robot_cfg["default_joint_positions"])
+    robot_base = XformPrim(robot_cfg["usd_prim_path"])
+
+    def update_motion():
+        q = arm.articulation.get_dof_positions().numpy().reshape(-1)
+        base_position, base_orientation = robot_base.get_world_poses()
+        base = np.eye(4)
+        base[:3, 3] = base_position.numpy()[0]
+        quat = base_orientation.numpy()[0]
+        base[:3, :3] = Rotation.from_quat([quat[1], quat[2], quat[3], quat[0]]).as_matrix()
+        def apply(values):
+            arm.articulation.set_dof_position_targets([[values[name] for name in arm.dof_names]])
+        return control.motion.tick(dict(zip(arm.dof_names, q.tolist())), base, apply, app_utils.is_playing())
     server = VisionControlServer(control, host=control_host, port=control_port)
     host, port = server.start()
     print(f"[mr_liu] Runtime vision control: http://{host}:{port}")
@@ -147,7 +164,7 @@ def main(
     if follow_target:
         print("  Top-view detection → /World/TargetCube → arm.")
     else:
-        print("  Vision-only mode: arm motion disabled; both camera views remain stable.")
+        print("  Automatic follow disabled; manual motion commands remain available through the control API.")
     print(f"  Change targets while running: POST http://{host}:{port}/api/prompt")
 
     t = 0.0
@@ -157,6 +174,7 @@ def main(
     try:
         while app.is_running():
             app.update()
+            motion_owns_arm = update_motion()
             if app_utils.is_playing() and SimulationManager.is_simulating():
                 if reset_needed:
                     t = 0.0
@@ -186,12 +204,12 @@ def main(
 
                             scene_result = results["scene"]
                             detections = scene_result.fast or scene_result.slow
-                            if control.follow_enabled() and detections:
+                            if control.follow_enabled() and not motion_owns_arm and detections:
                                 height, width = camera_frames["scene"].shape[:2]
                                 x, y = _bbox_to_table_xy(detections[0].xyxy, width, height)
                                 target_xform.set_world_poses(positions=[[x, y, table_z]])
                             vision_cycles += 1
-                    if control.follow_enabled():
+                    if control.follow_enabled() and not motion_owns_arm:
                         controller.step(t)
                 frames += 1
                 if test_frames is not None and frames >= test_frames:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 import unittest
+from unittest.mock import Mock
 from pathlib import Path
 from urllib.request import Request, urlopen
 
@@ -20,6 +21,19 @@ from mr_liu.vision.control import (
 
 
 class VisionControlTests(unittest.TestCase):
+    def test_speed_and_rejected_commands_do_not_disable_follow(self) -> None:
+        control = VisionRuntimeControl(RuntimeConfig())
+        control.motion = Mock()
+        control.motion.submit.return_value = {"ok": True, "state": "accepted"}
+        execute_control_command(control, "set_speed", {"degrees_per_second": 20})
+        self.assertTrue(control.follow_enabled())
+        control.motion.submit.return_value = {"ok": False, "state": "failed"}
+        execute_control_command(control, "home")
+        self.assertTrue(control.follow_enabled())
+        control.motion.submit.return_value = {"ok": True, "state": "accepted"}
+        execute_control_command(control, "home")
+        self.assertFalse(control.follow_enabled())
+
     def test_semantic_commands_update_target_and_follow_state(self) -> None:
         control = VisionRuntimeControl(RuntimeConfig(prompt="red cube"))
         result = execute_control_command(

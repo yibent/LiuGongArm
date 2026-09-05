@@ -37,6 +37,7 @@ class VisionRuntimeControl:
         self._frames: dict[str, bytes] = {}
         self._models: dict[str, Any] = {}
         self._error: str | None = None
+        self.motion = None
 
     def snapshot(self) -> RuntimeConfig:
         with self._lock:
@@ -58,6 +59,8 @@ class VisionRuntimeControl:
             return replace(self._config)
 
     def set_follow_enabled(self, enabled: bool) -> bool:
+        if enabled and self.motion is not None:
+            self.motion.release()
         with self._lock:
             self._follow_enabled = bool(enabled)
             return self._follow_enabled
@@ -94,6 +97,7 @@ class VisionRuntimeControl:
             return self._frames.get(view)
 
     def status(self) -> dict[str, Any]:
+        motion = self.motion.status() if self.motion is not None else None
         with self._lock:
             return {
                 "prompt": self._config.prompt,
@@ -105,16 +109,38 @@ class VisionRuntimeControl:
                 "models": self._models,
                 "views": dict(self._views),
                 "error": self._error,
+                "motion": motion,
+                "capabilities": self.capabilities(),
             }
+
+    def capabilities(self) -> dict[str, Any]:
+        from mr_liu.motion.commands import MOTION_SKILLS
+        return {
+            "skills": ["select_target", "perceive", "follow", "hold", "stop", "status", "capabilities"]
+                      + (sorted(MOTION_SKILLS - {"hold", "stop"}) if self.motion is not None else []),
+            "unsupported": ["plan_grasp", "grasp", "transport", "place", "verify_placement"],
+            "message": "当前支持识别、跟随、暂停和停止" + (
+                "，以及关节转动、底座和腕部转动、末端平移、坐标移动、可达位姿旋转、归位、夹爪开合、调速、继续暂停动作。五轴臂的部分姿态无解时会拒绝执行。抓取和放置尚未实现，夹爪闭合不代表抓取成功。"
+                if self.motion is not None else "。基础运动控制尚未接入。抓取和放置尚未实现。"),
+        }
 
 
 def execute_control_command(
     control: VisionRuntimeControl,
     skill: str,
     params: dict[str, Any] | None = None,
+    command_id: str | None = None,
 ) -> dict[str, Any]:
     """Execute one BusAgent semantic skill against the live vision loop."""
     values = params or {}
+    from mr_liu.motion.commands import MOTION_SKILLS
+    if skill == "capabilities":
+        return {"ok": True, **control.capabilities()}
+    if skill in MOTION_SKILLS and control.motion is not None:
+        result = control.motion.submit(skill, values, command_id)
+        if skill != "set_speed" and result.get("state") in {"accepted", "started"}:
+            control.set_follow_enabled(False)
+        return result
     if skill == "select_target":
         category = str(values.get("category") or values.get("prompt") or "").strip()
         if not category:
@@ -205,6 +231,14 @@ class VisionControlServer:
                 if path == "/api/status":
                     self._json(control.status())
                     return
+                if path == "/api/capabilities":
+                    self._json(control.capabilities())
+                    return
+                if path.startswith("/api/commands/"):
+                    from urllib.parse import unquote
+                    result = control.motion.result(unquote(path.removeprefix("/api/commands/"))) if control.motion else None
+                    self._json(result or {"ok": False, "error": "command not found"}, HTTPStatus.OK if result else HTTPStatus.NOT_FOUND)
+                    return
                 if path.startswith("/api/frame/") and path.endswith(".jpg"):
                     view = path.removeprefix("/api/frame/").removesuffix(".jpg")
                     frame = control.frame(view)
@@ -235,6 +269,9 @@ class VisionControlServer:
                         self._json({"message": "FIND requested for both views", "find_epoch": cfg.find_epoch})
                         return
                     if path == "/api/follow":
+                        if not body.get("enabled", True) and control.motion is not None:
+                            self._json(execute_control_command(control, "hold"))
+                            return
                         enabled = control.set_follow_enabled(bool(body.get("enabled", True)))
                         self._json({"message": "follow state updated", "follow_enabled": enabled})
                         return
@@ -243,9 +280,8 @@ class VisionControlServer:
                         params = body.get("params", {})
                         if not isinstance(params, dict):
                             raise ValueError("command params must be an object")
-                        result = execute_control_command(control, skill, params)
-                        result["command_id"] = body.get("command_id")
-                        self._json(result)
+                        result = execute_control_command(control, skill, params, body.get("command_id"))
+                        self._json(result, HTTPStatus.ACCEPTED if result.get("state") == "accepted" else HTTPStatus.OK)
                         return
                     self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
                 except NotImplementedError as exc:
