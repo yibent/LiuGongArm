@@ -42,15 +42,21 @@ def main():
     evidence = SimpleNamespace(observation=obs,support_z_m=support)
     points = motion._points(evidence,None)
     outside = motion._points(evidence,held)
+    payload_local=transform_points(invert_transform(pose@held.T_ee_object),outside)
+    payload_hits=np.all(np.abs(payload_local)<held.half_extents_m+.001,axis=1)
     from scipy.spatial import cKDTree
     owned = cKDTree(outside).query(points,k=1)[0]>1e-8
-    sweep = HeldSweep(None,.075,reference_pose=pose,max_distance_m=.1,contact_mask=owned)
+    sweep = HeldSweep(None,.075,reference_pose=pose,max_distance_m=.1,contact_mask=owned,
+                      contact_uncertainty_m=min(.003,held.uncertainty_m))
     depth = sweep._contact_depth(points,pose)
     hits = depth>-.001
     local = transform_points(invert_transform(pose),points[hits])
     print(json.dumps({'frame':str(path),'hits':int(hits.sum()),'owned_hits':int(owned[hits].sum()),
         'depth_mm':(depth[hits]*1000).tolist(),'local_points_mm':(local*1000).tolist(),
-        'held_in_ee':held.T_ee_object.tolist(),'remaining_collision_count':sweep.collision_count(points,pose)},indent=2))
+        'held_in_ee':held.T_ee_object.tolist(),'contact_uncertainty_m':sweep.contact_uncertainty_m,
+        'remaining_collision_count':sweep.collision_count(points,pose),
+        'seed_only_remaining_payload_hits':int(payload_hits.sum()),
+        'seed_only_payload_hit_points':outside[payload_hits].tolist()},indent=2))
 
 
 if __name__=='__main__':main()

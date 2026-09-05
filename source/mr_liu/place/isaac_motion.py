@@ -15,13 +15,17 @@ from .appearance import appearance_matches
 
 
 class HeldSweep:
-    def __init__(self, held, width, *, opening=False, reference_pose=None,max_distance_m=None,contact_mask=None):
+    def __init__(self, held, width, *, opening=False, reference_pose=None,max_distance_m=None,contact_mask=None,
+                 contact_uncertainty_m=.001):
         self.held = held
         self.width = width
         self.opening = opening
         self.reference_pose,self.max_distance_m=reference_pose,max_distance_m
         self._tree_points=None;self._last_pose=None;self._last_count=0
         self.contact_mask=contact_mask
+        if not 0 < contact_uncertainty_m <= .003:
+            raise ValueError('Contact uncertainty must be in (0,3 mm]')
+        self.contact_uncertainty_m=contact_uncertainty_m
 
     def _contact_depth(self,points,pose):
         local=transform_points(invert_transform(pose),points)
@@ -42,10 +46,11 @@ class HeldSweep:
             self._contact_initial=None
             if self.contact_mask is not None:
                 initial=self._contact_depth(points,self.reference_pose)
-                # Only previously measured payload contact at the calibrated
-                # jaw surface (<=1 mm penetration). Not a whole-object exemption.
+                # Only previously measured payload contact within the declared
+                # geometry uncertainty. No whole-object or new-contact exemption.
                 self._contact_initial=initial
-                self._contact_allowed=np.asarray(self.contact_mask,bool)&(initial>=-.001)&(initial<=.001)
+                self._contact_allowed=(np.asarray(self.contact_mask,bool)&(initial>=-.001)
+                                       &(initial<=self.contact_uncertainty_m))
         if self._last_pose is not None and np.array_equal(pose,self._last_pose):
             return self._last_count
         widths = np.linspace(self.width,.075,12) if self.opening else [self.width]
@@ -65,7 +70,7 @@ class HeldSweep:
         if self._contact_initial is not None and len(indices):
             depth=self._contact_depth(points[indices],pose)
             escaping=(self._contact_allowed[indices]
-                      & (depth<=self._contact_initial[indices]+.0002)&(depth<=.001))
+                      & (depth<=self._contact_initial[indices]+.0002)&(depth<=self.contact_uncertainty_m))
             indices=indices[~escaping]
         nearby=points[indices]
         count = max(FingerGeometry(open_width_m=float(w)).collision_count(nearby,pose) for w in widths)
@@ -88,7 +93,8 @@ class HeldSweep:
         return {'raw_hits':len(indices),'owned_hits':int(np.asarray(owned)[indices].sum()),
                 'points_base':points[chosen].tolist(),'depth_m':depth[chosen].tolist(),
                 'initial_depth_m':self._contact_depth(points[chosen],self.reference_pose).tolist(),
-                'pose':pose.tolist(),'reference_pose':self.reference_pose.tolist()}
+                'pose':pose.tolist(),'reference_pose':self.reference_pose.tolist(),
+                'contact_uncertainty_m':self.contact_uncertainty_m}
 
 
 class IsaacPlaceMotion:
@@ -99,6 +105,8 @@ class IsaacPlaceMotion:
         self.mask_refiner=mask_refiner
         self.release_contact=None
         self._release_retreat=None
+        self._points_observation=None
+        self._points_cache={}
         self.executor.clear_grasp_plan()
 
     def robot_state(self):
@@ -108,23 +116,35 @@ class IsaacPlaceMotion:
         self.executor.stop()
 
     def _points(self, evidence, held):
+        current=self.robot_state().T_base_ee
+        obs=evidence.observation
+        if self._points_observation is not obs:
+            self._points_observation=obs
+            self._points_cache={}
+        held_key=None if held is None else (np.asarray(held.T_ee_object).tobytes(),
+            np.asarray(held.half_extents_m).tobytes(),np.asarray(held.chromaticity).tobytes())
+        key=(current.tobytes(),held_key,float(evidence.support_z_m),id(self.mask_refiner))
+        if key in self._points_cache:return self._points_cache[key]
+        def remember(points):
+            self._points_cache[key]=points
+            return points
         points, rows, cols = scene_cloud(evidence.observation)
         # Full arm/world checks stay with cuMotion. The explicit payload/jaw
         # volume only needs the local 18 cm neighbourhood of this <=6 mm step.
-        near=np.linalg.norm(points-self.robot_state().T_base_ee[:3,3],axis=1)<.18
+        near=np.linalg.norm(points-current[:3,3],axis=1)<.18
         points,rows,cols=points[near],rows[near],cols[near]
         robot=getattr(evidence.observation,"metadata",{}).get("robot_self_mask")
+        outside_robot_guard=np.ones(len(points),bool)
         if robot is not None:
             # One-pixel registration guard around the known robot silhouette.
             # Full calibrated robot collision remains checked by cuMotion; do
             # not interpret these uncertain self-boundary samples as external
             # objects or apply this guard to the destination support geometry.
             guard=cv2.dilate(np.asarray(robot,np.uint8),np.ones((3,3),np.uint8)).astype(bool)
-            keep=~guard[rows,cols]
-            points,rows,cols=points[keep],rows[keep],cols[keep]
+            outside_robot_guard=~guard[rows,cols]
         if held is None:
-            return points
-        pose = self.robot_state().T_base_ee @ held.T_ee_object
+            return remember(points[outside_robot_guard])
+        pose = current @ held.T_ee_object
         # A partial reference cloud cannot label newly visible object faces as
         # obstacles. Associate a unique measured appearance component in the
         # bounded held-object ROI; never exclude an entire geometric box.
@@ -141,7 +161,10 @@ class IsaacPlaceMotion:
         own=labels[rows,cols]==components[0]
         owned_mask=labels==components[0]
         if self.mask_refiner is not None:
-            owned_mask=self.mask_refiner(evidence.observation,owned_mask)
+            # Refinement adds contour evidence; it must not discard the unique
+            # depth/appearance seed and turn the held object's own surface into
+            # a new obstacle merely because SAM missed a few edge pixels.
+            owned_mask=owned_mask | self.mask_refiner(evidence.observation,owned_mask)
             proposed=owned_mask[rows,cols]
             roi=np.all(np.abs(local)<held.half_extents_m+.012,axis=1)
             # RGB mask boundaries can project onto background depth. They must
@@ -163,7 +186,12 @@ class IsaacPlaceMotion:
               & np.all(np.abs(local)<held.half_extents_m+.012,axis=1)
               & (points[:,2]>evidence.support_z_m+.006))
         own |= edge
-        return points[~own]
+        # Form object identity before applying the robot registration guard.
+        # Otherwise a valid contact-edge seed is removed first, leaving its
+        # depth-continuous fringe incorrectly classified as an external object.
+        # The exact robot mask was already removed by scene_cloud; the final
+        # one-pixel guard is unchanged and never grows with the object mask.
+        return remember(points[~own & outside_robot_guard])
 
     def _safe(self, goal, held, evidence, opening=False,width_override=None,contact_payload=None):
         self.last_failure = None
@@ -187,7 +215,9 @@ class IsaacPlaceMotion:
         current=self.robot_state().T_base_ee
         limit=max(.010,1.5*np.linalg.norm(goal[:3,3]-current[:3,3])+.002)
         sweep = HeldSweep(held,width,opening=opening,reference_pose=current,max_distance_m=limit,
-                          contact_mask=contact_mask)
+                          contact_mask=contact_mask,
+                          contact_uncertainty_m=(min(.003,contact_payload.uncertainty_m)
+                                                 if contact_payload is not None else .001))
         if not self.executor.is_observation_path_safe(goal,points,sweep):
             self.last_failure = self.executor.last_observation_path_rejection
             self.trace({"phase":"place_path_rejected","reason":self.last_failure,
@@ -211,13 +241,26 @@ class IsaacPlaceMotion:
         if direction[2]<.9:
             self.last_failure='retreat_axis_not_upward'
             return False
-        # Search outward from the fixed jaw. Every alternative uses the same
-        # actual-FK, measured-contact and full world/self-collision checks.
-        for clearance in (0.,.003,.006,.010,.015,.020):
+        # The payload can touch the side of a fixed finger, not just its inner
+        # X face. Search outward relative to the measured attachment, including
+        # Y clearance, and validate the actual FK path for every hypothesis.
+        away=-np.asarray(held.T_ee_object[:2,3],float)
+        away/=max(np.linalg.norm(away),1e-12)
+        directions=[np.array([1.,0.]),away,np.array([0.,1.]),np.array([0.,-1.])]
+        offsets=[np.zeros(2)]
+        offsets += [v*distance for distance in (.003,.006,.010,.015,.020)
+                    for v in directions if np.dot(v,away)>=0]
+        if self._release_retreat is not None:
+            # Recheck the previous winner first on fresh depth. It is only a
+            # proposal cache; neither old geometry nor old safety is reused.
+            delta=self._release_retreat[:3,3]-pose[:3,3]-direction*.045
+            offsets.insert(0,pose[:3,:2].T@delta)
+        for offset in offsets:
             retreat = pose.copy()
-            retreat[:3,3] += direction*.045 + pose[:3,0]*clearance
+            retreat[:3,3] += direction*.045 + pose[:3,:2]@offset
             ok=self._safe(retreat,None,evidence,width_override=.075,contact_payload=held)
-            self.trace({'phase':'place_retreat_candidate','lateral_escape_m':clearance,
+            self.trace({'phase':'place_retreat_candidate','lateral_escape_m':float(np.linalg.norm(offset)),
+                        'tool_xy_escape_m':offset.tolist(),
                         'safe':ok,'reason':self.last_failure})
             if ok:
                 self.release_contact=(held,pose.copy(),pose@held.T_ee_object)

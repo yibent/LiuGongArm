@@ -31,7 +31,7 @@
 
 实测 `output/anyplace/02_official_hanging.json`：同一多任务权重用于杯子/挂架点云，20 个候选、50 轮，约 **13.10 s**，峰值 allocated tensor memory **1,503,697,920 bytes**。两组均未运行物理执行，不给出放置成功率。
 
-接入候选后软件回归 **298 tests passed**（随后几何放置修复另加测试），使用 `D:\isaac\env_isaacsim60\python.exe -m unittest discover -s tests -q`。这不是物理抓放成功率，不能与已删除分支的测试数直接比较。
+接入候选后曾通过 298 项回归；随后几何放置修复提交 `6b6bb37` 为 **301 tests passed**。命令为 `D:\isaac\env_isaacsim60\python.exe -m unittest discover -s tests -q`。这不是物理抓放成功率，不能与已删除分支的测试数直接比较；后续最新结果见 [FinePlace 记录](FINE_PLACE.md)。
 
 离线结果标记 `physical_success: null`、`collision_checked: false`。上游此配置没有学习到的成功率评分器，候选的统一分数不能当成成功概率。
 
@@ -84,7 +84,7 @@ git -C _vendor/anyplace apply --unidiff-zero ../../patches/anyplace-unused-class
 
 ## 下一阶段验收
 
-不能把官方干净点云推理通过当成腕部 RGB-D 泛化通过。接入实际闭环之前，需要：
+不能把官方干净点云推理通过当成腕部 RGB-D 泛化通过。进入完整姿态物理执行验收之前，需要：
 
 - 从多视角测量提供足够完整的持物点云，明确遮挡、深度缺失和置信度，不能用仿真真值代替部署输入。
 - Florence/SAM 给出目的地局部区域；AnyPlace 输入保留容器边缘、孔位等三维结构。

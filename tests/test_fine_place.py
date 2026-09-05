@@ -57,6 +57,54 @@ class Rig:
 
 
 class FinePlaceTests(unittest.TestCase):
+    def test_collision_point_cache_requires_same_snapshot_and_robot_pose(self):
+        pose=np.eye(4);pose[2,3]=1.1
+        executor=SimpleNamespace(clear_grasp_plan=lambda:None,robot_state=lambda:SimpleNamespace(T_base_ee=pose.copy()))
+        motion=IsaacPlaceMotion(executor,None)
+        obs=SimpleNamespace(metadata={})
+        evidence=SimpleNamespace(observation=obs,support_z_m=1.)
+        points=np.array([[0.,0,1.1]])
+        with patch('mr_liu.place.isaac_motion.scene_cloud',return_value=(points,np.array([0]),np.array([0]))) as cloud:
+            motion._points(evidence,None);motion._points(evidence,None)
+            self.assertEqual(cloud.call_count,1)
+            pose[0,3]=.001;motion._points(evidence,None)
+            self.assertEqual(cloud.call_count,2)
+            evidence.observation=SimpleNamespace(metadata={});motion._points(evidence,None)
+            self.assertEqual(cloud.call_count,3)
+
+    def test_robot_guard_does_not_destroy_contact_edge_identity(self):
+        rgb=np.zeros((18,18,3),np.uint8);rgb[:]=[20,40,200]
+        rgb[3:16,3:8]=[180,80,60]
+        robot=np.zeros((18,18),bool);robot[5:14,6]=True
+        rows,cols=np.nonzero(~robot)
+        points=np.c_[(cols-8)*.001,(rows-9)*.001,np.full(len(rows),1.)]
+        seed=(rows>=3)&(rows<16)&(cols>=3)&(cols<8)
+        points[seed,2]=1.1
+        fringe=(rows==9)&(cols==8);points[fringe,2]=1.1
+        pose=np.eye(4);pose[2,3]=1.1
+        executor=SimpleNamespace(clear_grasp_plan=lambda:None,robot_state=lambda:SimpleNamespace(T_base_ee=pose))
+        obs=SimpleNamespace(rgb=rgb,depth_m=np.ones((18,18)),metadata={'robot_self_mask':robot})
+        held=SimpleNamespace(T_ee_object=np.eye(4),half_extents_m=np.array([.02]*3),chromaticity=np.array([180,80,60])/320)
+        with patch('mr_liu.place.isaac_motion.scene_cloud',return_value=(points,rows,cols)):
+            remaining=IsaacPlaceMotion(executor,None)._points(SimpleNamespace(observation=obs,support_z_m=1.),held)
+        self.assertFalse(np.any(np.all(remaining==points[fringe][0],axis=1)))
+        self.assertTrue(np.all(remaining[:,2]==1.))
+
+    def test_declared_contact_uncertainty_allows_escape_not_pressing(self):
+        points=np.array([[-.0034,0,-.015]]) # 1.1 mm inside approximate jaw
+        sweep=HeldSweep(None,.075,reference_pose=np.eye(4),max_distance_m=.01,
+                        contact_mask=np.array([True]),contact_uncertainty_m=.003)
+        self.assertEqual(sweep.collision_count(points,np.eye(4)),0)
+        escape=np.eye(4);escape[0,3]=.003
+        self.assertEqual(sweep.collision_count(points,escape),0)
+        press=np.eye(4);press[0,3]=-.001
+        self.assertGreater(sweep.collision_count(points,press),0)
+        self.assertGreater(sweep.collision_count(np.array([[0.,0,-.015]]),np.eye(4)),0)
+        outside=HeldSweep(None,.075,reference_pose=np.eye(4),max_distance_m=.01,
+                          contact_mask=np.array([False]),contact_uncertainty_m=.003)
+        self.assertGreater(outside.collision_count(points,np.eye(4)),0)
+        with self.assertRaises(ValueError):HeldSweep(None,.075,contact_uncertainty_m=.004)
+
     def test_rgb_mask_background_depth_is_kept_as_obstacle(self):
         rgb=np.zeros((16,16,3),np.uint8);rgb[:]=[20,40,200];rgb[5:10,5:10]=[180,80,60]
         rows,cols=np.indices((16,16));rows=rows.ravel();cols=cols.ravel()
@@ -72,6 +120,12 @@ class FinePlaceTests(unittest.TestCase):
             remaining=motion._points(SimpleNamespace(observation=obs,support_z_m=1.),held)
         self.assertEqual(len(remaining),231)
         self.assertTrue(np.all(remaining[:,2]==1.))
+        # Even a refiner missing part of the validated appearance component
+        # cannot turn that component into an attached-body collision.
+        refined[5:7,5:10]=False
+        with patch('mr_liu.place.isaac_motion.scene_cloud',return_value=(points,rows,cols)):
+            remaining=motion._points(SimpleNamespace(observation=obs,support_z_m=1.),held)
+        self.assertEqual(len(remaining),231)
 
     def test_site_reserves_all_yaws_before_moving(self):
         r=Rig()
@@ -90,7 +144,8 @@ class FinePlaceTests(unittest.TestCase):
         motion._safe=Mock(side_effect=[False,False,True])
         self.assertTrue(motion.opening_safe(Rig().held,None))
         self.assertEqual(motion._safe.call_count,3)
-        np.testing.assert_allclose(motion.retreat_target()[:3,3],[.006,0,.045])
+        self.assertAlmostEqual(motion.retreat_target()[2,3],.045)
+        self.assertLessEqual(np.linalg.norm(motion.retreat_target()[:2,3]),.02)
 
     def test_florence_service_error_is_actionable_and_does_not_return_geometry(self):
         from mr_liu.place.perception import FlorencePlaceLocator
@@ -260,7 +315,7 @@ class FinePlaceTests(unittest.TestCase):
         robot=np.zeros((8,8),bool);robot[4,4]=True
         pose=np.eye(4);pose[2,3]=1.1
         executor=SimpleNamespace(clear_grasp_plan=lambda:None,robot_state=lambda:SimpleNamespace(T_base_ee=pose))
-        evidence=SimpleNamespace(observation=SimpleNamespace(metadata={'robot_self_mask':robot}))
+        evidence=SimpleNamespace(observation=SimpleNamespace(metadata={'robot_self_mask':robot}),support_z_m=1.)
         with patch('mr_liu.place.isaac_motion.scene_cloud',return_value=(points,rows,cols)):
             result=IsaacPlaceMotion(executor,None)._points(evidence,None)
         self.assertEqual(len(result),55)
