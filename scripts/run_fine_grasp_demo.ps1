@@ -2,6 +2,9 @@ param(
     [ValidateSet("geometric", "graspgenx")]
     [string]$Backend = "graspgenx",
     [switch]$NoHeadless,
+    [switch]$KeepOpen,
+    [ValidateRange(0, 120)]
+    [double]$StartDelayS = 0,
     [int]$Port = 5556,
     [string]$Output = "",
     [switch]$Benchmark,
@@ -33,6 +36,10 @@ $GripperConfigRoot = Join-Path $ModelRoot "ext\gripper_descriptions"
 $OutputRoot = Join-Path $ProjectRoot "output\graspgenx_server"
 $ServerProcess = $null
 $WarmupProcess = $null
+
+if (($KeepOpen -or $StartDelayS -gt 0) -and ($Benchmark -or -not $NoHeadless)) {
+    throw "-KeepOpen and -StartDelayS require -NoHeadless and a single demo (no -Benchmark)"
+}
 
 if ([string]::IsNullOrWhiteSpace($Output)) {
     $RunStamp = Get-Date -Format "yyyyMMdd_HHmmss"
@@ -154,6 +161,8 @@ try {
     if ($NoHeadless) {
         $DemoArgs += "--no-headless"
     }
+    if ($KeepOpen) { $DemoArgs += "--keep-open" }
+    if ($StartDelayS -gt 0) { $DemoArgs += @("--start-delay-s", "$StartDelayS") }
     $DemoArgs += @("--perception", $Perception)
     $DemoArgs += @("--segmenter", $Segmenter)
     $DemoArgs += @("--recovery", $Recovery, "--drop-initial-wrist-frames", "$DropInitialWristFrames",

@@ -7,6 +7,7 @@ import json
 import hashlib
 import subprocess
 import sys
+import time
 import traceback
 from dataclasses import asdict, is_dataclass
 from enum import Enum
@@ -16,6 +17,10 @@ from pathlib import Path
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--headless", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--keep-open", action="store_true",
+                        help="Keep the GUI open with physics paused after the test")
+    parser.add_argument("--start-delay-s", type=float, default=0.,
+                        help="Pause before the grasp test so the viewer can get ready")
     parser.add_argument(
         "--backend", choices=("geometric", "graspgenx"), default="geometric"
     )
@@ -40,7 +45,12 @@ def _parse_args() -> argparse.Namespace:
         type=Path,
         help="Per-run output directory (default: output/fine_grasp_demo)",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if (args.keep_open or args.start_delay_s) and args.headless:
+        parser.error("--keep-open and --start-delay-s require --no-headless")
+    if not 0. <= args.start_delay_s <= 120.:
+        parser.error("--start-delay-s must be between 0 and 120")
+    return args
 
 
 ARGS = _parse_args()
@@ -437,6 +447,22 @@ def main() -> int:
         node = RecoveringGraspNode(attempt_factory=attempt_factory, observer=observer,
                                   motion=executor, gripper=gripper, trace=recovery_trace,
                                   config=RecoveryConfig(max_attempts=2 if ARGS.recovery == "active" else 1))
+    if not ARGS.headless:
+        from isaacsim.core.utils.viewports import set_camera_view
+        # Presentation camera only: never used as a perception input.
+        set_camera_view(eye=[0.95, -0.95, 1.65], target=[0.22, -0.10, 1.18],
+                        camera_prim_path="/OmniverseKit_Persp")
+    if ARGS.start_delay_s:
+        app_utils.pause()
+        print(f"[BusAgent] Grasp starts in {ARGS.start_delay_s:g} seconds", flush=True)
+        deadline = time.monotonic() + ARGS.start_delay_s
+        while simulation_app.is_running() and time.monotonic() < deadline:
+            simulation_app.update()
+            time.sleep(0.01)
+        if not simulation_app.is_running():
+            return 1
+        app_utils.play()
+    print("[BusAgent] Starting closed-loop grasp test", flush=True)
     result = node.execute(
         FineGraspRequest(target=target, request_id="isaac-demo", dry_run=ARGS.dry_run)
     )
@@ -499,6 +525,13 @@ except Exception:  # persist all Kit/Python failures for headless regressions
     (OUTPUT / "error.txt").write_text(error, encoding="utf-8")
     print(error, file=sys.stderr, flush=True)
 finally:
+    if ARGS.keep_open and simulation_app.is_running():
+        app_utils.pause()
+        print(f"[BusAgent] Test finished (exit {exit_code}); GUI kept open, physics paused. "
+              f"Report: {OUTPUT / 'report.json'}", flush=True)
+        while simulation_app.is_running():
+            simulation_app.update()
+            time.sleep(0.01)
     # Isaac 6 fast shutdown exits here, before the SystemExit below.
     simulation_app.close(exit_code=exit_code)
 
