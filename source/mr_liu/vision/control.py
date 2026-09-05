@@ -38,6 +38,7 @@ class VisionRuntimeControl:
         self._models: dict[str, Any] = {}
         self._error: str | None = None
         self.motion = None
+        self.grounding = None
 
     def snapshot(self) -> RuntimeConfig:
         with self._lock:
@@ -110,6 +111,7 @@ class VisionRuntimeControl:
                 "views": dict(self._views),
                 "error": self._error,
                 "motion": motion,
+                "grounding": self.grounding.snapshot() if self.grounding else None,
                 "capabilities": self.capabilities(),
             }
 
@@ -120,7 +122,7 @@ class VisionRuntimeControl:
                       + (sorted(MOTION_SKILLS - {"hold", "stop"}) if self.motion is not None else []),
             "unsupported": ["plan_grasp", "grasp", "transport", "place", "verify_placement"],
             "message": "当前支持识别、跟随、暂停和停止" + (
-                "，以及关节转动、底座和腕部转动、末端平移、坐标移动、可达位姿旋转、归位、夹爪开合、调速、继续暂停动作。五轴臂的部分姿态无解时会拒绝执行。抓取和放置尚未实现，夹爪闭合不代表抓取成功。"
+                "，以及关节转动、底座和腕部转动、末端平移、坐标移动、可达位姿旋转、归位或复位、夹爪开合、调速、继续暂停动作。支持自然表达与上下文指代；可用顶部RGB-D定位物体并移动到其相对偏移位置，例如物体上方10厘米。检测不确定、深度缺失或五轴机械臂姿态无解时不会执行。抓取和放置尚未实现，夹爪闭合不代表抓取成功。"
                 if self.motion is not None else "。基础运动控制尚未接入。抓取和放置尚未实现。"),
         }
 
@@ -134,9 +136,13 @@ def execute_control_command(
     """Execute one BusAgent semantic skill against the live vision loop."""
     values = params or {}
     from mr_liu.motion.commands import MOTION_SKILLS
+    if skill in {"hold", "stop"} and control.grounding:
+        control.grounding.cancel()
     if skill == "capabilities":
         return {"ok": True, **control.capabilities()}
     if skill in MOTION_SKILLS and control.motion is not None:
+        if values.get('grounding') is not None and (not control.grounding or not control.grounding.valid(values['grounding'])):
+            return {"ok": False, "message": "物体定位已过期或被中断，请重新下达定位移动指令。"}
         result = control.motion.submit(skill, values, command_id)
         if skill != "set_speed" and result.get("state") in {"accepted", "started"}:
             control.set_follow_enabled(False)
@@ -282,6 +288,12 @@ class VisionControlServer:
                             raise ValueError("command params must be an object")
                         result = execute_control_command(control, skill, params, body.get("command_id"))
                         self._json(result, HTTPStatus.ACCEPTED if result.get("state") == "accepted" else HTTPStatus.OK)
+                        return
+                    if path == "/api/ground":
+                        if control.grounding is None:
+                            self._json({"ok": False, "message": "当前未接入RGB-D物体定位。"})
+                        else:
+                            self._json(control.grounding.resolve(control, body))
                         return
                     self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
                 except NotImplementedError as exc:

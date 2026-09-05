@@ -64,6 +64,8 @@ class SceneCamera:
         self._cam.initialize(attach_rgb_annotator="rgb" in self.annotators)
         if self.has_depth:
             self._cam.add_distance_to_image_plane_to_frame()
+        if 'semantic_segmentation' in self.annotators:
+            self._cam.add_semantic_segmentation_to_frame({'colorize': False})
 
         target = target or self.config.get("target")
         mount = "local" if translation is not None else "world"
@@ -108,6 +110,14 @@ class SceneCamera:
         if self._cam is None:
             raise RuntimeError(f"Camera {self.which!r} has not been spawned")
         return self._cam.get_world_pose(camera_axes="world")
+
+    def unproject(self, pixels: np.ndarray, depth: np.ndarray) -> np.ndarray:
+        if self._cam is None:
+            raise RuntimeError('Camera is not initialized')
+        return self._cam.get_world_points_from_image_coords(pixels, depth, device='cpu')
+
+    def semantic_frame(self):
+        return self._cam.get_current_frame().get('semantic_segmentation') if self._cam else None
 
     def rgb_bgr(self) -> np.ndarray | None:
         if self._cam is None:

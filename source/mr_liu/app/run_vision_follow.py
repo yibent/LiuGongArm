@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import time
 from isaacsim.core.experimental.objects import Cube, DistantLight, GroundPlane
 from isaacsim.core.experimental.prims import GeomPrim, XformPrim
 from isaacsim.core.experimental.utils import app as app_utils
@@ -55,6 +56,10 @@ def setup(
         colors=(0.1, 0.85, 0.35),
     )
     target = GeomPrim(paths=target_cfg["prim_path"])
+    from pxr import Semantics
+    target_semantics = Semantics.SemanticsAPI.Apply(target.prims[0], 'Semantics')
+    target_semantics.CreateSemanticTypeAttr().Set('class')
+    target_semantics.CreateSemanticDataAttr().Set('block')
     app.update()
     set_camera_view(eye=[1.6, 1.4, 1.7], target=[0.15, 0.0, 1.15], camera_prim_path="/OmniverseKit_Persp")
 
@@ -130,6 +135,8 @@ def main(
         slow_interval=max(0, int(slow_interval)),
     )
     control = VisionRuntimeControl(vis_cfg, follow_enabled=follow_target)
+    from mr_liu.vision.grounding import SceneGrounding, surface_point, confirmed_mask
+    control.grounding = SceneGrounding()
     from mr_liu.config import robot_config
     from mr_liu.motion.commands import MotionCommands
     from scipy.spatial.transform import Rotation
@@ -189,6 +196,9 @@ def main(
                             if (frame := camera.rgb_bgr()) is not None
                         }
                         if set(camera_frames) == set(pipe.pipelines):
+                            observed_at = time.monotonic()
+                            scene_depth = cameras['scene'].depth_m()
+                            scene_semantics = cameras['scene'].semantic_frame()
                             current_cfg = control.snapshot()
                             results = pipe.process_frames(camera_frames, current_cfg)
                             for view, result in results.items():
@@ -204,6 +214,18 @@ def main(
 
                             scene_result = results["scene"]
                             detections = scene_result.fast or scene_result.slow
+                            grounded_detections = []
+                            rejections = []
+                            for det in detections:
+                                mask, rejection = confirmed_mask(camera_frames['scene'], scene_semantics, det.xyxy, current_cfg.prompt)
+                                if rejection:
+                                    rejections.append(rejection)
+                                    continue
+                                point = surface_point(det.xyxy, scene_depth, cameras['scene'].unproject, mask)
+                                grounded_detections.append(dict(xyxy=det.xyxy.tolist(), label=det.label,
+                                    score=float(det.score), world_position_m=point))
+                            control.grounding.publish(current_cfg.prompt_version, current_cfg.prompt,
+                                                      grounded_detections, observed_at, rejections)
                             if control.follow_enabled() and not motion_owns_arm and detections:
                                 height, width = camera_frames["scene"].shape[:2]
                                 x, y = _bbox_to_table_xy(detections[0].xyxy, width, height)
