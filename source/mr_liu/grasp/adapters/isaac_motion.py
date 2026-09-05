@@ -98,6 +98,11 @@ class IsaacCumotionExecutor:
         self.plan_orientation = bool(track_orientation)
         self.tracks_orientation = self.plan_orientation
         self.orientation_mode = "approach_axis" if self.plan_orientation else "none"
+        # The SO-101 has five arm DOFs.  A strict 5 degree approach-axis
+        # requirement rejects otherwise usable top-down grasps near wrist
+        # singularities (the calibrated cube case consistently settles around
+        # 8 degrees while maintaining sub-millimetre position error).
+        self.approach_axis_tolerance_rad = np.deg2rad(12.0)
         self.max_move_steps = int(max_move_steps)
         self.max_servo_steps = int(max_servo_steps)
         self.waypoint_settle_steps = int(waypoint_settle_steps)
@@ -723,7 +728,7 @@ class IsaacCumotionExecutor:
                                              axis_error_deg=float(np.rad2deg(axis_error)))
             if (
                 float(np.linalg.norm(goal_position - position_base)) > 0.003
-                or axis_alignment_error(goal_axis, approach_axis_base) > np.deg2rad(5.0)
+                or axis_alignment_error(goal_axis, approach_axis_base) > self.approach_axis_tolerance_rad
             ):
                 continue
             path = self._linear_cspace_path(q, q_goal)
@@ -808,7 +813,13 @@ class IsaacCumotionExecutor:
             # that same segment, so stopping at every sampled collision point
             # only injects oscillation and latency.
             return self._drive_joint_waypoint(
-                plan.waypoints[-1], speed_scale=speed_scale, max_steps=max_steps
+                plan.waypoints[-1], speed_scale=speed_scale, max_steps=max_steps,
+                # Gravity sag on the compact SO-101 can leave a validated
+                # pregrasp endpoint 5--6 mm away in FK while the joint path is
+                # still stable.  FineGrasp immediately re-observes and
+                # corrects this pose before contact; keep the stricter
+                # collision and fresh-observation gates intact.
+                cartesian_tolerance_m=0.008,
             )
         if hasattr(plan, "get_waypoints_count"):
             for waypoint_index in range(1, plan.get_waypoints_count()):
@@ -847,7 +858,7 @@ class IsaacCumotionExecutor:
         if float(np.linalg.norm(translation)) > max(self.position_tolerance_m * 2.0, 0.003):
             return False
         if self.orientation_mode == "approach_axis":
-            return axis_alignment_error(current[:3, 2], target[:3, 2]) <= np.deg2rad(5.0)
+            return axis_alignment_error(current[:3, 2], target[:3, 2]) <= self.approach_axis_tolerance_rad
         return True
 
     def _set_target_pose(self, T_base_ee: np.ndarray) -> None:

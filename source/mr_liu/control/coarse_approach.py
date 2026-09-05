@@ -86,7 +86,13 @@ class CoarseApproach:
                     goal[2, 3] = max(pose[2, 3], evidence.top_z_m + clearance)
                 error = goal[:3, 3] - pose[:3, 3]
                 axis_error = np.arccos(np.clip(np.dot(pose[:3, 2], goal[:3, 2]), -1., 1.))
-                if reached_xy and np.linalg.norm(error) < 0.005 and axis_error <= np.deg2rad(5):
+                # The SO-101 has five arm DOFs, so its realized approach axis
+                # can settle a few degrees away from the requested vertical
+                # coarse pose.  Use the executor's validated tolerance here;
+                # FineGrasp performs a fresh wrist observation and its own
+                # collision/IK checks before closing the gripper.
+                axis_tolerance = getattr(self.motion, "approach_axis_tolerance_rad", np.deg2rad(5.0))
+                if reached_xy and np.linalg.norm(error) < 0.005 and axis_error <= axis_tolerance:
                     # Explicitly stop the coarse owner. FineGrasp must still
                     # validate a fresh eye-in-hand observation before acting.
                     self.motion.stop()
