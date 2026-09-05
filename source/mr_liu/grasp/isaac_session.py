@@ -243,6 +243,16 @@ class IsaacGraspSession:
             # offer a checked preparation move for reach/view failures.
             reason = str(exc)
             if reason.startswith(("coarse_path", "coarse_motion", "coarse_step", "wrist_handoff")):
+                if reason.startswith("coarse_motion"):
+                    diagnostic = getattr(self.executor, "last_motion_diagnostic", None)
+                    return self.observation_blocked(
+                        [{"reason": reason, "motion": diagnostic}],
+                        "目标已定位，但接近动作未通过到位检查，已停止接近",
+                        failure="coarse_motion_not_converged")
+                if reason.startswith(("coarse_path", "coarse_step")):
+                    return self.observation_blocked(
+                        [{"reason": reason}], "接近路径不可行或接近步数已耗尽",
+                        failure=reason)
                 return self.observation_blocked([{"reason": reason}], "接近或腕部交接未通过：" + reason)
             return dict(success=False, failure=reason, message="目标观测未确认，已停止，尚未闭爪。", retry_available=False)
         finally:
@@ -258,7 +268,7 @@ class IsaacGraspSession:
         ))
         return self.result_output(result)
 
-    def observation_blocked(self, diagnostics, reason="当前姿态下未找到可达且无碰撞的腕部观察位置"):
+    def observation_blocked(self, diagnostics, reason="当前姿态下未找到可达且无碰撞的腕部观察位置", *, failure="observation_unavailable"):
         proposal = self.executor.initial_pose_proposal()
         if proposal is not None:
             proposal.update(id=uuid.uuid4().hex, requires_confirmation=True,
@@ -266,7 +276,7 @@ class IsaacGraspSession:
         message = reason + "，尚未闭爪。"
         message += ("可先回初始准备姿态，保持夹爪开度，再评估能否抓取。是否同意先移动？"
                     if proposal else "当前没有已验证的初始准备路径；请先调整目标位置或相机安装，不会自动移动。")
-        output = dict(success=False, failure="observation_unavailable", message=message,
+        output = dict(success=False, failure=failure, message=message,
                       diagnostics=diagnostics, preparation=proposal, retry_available=False)
         (self.recorder.output_dir / "observation-blocked.json").write_text(json.dumps(output, ensure_ascii=False, indent=2))
         print("GRASP_OBSERVATION_BLOCKED " + json.dumps(output, ensure_ascii=False), flush=True)

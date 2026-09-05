@@ -75,24 +75,33 @@ class IsaacWristCamera:
         # image with the pose used to render it; a single update produced one
         # large false object jump immediately after every robot motion.
         sample = None
+        self.last_capture_diagnostic = {"reason": "no_rgbd"}
         # Read RGB, depth and camera parameters from one acquisition callback.
         # get_rgba/get_depth individually read annotators that can be at a
         # different pipeline stage after physics-only motion stepping.
         for attempt in range(16):
             self.advance_frame()
             sample = self.camera.rgbd_frame()
+            self.last_capture_diagnostic = {"attempt": attempt + 1,
+                "reason": "no_rgbd" if sample is None else "waiting_for_render",
+                "last_render_time": self._last_render_time,
+                "render_time": None if sample is None else sample.rendering_time_s}
             if (sample is None or attempt + 1 < self.render_settle_frames
                     or sample.rendering_time_s <= self._last_render_time):
                 continue
             render_pose = sample.T_world_camera
             position, quaternion = self.camera.world_pose(camera_axes="ros")
             live_pose = T_world_opencv_from_ros_pose(position, quaternion)
+            self.last_capture_diagnostic.update(reason="render_pose_mismatch",
+                translation_error_mm=float(np.linalg.norm(render_pose[:3, 3]-live_pose[:3, 3])*1000),
+                rotation_error_fro=float(np.linalg.norm(render_pose[:3, :3]-live_pose[:3, :3])))
             if (np.linalg.norm(render_pose[:3, 3] - live_pose[:3, 3]) <= 0.001
                     and np.linalg.norm(render_pose[:3, :3] - live_pose[:3, :3]) <= 0.005):
                 break
         else:
             return None
         rgb, depth, K = sample.rgba, sample.depth_m, sample.intrinsics
+        self.last_capture_diagnostic["reason"] = "captured"
         width, height = self.camera.resolution
         position, quaternion = self.camera.world_pose(camera_axes="ros")
         T_base_camera = T_world_opencv_from_ros_pose(position, quaternion)

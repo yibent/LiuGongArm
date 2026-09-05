@@ -1,6 +1,7 @@
 import { Injectable, OnModuleInit, Optional } from '@nestjs/common';
 import { HostConfig } from '../../config/host-config.js';
 import { understandSemantic } from './semantic-understanding.js';
+import { isStandaloneHome } from './direct-command.js';
 import { intentVersion, cancelPendingIntent } from './pending-intents.js';
 import { Logger } from '../../common/logger.js';
 import {
@@ -248,6 +249,7 @@ export class InstructionUnderstandingNode implements InProcessAgent, OnModuleIni
     let liveState: Record<string, unknown> = {};
     if (
       this.host?.dashscopeApiKey &&
+      !isStandaloneHome(text) &&
       (parsed.intent !== 'cancel' ||
         (context.event.payload as { source?: string }).source === 'stt')
     ) {
@@ -286,7 +288,10 @@ export class InstructionUnderstandingNode implements InProcessAgent, OnModuleIni
           intent: 'unsupported',
           needs_clarification: true,
           clarification_question:
-            '语义理解服务暂时不可用，这条指令未执行。请稍后重试。',
+            (error as Error).name === 'TimeoutError' ||
+            /timeout/i.test((error as Error).message)
+              ? '语义理解等待超时，这条指令未执行；可以重试。'
+              : '语义理解服务暂时不可用，这条指令未执行。请稍后重试。',
         };
       }
     }
@@ -295,7 +300,9 @@ export class InstructionUnderstandingNode implements InProcessAgent, OnModuleIni
     for (const action of actions) {
       const id = action.target.memory_id ?? action.memory?.memory_id;
       if (!id) continue;
-      const memories = Array.isArray(liveState.object_memories) ? liveState.object_memories : [];
+      const memories = Array.isArray(liveState.object_memories)
+        ? liveState.object_memories
+        : [];
       const memory = memories.find((m: { memory_id?: string }) => m.memory_id === id);
       if (!memory) {
         parsed.needs_clarification = true;
@@ -304,7 +311,8 @@ export class InstructionUnderstandingNode implements InProcessAgent, OnModuleIni
       }
       if (action.intent === 'remember') {
         parsed.needs_clarification = true;
-        parsed.clarification_question = '保存新物体请使用新名称；不要把它覆盖到另一条记忆。';
+        parsed.clarification_question =
+          '保存新物体请使用新名称；不要把它覆盖到另一条记忆。';
         break;
       }
       if (memory.metadata?.target && action.target.memory_id)

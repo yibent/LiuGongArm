@@ -1,5 +1,6 @@
 """Live assembly of the colleague's label approach; no demo scene or joint presets."""
 from concurrent.futures import ThreadPoolExecutor
+import time
 
 from mr_liu.control.coarse_approach import CoarseApproach
 from mr_liu.perception.semantic_target import SemanticFlowTarget
@@ -34,7 +35,16 @@ def approach_for_live_grasp(*, scene_camera, wrist_camera, motion, gripper,
     tracker = SemanticFlowTarget(scene_camera, locator, target, table_height_m,
                                  trace=trace, recorder=recorder)
     updated = CoarseApproach(tracker, motion, trace=trace).run()
+    started = time.monotonic()
     observation = wrist_camera.capture(updated)
+    captured = time.monotonic()
     mask = None if observation is None else SeededDepthSegmenter().segment(observation, updated)
+    trace({"phase": "handoff", "event": "wrist_capture_diagnostic",
+        "capture_ms": (captured-started)*1000,
+        "segmentation_ms": (time.monotonic()-captured)*1000,
+        "observation_present": observation is not None,
+        "frame_age_s": None if observation is None else tracker.clock()-observation.timestamp_s,
+        "after_handoff_s": None if observation is None else observation.timestamp_s-tracker.handoff_after_s,
+        "capture": getattr(wrist_camera, "last_capture_diagnostic", None)})
     tracker.validate_wrist_handoff(observation, mask)
     return updated

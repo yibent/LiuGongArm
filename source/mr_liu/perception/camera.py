@@ -210,7 +210,35 @@ class SceneCamera:
     def world_pose(self, camera_axes: str = "world") -> tuple[np.ndarray, np.ndarray]:
         if self._cam is None:
             raise RuntimeError(f"Camera {self.which!r} has not been spawned")
+        if self.which == "wrist":
+            # The legacy sensor queries USD, which retains authored link poses
+            # during GPU/Fabric physics. RTX and the arm use live Fabric poses.
+            # Read the camera's inherited live transform from that same backend.
+            from mr_liu.grasp.transforms import quaternion_wxyz_to_matrix, matrix_to_quaternion_wxyz
+            conversions = {
+                "usd": np.eye(3),
+                "ros": np.diag([1., -1., -1.]),
+                "world": np.array([[0., -1., 0.], [0., 0., 1.], [-1., 0., 0.]]),
+            }
+            if camera_axes not in conversions:
+                raise ValueError(f"Unsupported camera axes: {camera_axes}")
+            position, orientation = self._fabric_world_pose()
+            rotation = quaternion_wxyz_to_matrix(orientation) @ conversions[camera_axes]
+            return position, matrix_to_quaternion_wxyz(rotation)
         return self._cam.get_world_pose(camera_axes=camera_axes)
+
+    def _fabric_world_pose(self):
+        from isaacsim.core.experimental.prims import XformPrim
+        from isaacsim.core.experimental.utils.backend import use_backend
+        view = getattr(self, "_fabric_pose_view", None)
+        if view is None:
+            view = XformPrim(self.prim_path, reset_xform_op_properties=False)
+            self._fabric_pose_view = view
+        with use_backend("fabric", raise_on_fallback=True):
+            positions, orientations = view.get_world_poses()
+        position = positions.numpy() if hasattr(positions, "numpy") else positions
+        orientation = orientations.numpy() if hasattr(orientations, "numpy") else orientations
+        return np.asarray(position, dtype=float).reshape(-1, 3)[0], np.asarray(orientation, dtype=float).reshape(-1, 4)[0]
 
     def intrinsics_matrix(self) -> np.ndarray:
         if self._cam is None:

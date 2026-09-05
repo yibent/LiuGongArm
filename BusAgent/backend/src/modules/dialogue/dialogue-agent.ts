@@ -13,6 +13,7 @@ import { ConversationHub } from '../conversation/conversation-hub.js';
 import { ConversationInterruptions } from '../conversation/conversation-interruptions.js';
 import { TtsAgent } from '../tts/tts-agent.js';
 import { streamQwenChat, type ChatMessage } from './qwen-chat.js';
+import { guardedAcknowledgement, isReadOnlyInteraction } from './acknowledgement.js';
 import { readInteractionSnapshot } from '../../apps/desktop-robot/interaction-snapshot.js';
 import { isImmediateInterrupt } from '../../apps/desktop-robot/interrupt-monitor-node.js';
 import {
@@ -52,6 +53,7 @@ const FAST_INTERACTION_PROMPT = `你现在负责与语义理解并行的快速�
 查询任务进度时还要结合任务上下文：控制器保持位置不代表待理解或待定位的新任务已完成；说清当前等待环节。没有新任务时采用实时控制器结论。失败原因或刚才的澄清优先对应用户追问的那项任务，不套用另一条历史动作。
 不能把上下文中的历史助手回复当作动作证据，不推测当前场景中的物体。没有执行工具，不输出动作计划。`;
 const TASK_FEEDBACK_PROMPT = `你是操作人一直在交流的同一个机械臂助手。现在收到真实任务事件，请接着前面的对话，用自然、简短的一句中文主动反馈，不使用固定模板，不只说收到，不暴露节点、总线、agent等内部结构。
+失败解释优先采用message和diagnostics的具体原因，不能仅翻译failure大类。coarse_motion_not_converged是接近运动未到位，不是视觉失效；尚未闭爪就不能说夹持失败。语义超时是指令未解析，不是控制器拒绝动作。
 组合任务按current_step/step_id区分步骤：step_completed只表示该步完成，不能声称整组完成。后续步骤尚未started就不能说已开始。用户说同时执行而系统串行时简短说明会依次做。视觉记忆保存的是外观不是位置；remember完成才可说记住，recall定位成功才可说重新找到；场景全览是当前可见候选，不保证物理可抓取。
 事件事实是唯一执行证据；用户要求和历史回复不是执行证据。结合本次任务明确反馈在做什么，或完成/失败的是哪个动作，避免孤立的“完成了”。不要重复播报已经说过的进度，不额外询问是否需要帮助。
 理解/准备/定位不等于动作开始；accepted只是提交，started才表示开始，completed才表示完成。跟随已启用不等于任务结束，夹爪闭合不等于抓取成功。仅有到位证据时不要额外声称停稳。
@@ -551,6 +553,7 @@ export class DialogueAgent implements InProcessAgent, OnModuleInit, OnModuleDest
     const snapshot = parallel
       ? await readInteractionSnapshot(context.agentConfig.config, signal)
       : undefined;
+    const acknowledgementOnly = parallel && !isReadOnlyInteraction(userText);
     if (signal.aborted || this.generation.get(conversationId) !== gen) return;
     const messages: ChatMessage[] = [
       {
@@ -569,7 +572,16 @@ export class DialogueAgent implements InProcessAgent, OnModuleInit, OnModuleDest
               '\n短期任务记忆（区分当前动作与新要求）：' +
               JSON.stringify(
                 this.tasks.focus(conversationId, `task_${context.event.eventId}`),
-              )
+              ) +
+              '\n本次请求的事实权限：' +
+              JSON.stringify({
+                task_id: `task_${context.event.eventId}`,
+                phase: 'understanding',
+                may_report_historical_state: !acknowledgementOnly,
+                rule: acknowledgementOnly
+                  ? '这是新输入，不是历史状态查询。所有控制器结果属于之前的动作；只承接正在理解这条请求，不能说执行、完成、到位或已排队。'
+                  : '只读查询可以引用有实测证据的历史结果，并明确说上次。',
+              })
             : '你在普通交流分支，没有执行工具或任何动作事件。不能承诺执行、报告进度或列举未核验能力。操作请求应提示用户给出具体指令；能力问题应提示用户说“查询能力”。仅以实时控制器能力为准，放置尚未接入。'),
       },
       ...history.slice(-MAX_TURNS * 2),
@@ -581,7 +593,7 @@ export class DialogueAgent implements InProcessAgent, OnModuleInit, OnModuleDest
     let full = '';
     let firstTextMs: number | undefined;
     try {
-      for await (const delta of streamQwenChat({
+      const options = {
         apiKey,
         url: this.hostConfig.qwenChatUrl,
         model: asString(
@@ -591,16 +603,50 @@ export class DialogueAgent implements InProcessAgent, OnModuleInit, OnModuleDest
         messages,
         signal,
         temperature: 0.2,
-        reasoning: context.agentConfig.config.reasoning === 'low' ? 'low' : 'none',
+        reasoning:
+          context.agentConfig.config.reasoning === 'low'
+            ? ('low' as const)
+            : ('none' as const),
         maxTokens: 192,
-      })) {
+      };
+      const stream = streamQwenChat(options);
+      const output = acknowledgementOnly
+        ? guardedAcknowledgement(stream, async (invalid) => {
+            this.logger.warn(
+              'suppressed premature execution claim in quick acknowledgement',
+            );
+            let corrected = '';
+            for await (const chunk of streamQwenChat({
+              ...options,
+              signal: AbortSignal.any([signal, AbortSignal.timeout(2_000)]),
+              maxTokens: 64,
+              messages: [
+                {
+                  role: 'system',
+                  content:
+                    '用一句简短自然中文承接用户新请求。现在仅收到话语，未确认开始或完成任何动作。不得报告执行、成功、到位或排队。只说明在理解或核对请求。不复述参数，不提历史结果。',
+                },
+                {
+                  role: 'user',
+                  content: JSON.stringify({
+                    request: userText,
+                    rejected_reply: invalid,
+                  }),
+                },
+              ],
+            }))
+              corrected += chunk;
+            return corrected;
+          })
+        : stream;
+      for await (const delta of output) {
         if (this.generation.get(conversationId) !== gen) {
           return;
         }
         full += delta;
         firstTextMs ??= Date.now() - receivedAt;
-        // Ordinary chat is already separated from execution/observation events.
-        // Publish immediately; buffering for a whole-answer regex defeats streaming.
+        // Only new-request acknowledgements are checked sentence by sentence;
+        // ordinary chat and authoritative task feedback retain streaming.
         this.hub.publish(conversationId, {
           type: 'reply.delta',
           text: delta,
@@ -632,7 +678,7 @@ export class DialogueAgent implements InProcessAgent, OnModuleInit, OnModuleDest
     }
     if (full.trim().length === 0) {
       this.logger.warn('Qwen chat returned empty reply');
-      this.dropLastUser(history, userText);
+      if (!acknowledgementOnly) this.dropLastUser(history, userText);
       this.tts.cancel(conversationId);
       return;
     }

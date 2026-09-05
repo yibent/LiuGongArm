@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+import json
 from dataclasses import dataclass
 from typing import Callable
 
@@ -16,6 +17,7 @@ from isaacsim.robot_motion.cumotion.impl.utils import isaac_sim_to_cumotion_tran
 
 from mr_liu.config import robot_config
 from mr_liu.grasp.contracts import GripperState, RobotState, SelectedGrasp
+from mr_liu.grasp.motion_diagnostics import endpoint_error_chain
 from mr_liu.grasp.transforms import (
     axis_alignment_error,
     invert_transform,
@@ -414,16 +416,29 @@ class IsaacCumotionExecutor:
 
     def move_to(self, T_base_ee: np.ndarray, *, speed_scale: float) -> bool:
         self._stopped = False
+        self.last_motion_diagnostic = None
+        self.last_waypoint_diagnostic = None
         self.controller.set_track_orientation(self.plan_orientation)
         path = self._plan(T_base_ee)
         if path is None:
+            self.last_motion_diagnostic = dict(reason="planning_failed")
             return False
         # Graph waypoints guarantee collision-free global transit. Ramp each
         # one through the articulation drive rather than teleporting joints.
-        if not self._execute_plan(path, speed_scale=speed_scale, max_steps=self.max_move_steps):
+        executed = self._execute_plan(
+            path, speed_scale=speed_scale, max_steps=self.max_move_steps,
+            endpoint_check=lambda: self._target_reached(T_base_ee))
+        reached = self._target_reached(T_base_ee)
+        self.last_motion_diagnostic.update(
+            trajectory_completed=bool(executed), endpoint_passed=bool(reached),
+            plan_type=type(path).__name__, speed_scale=float(speed_scale),
+            waypoint=getattr(self, "last_waypoint_diagnostic", None))
+        print("GRASP_MOTION_ENDPOINT " + json.dumps(self.last_motion_diagnostic), flush=True)
+        if not executed:
+            self.last_motion_diagnostic.update(reason="trajectory_not_completed")
             return False
         self._plan_cache.clear()
-        return self._target_reached(T_base_ee)
+        return reached
 
     def servo_to(self, T_base_ee: np.ndarray, *, speed_scale: float) -> bool:
         self._stopped = False
@@ -785,7 +800,8 @@ class IsaacCumotionExecutor:
             tuple(q0 + index / waypoint_count * (q1 - q0) for index in range(waypoint_count + 1))
         )
 
-    def _execute_plan(self, plan, *, speed_scale: float, max_steps: int) -> bool:
+    def _execute_plan(self, plan, *, speed_scale: float, max_steps: int,
+                      endpoint_check: Callable[[], bool] | None = None) -> bool:
         if isinstance(plan, _JointStepPlan):
             return self._drive_joint_waypoint(
                 plan.q_target,
@@ -800,7 +816,8 @@ class IsaacCumotionExecutor:
                 # guarantees that the command was physically acted upon; the
                 # outer loop owns the strict 5 mm / three-frame final test.
                 minimum_cartesian_progress_m=0.0001,
-                accept_partial_cartesian_progress=True,
+                accept_partial_cartesian_progress=endpoint_check is None,
+                endpoint_check=endpoint_check,
             )
         if isinstance(plan, _JointWaypointPath):
             # This path was produced by dense collision checks of a straight
@@ -808,13 +825,15 @@ class IsaacCumotionExecutor:
             # that same segment, so stopping at every sampled collision point
             # only injects oscillation and latency.
             return self._drive_joint_waypoint(
-                plan.waypoints[-1], speed_scale=speed_scale, max_steps=max_steps
+                plan.waypoints[-1], speed_scale=speed_scale, max_steps=max_steps,
+                endpoint_check=endpoint_check,
             )
         if hasattr(plan, "get_waypoints_count"):
             for waypoint_index in range(1, plan.get_waypoints_count()):
                 waypoint = plan.get_waypoint_by_index(waypoint_index)
                 if not self._drive_joint_waypoint(
-                    waypoint, speed_scale=speed_scale, max_steps=max_steps
+                    waypoint, speed_scale=speed_scale, max_steps=max_steps,
+                    endpoint_check=endpoint_check if waypoint_index == plan.get_waypoints_count()-1 else None,
                 ):
                     return False
             return True
@@ -837,17 +856,37 @@ class IsaacCumotionExecutor:
             if trajectory_time >= duration:
                 endpoint = np.asarray(state.joints.positions.numpy(), dtype=np.float64).reshape(-1)
                 return self._drive_joint_waypoint(
-                    endpoint, speed_scale=speed_scale, max_steps=max_steps
+                    endpoint, speed_scale=speed_scale, max_steps=max_steps,
+                    endpoint_check=endpoint_check,
                 )
         return False
 
     def _target_reached(self, target: np.ndarray) -> bool:
         current = self.arm.T_base_ee()
         translation, _ = pose_error(current, target)
-        if float(np.linalg.norm(translation)) > max(self.position_tolerance_m * 2.0, 0.003):
+        position_error = float(np.linalg.norm(translation))
+        position_limit = max(self.position_tolerance_m * 2.0, 0.003)
+        axis_error = float(axis_alignment_error(current[:3, 2], target[:3, 2]))
+        self.last_motion_diagnostic = dict(
+            reason="endpoint_check", position_error_mm=position_error * 1000,
+            position_tolerance_mm=position_limit * 1000,
+            approach_axis_error_deg=float(np.rad2deg(axis_error)),
+            approach_axis_tolerance_deg=5.0 if self.orientation_mode == "approach_axis" else None,
+            measured_position_world_m=current[:3, 3].tolist(),
+            target_position_world_m=target[:3, 3].tolist(),
+        )
+        waypoint = getattr(self, "last_waypoint_diagnostic", None)
+        if waypoint is not None:
+            # Read fresh q without stepping simulation or changing any target.
+            q = self._arm_values(self.articulation.get_dof_positions)
+            fk_world = self._world_ee_pose_from_joints(q)[:3, 3]
+            planned = self._world_ee_pose_from_joints(np.asarray(waypoint["target_q_rad"]))[:3, 3]
+            self.last_motion_diagnostic["error_chain"] = endpoint_error_chain(
+                target[:3, 3], planned, fk_world, current[:3, 3])
+        if position_error > position_limit:
             return False
         if self.orientation_mode == "approach_axis":
-            return axis_alignment_error(current[:3, 2], target[:3, 2]) <= np.deg2rad(5.0)
+            return axis_error <= np.deg2rad(5.0)
         return True
 
     def _set_target_pose(self, T_base_ee: np.ndarray) -> None:
@@ -884,6 +923,7 @@ class IsaacCumotionExecutor:
         cartesian_tolerance_m: float | None = 0.0035,
         minimum_cartesian_progress_m: float = 0.0,
         accept_partial_cartesian_progress: bool = False,
+        endpoint_check: Callable[[], bool] | None = None,
     ) -> bool:
         target = np.asarray(waypoint, dtype=np.float64).reshape(-1)
         tolerance = self.joint_tolerance_rad if tolerance_rad is None else float(tolerance_rad)
@@ -902,11 +942,32 @@ class IsaacCumotionExecutor:
             float(minimum_cartesian_progress_m), 0.5 * initial_cartesian_error
         )
         pose_stable_frames = 0
+        def record_waypoint(outcome, steps):
+            self.last_waypoint_diagnostic = {
+                "outcome": outcome, "steps": steps,
+                "joint_names": list(self.controller.cumotion_robot.controlled_joint_names),
+                "target_q_rad": target.tolist(), "measured_q_rad": q.tolist(),
+                "commanded_q_rad": command.tolist(),
+                "max_joint_error_rad": float(np.max(np.abs(delta))),
+                "joint_tolerance_rad": tolerance,
+                "joint_criterion_passed": bool(float(np.max(np.abs(delta))) <= tolerance),
+                "cartesian_criterion_passed": bool(cartesian_reached),
+                "planned_fk_error_mm": float(np.linalg.norm(target_xyz-current_xyz)*1000),
+                "cartesian_tolerance_mm": None if cartesian_tolerance_m is None else cartesian_tolerance_m*1000,
+                "velocity_rad_s": velocity.tolist(),
+                "velocity_tolerance_rad_s": velocity_tolerance_rad_s,
+                "pose_stable_frames": pose_stable_frames,
+                "command_remaining_rad": float(np.max(np.abs(target-command))),
+                "command_complete": bool(command_complete),
+                "requested_endpoint_passed": endpoint_passed,
+                "effort": self._arm_values(self.articulation.get_dof_efforts).tolist(),
+            }
+            print("GRASP_WAYPOINT_RESULT " + json.dumps(self.last_waypoint_diagnostic), flush=True)
         # ``max_steps`` budgets the commanded motion.  The loaded arm may only
         # enter the Cartesian tolerance near the end of that budget, especially
         # during lift. Keep commanding the fixed endpoint for a bounded settling
         # window and require both pose and velocity convergence before success.
-        for _ in range(int(max_steps) + self.waypoint_settle_steps):
+        for step_index in range(int(max_steps) + self.waypoint_settle_steps):
             if self._stopped:
                 return False
             current = self.articulation.get_dof_positions()
@@ -925,10 +986,16 @@ class IsaacCumotionExecutor:
             )
             pose_reached = float(np.max(np.abs(delta))) <= tolerance or cartesian_reached
             progress_reached = cartesian_progress + 1e-6 >= progress_required
-            pose_stable_frames = pose_stable_frames + 1 if pose_reached and progress_reached else 0
+            # A small measured error is not evidence that the commanded ramp
+            # has reached its endpoint. Never abandon its remaining increments.
+            command_complete = float(np.max(np.abs(target-command))) <= 1e-9
+            endpoint_passed = None
+            if command_complete and pose_reached and progress_reached:
+                endpoint_passed = bool(endpoint_check()) if endpoint_check is not None else True
+            ready = command_complete and pose_reached and progress_reached and endpoint_passed is True
+            pose_stable_frames = pose_stable_frames + 1 if ready else 0
             if (
-                pose_reached
-                and progress_reached
+                ready
                 # PhysX can report a non-zero instantaneous joint velocity at
                 # a force-limited equilibrium even while the sampled Cartesian
                 # pose remains inside tolerance. Accept a sustained in-tolerance
@@ -938,6 +1005,7 @@ class IsaacCumotionExecutor:
                     or pose_stable_frames >= 30
                 )
             ):
+                record_waypoint("accepted", step_index)
                 return True
             # Advance the commanded trajectory independently of tracking lag.
             # Re-anchoring every target to the measured q limits the position
@@ -947,6 +1015,7 @@ class IsaacCumotionExecutor:
             command += np.clip(target - command, -max_delta_per_step, max_delta_per_step)
             self.articulation.set_dof_position_targets(command, dof_indices=self.arm_dof_indices)
             self.advance_frame()
+        record_waypoint("budget_exhausted", int(max_steps) + self.waypoint_settle_steps)
         print(
             "[mr_liu] joint waypoint did not converge: "
             f"max_error_rad={np.max(np.abs(delta)):.6f} "
@@ -966,7 +1035,7 @@ class IsaacCumotionExecutor:
         # faithful to visual servoing than discarding the observation and
         # replanning from stale geometry.  Global moves and lift never enable
         # this path and therefore still require endpoint convergence.
-        if accept_partial_cartesian_progress:
+        if accept_partial_cartesian_progress and endpoint_check is None and command_complete:
             final_error = float(np.linalg.norm(target_xyz - current_xyz))
             final_progress = initial_cartesian_error - final_error
             if (

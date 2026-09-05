@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'source'))
-from mr_liu.grasp.isaac_session import GuardedAdapter, GraspProgressReporter
+from mr_liu.grasp.isaac_session import GuardedAdapter, GraspProgressReporter, IsaacGraspSession
 from mr_liu.grasp.live_coarse import ResponsiveLocator, approach_for_live_grasp
 from mr_liu.perception.semantic_target import TargetObservationError
 from mr_liu.vision.inventory import visible_inventory
@@ -16,6 +16,22 @@ from find_and_track import RuntimeConfig, ObjectMemoryStore, Detection
 
 
 class LiveIntegrationTests(unittest.TestCase):
+    def test_motion_failure_keeps_its_reason_and_confirmation(self):
+        session = object.__new__(IsaacGraspSession)
+        session.executor = Mock()
+        session.executor.initial_pose_proposal.return_value = {'path_checked': True}
+        with tempfile.TemporaryDirectory() as root:
+            session.recorder = Mock(output_dir=Path(root))
+            result = session.observation_blocked(
+                [{'reason': 'coarse_motion_not_converged', 'motion': {'position_error_mm': 4.2}}],
+                '目标已定位，但接近动作未通过到位检查，已停止接近',
+                failure='coarse_motion_not_converged')
+        self.assertEqual(result['failure'], 'coarse_motion_not_converged')
+        self.assertIn('尚未闭爪', result['message'])
+        self.assertNotIn('视觉不可用', result['message'])
+        self.assertEqual(result['diagnostics'][0]['motion']['position_error_mm'], 4.2)
+        self.assertTrue(result['preparation']['requires_confirmation'])
+
     def test_coarse_callback_reaches_real_executor(self):
         delegate = Mock(execution_guard=None)
         wrapped = GuardedAdapter(delegate, Mock())
@@ -46,12 +62,16 @@ class LiveIntegrationTests(unittest.TestCase):
 
     def test_handoff_must_pass_before_fine_grasp(self):
         tracker = Mock()
+        tracker.clock.return_value = 10.
+        tracker.handoff_after_s = 9.
+        wrist = Mock()
+        wrist.capture.return_value.timestamp_s = 9.9
         tracker.validate_wrist_handoff.side_effect = TargetObservationError('wrist_handoff_identity_mismatch')
         with patch('mr_liu.grasp.live_coarse.SemanticFlowTarget', return_value=tracker), \
              patch('mr_liu.grasp.live_coarse.CoarseApproach'), \
              patch('mr_liu.grasp.live_coarse.SeededDepthSegmenter'):
             with self.assertRaises(TargetObservationError):
-                approach_for_live_grasp(scene_camera=Mock(), wrist_camera=Mock(), motion=Mock(),
+                approach_for_live_grasp(scene_camera=Mock(), wrist_camera=wrist, motion=Mock(),
                     gripper=Mock(), locator=Mock(), target=Mock(), table_height_m=1., trace=Mock(), recorder=Mock())
 
     def test_coarse_progress_is_factual_and_deduplicated(self):

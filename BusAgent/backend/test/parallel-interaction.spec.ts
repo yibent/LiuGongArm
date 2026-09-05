@@ -88,6 +88,42 @@ function setup(text: string) {
 }
 afterEach(() => vi.unstubAllGlobals());
 describe('parallel interaction lane', () => {
+  it('repairs a premature completed-home claim before emitting text or speech', async () => {
+    const test = setup('先复位一下。');
+    let calls = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.endsWith('/api/status'))
+          return Response.json({
+            ...snapshot,
+            motion: {
+              mode: 'hold',
+              active_command_id: null,
+              last_command: { skill: 'home', state: 'completed' },
+            },
+          });
+        return sse(++calls === 1 ? '已复位完成。' : '我先核对复位请求。');
+      }),
+    );
+    await test.dialogue.handle(test.ctx);
+    await vi.waitFor(() =>
+      expect(test.messages.some((m) => m.type === 'reply.final')).toBe(true),
+    );
+    expect(
+      test.messages
+        .filter((m) => m.type === 'reply.delta')
+        .map((m) => m.text)
+        .join(''),
+    ).toBe('我先核对复位请求。');
+    expect(test.tts.append).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      '已复位完成。',
+    );
+    expect(calls).toBe(2);
+    test.dialogue.onModuleDestroy();
+  });
   it.each([true, false])(
     'allows restore only when the current controller confirms retry availability=%s',
     async (available) => {
@@ -139,7 +175,7 @@ describe('parallel interaction lane', () => {
   it.each(['home', 'chat', 'capabilities', 'status_query'])(
     'responds while NLU is unresolved, with no duplicate query reply (%s)',
     async (intent) => {
-      const test = setup(intent === 'home' ? '机械臂复位' : '现在你在做什么？');
+      const test = setup(intent === 'home' ? '恢复到初始姿态' : '现在你在做什么？');
       let release!: (response: Response) => void;
       const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
         if (url.endsWith('/api/status')) return Response.json(snapshot);

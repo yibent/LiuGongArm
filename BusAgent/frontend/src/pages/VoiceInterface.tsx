@@ -1,6 +1,5 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Mic, MicOff, Loader2, Circle } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { useConversation } from "@/hooks/useConversation";
 import { cn } from "@/lib/utils";
 
@@ -15,6 +14,7 @@ const statusText = {
 
 export function VoiceInterface() {
   const threadRef = useRef<HTMLDivElement>(null);
+  const [mounted, setMounted] = useState(false);
   const {
     messages,
     activity,
@@ -27,15 +27,26 @@ export function VoiceInterface() {
   } = useConversation();
 
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
     const element = threadRef.current;
-    if (element)
-      element.scrollTo({ top: element.scrollHeight, behavior: "smooth" });
+    if (element) {
+      // 使用 requestAnimationFrame 确保 DOM 更新后再滚动
+      requestAnimationFrame(() => {
+        element.scrollTo({ top: element.scrollHeight, behavior: "smooth" });
+      });
+    }
   }, [messages]);
 
   return (
     <div className="min-h-screen flex flex-col bg-neutral-50">
       {/* Header */}
-      <header className="border-b bg-white sticky top-0 z-10">
+      <header className={cn(
+        "border-b bg-white sticky top-0 z-10 transition-all duration-500",
+        mounted ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-4"
+      )}>
         <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-neutral-100 flex items-center justify-center">
@@ -61,29 +72,33 @@ export function VoiceInterface() {
       </header>
 
       {/* Messages */}
-      <main className="flex-1 overflow-y-auto bg-white" ref={threadRef}>
+      <main className="flex-1 overflow-y-auto bg-white scrollbar-gutter-stable" ref={threadRef}>
         <div className="max-w-4xl mx-auto px-6 py-8">
           {messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
-              <div className="w-20 h-20 rounded-xl bg-neutral-100 flex items-center justify-center mb-6">
+            <div className={cn(
+              "flex flex-col items-center justify-center min-h-[60vh] text-center transition-all duration-700",
+              mounted ? "opacity-100 scale-100" : "opacity-0 scale-95"
+            )}>
+              <div className="w-20 h-20 rounded-xl bg-neutral-100 flex items-center justify-center mb-6 animate-in fade-in duration-500">
                 <Mic className="w-10 h-10 text-neutral-900" />
               </div>
-              <h2 className="text-2xl font-semibold mb-2">
+              <h2 className="text-2xl font-semibold mb-2 animate-in fade-in slide-in-from-bottom-3 duration-500 delay-100">
                 开始对话
               </h2>
-              <p className="text-neutral-500 text-sm max-w-md">
+              <p className="text-neutral-500 text-sm max-w-md animate-in fade-in slide-in-from-bottom-2 duration-500 delay-200">
                 点击下方麦克风按钮开始语音对话
               </p>
             </div>
           ) : (
             <div className="space-y-6">
-              {messages.map((message) => (
+              {messages.map((message, index) => (
                 <div
                   key={message.id}
                   className={cn(
-                    "flex gap-3",
+                    "flex gap-3 animate-in fade-in slide-in-from-bottom-4 duration-500",
                     message.role === "user" && "justify-end"
                   )}
+                  style={{ animationDelay: `${Math.min(index * 50, 200)}ms` }}
                 >
                   {message.role === "assistant" && (
                     <div className="w-8 h-8 rounded-md bg-neutral-100 flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -113,37 +128,30 @@ export function VoiceInterface() {
       </main>
 
       {/* Voice Control */}
-      <footer className="border-t bg-white sticky bottom-0">
-        <div className="max-w-4xl mx-auto px-6 py-6">
-          <div className="flex flex-col items-center gap-4">
-            {isSpeaking && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={stopSpeaking}
-                className="rounded-md"
-              >
-                停止播放
-              </Button>
-            )}
-
+      <footer className={cn(
+        "border-t bg-white sticky bottom-0 transition-all duration-500",
+        mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
+      )}>
+        <div className="max-w-4xl mx-auto px-6 py-4">
+          <div className="flex items-center justify-center gap-3">
             <button
               onClick={() => void toggleListening()}
               disabled={micBusy}
               className={cn(
-                "relative w-16 h-16 rounded-full flex items-center justify-center transition-all disabled:opacity-50 shadow-lg",
+                "relative w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300 disabled:opacity-50 shadow-md hover:shadow-lg",
                 isListening
                   ? "bg-red-500 hover:bg-red-600 text-white"
-                  : "bg-neutral-900 hover:bg-neutral-800 text-white"
+                  : "bg-neutral-900 hover:bg-neutral-800 text-white hover:scale-105"
               )}
               style={{
                 transform: isListening ? `scale(${1 + voiceLevel * 0.08})` : "scale(1)",
+                transition: isListening ? "transform 0.1s ease-out" : "all 0.3s ease",
               }}
             >
               {isListening ? (
-                <MicOff className="w-7 h-7" />
+                <MicOff className="w-6 h-6" />
               ) : (
-                <Mic className="w-7 h-7" />
+                <Mic className="w-6 h-6" />
               )}
 
               {isListening && (
@@ -156,9 +164,14 @@ export function VoiceInterface() {
               )}
             </button>
 
-            <p className="text-xs text-neutral-500">
-              {isListening ? "点击停止录音" : "点击开始语音对话"}
-            </p>
+            <div className="text-left">
+              <p className="text-xs font-medium text-neutral-900">
+                {isListening ? "正在录音" : "点击开始"}
+              </p>
+              <p className="text-xs text-neutral-400">
+                {isListening ? "再次点击停止" : "语音对话"}
+              </p>
+            </div>
           </div>
         </div>
       </footer>
