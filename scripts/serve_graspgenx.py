@@ -4,13 +4,41 @@ from __future__ import annotations
 import argparse
 import random
 import time
+import sys
 from pathlib import Path
 import numpy as np
 import torch
 from graspgenx.serving.zmq_server import GraspGenXZMQServer
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "source"))
+from mr_liu.grasp.approach_proposals import inclined_proposals
 
 
 class ReproducibleServer(GraspGenXZMQServer):
+    def _handle_infer_object(self, request):
+        result = super()._handle_infer_object(request)
+        context = request.get("approach_context")
+        if not context:
+            return result
+        from graspgenx.samplers.graspmoe import _score_grasps_with_discriminator
+        points = self._validate_object_pc(request.get("point_cloud"))
+        params = self._parse_sweep_params(request)
+        sampler = self._get_sampler_from_params(params)
+        poses = inclined_proposals(points, context["robot_position"],
+                                   float(context["table_height"]),
+                                   float(request["sweep_volume_params"]["fingertip_depth"]))
+        if not len(poses):
+            return result
+        center = points.mean(axis=0)
+        device = next(sampler.model.parameters()).device
+        cloud = torch.as_tensor(points - center, dtype=torch.float32, device=device)
+        scores = _score_grasps_with_discriminator(poses, cloud, center, sampler)
+        # Scores are computed at these exact contact poses, not copied from a
+        # vertical grasp. A model failure propagates: no geometric fallback.
+        result["grasps"] = np.concatenate([result["grasps"], poses])
+        result["confidences"] = np.concatenate([result["confidences"], scores])
+        result["branch_tags"] += ["tilt_scored"] * len(poses)
+        return result
+
     def _segment(self, request):
         from PIL import Image
         rgb = np.asarray(request["rgb"], dtype=np.uint8)[:, :, :3]

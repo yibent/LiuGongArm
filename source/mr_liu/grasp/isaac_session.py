@@ -209,9 +209,16 @@ class IsaacGraspSession:
         gripper = GuardedAdapter(IsaacGripperController(
             self.arm.articulation, advance_frame=self.advance, physics_dt_s=self.physics_dt,
         ), self.check)
+        base_position, _ = self.executor.controller.world_binding.get_world_interface().get_world_to_robot_base_transform()
+        if hasattr(base_position, "numpy"):
+            base_position = base_position.numpy()
         camera = GuardedAdapter(IsaacWristCamera(
             self.wrist, ee_pose_provider=self.arm.T_base_ee, advance_frame=self.advance,
             robot_mask_provider=lambda: self.wrist.instance_mask("/World/SO101", leaf_paths=True),
+            approach_context={
+                "robot_position": np.asarray(base_position).reshape(-1, 3)[0].tolist(),
+                "table_height": float(config["selection"]["table_height_m"]),
+            },
         ), self.check)
         scene_camera = GuardedAdapter(IsaacSceneCamera(
             self.scene, T_base_world=np.eye(4), advance_frame=self.advance,

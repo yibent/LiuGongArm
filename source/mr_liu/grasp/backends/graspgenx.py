@@ -260,6 +260,15 @@ class ZmqGraspGenXTransport:
         poses, confidence = poses[keep], confidence[keep]
         branch_tags = [tag for tag, include in zip(branch_tags, keep) if include]
         order = np.argsort(-confidence, kind="stable")[:topk]
+        if "tilt_scored" in branch_tags and topk > 1:
+            ranked = np.argsort(-confidence, kind="stable")
+            tilted = [i for i in ranked if branch_tags[i] == "tilt_scored"]
+            original = [i for i in ranked if branch_tags[i] != "tilt_scored"]
+            # Preserve approach diversity before IK; 128 vertical yaws cannot
+            # solve a five-axis arm's missing approach direction.
+            chosen = tilted[:3 * topk // 4] + original[:topk // 4]
+            chosen += [i for i in ranked if i not in chosen][:topk - len(chosen)]
+            order = np.asarray(sorted(chosen, key=lambda i: -confidence[i]))
         return poses[order], confidence[order], [branch_tags[index] for index in order]
 
     def infer_object(self, point_cloud, sweep_volume_params, **kwargs):
@@ -271,6 +280,7 @@ class ZmqGraspGenXTransport:
                 "planner": str(kwargs.get("planner", "diffusion")),
                 "num_grasps": int(kwargs.get("num_grasps", 100)),
                 "seed": int(kwargs.get("seed", 0)),
+                "approach_context": kwargs.get("approach_context"),
             }
         )
         result = self._filter(
@@ -562,6 +572,8 @@ class GraspGenXBackend:
             grasp_threshold=self.config.min_confidence,
             topk_num_grasps=self.config.max_candidates,
             return_branch_tags=True,
+            approach_context=(observation.metadata.get("approach_context")
+                              if self.config.inference_frame == "base" else None),
         )
         try:
             if self.config.request_mode == "object_points":
@@ -831,6 +843,8 @@ class GraspGenXBackend:
                 metadata={
                     "raw_model_score": proposals[index].raw_score,
                     "branch": proposals[index].branch,
+                    "contact_height_scored": proposals[index].branch == "tilt_scored",
+                    "contact_width_m": max(0., proposals[index].width_m - self.config.width_margin_m),
                     "cluster_id": proposals[index].cluster_id,
                     "cluster_size": proposals[index].cluster_size,
                     "consensus_bonus": proposals[index].consensus_bonus,

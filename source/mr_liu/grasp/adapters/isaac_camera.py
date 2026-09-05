@@ -52,6 +52,7 @@ class IsaacWristCamera:
         render_settle_frames: int = 2,
         model_seed: int = 0,
         robot_mask_provider: Callable[[], np.ndarray | None] | None = None,
+        approach_context: dict | None = None,
     ) -> None:
         if camera.which != "wrist":
             raise ValueError("IsaacWristCamera requires the configured wrist camera")
@@ -66,6 +67,7 @@ class IsaacWristCamera:
         self._sequence = 0
         self.model_seed = int(model_seed)
         self.robot_mask_provider = robot_mask_provider
+        self.approach_context = approach_context
         self._reference_T_ee_camera: np.ndarray | None = None
         self._last_render_time = -float("inf")
 
@@ -131,6 +133,7 @@ class IsaacWristCamera:
             T_ee_camera=T_ee_camera,
             target_mask=None if mask is None else np.asarray(mask, dtype=bool).copy(),
             metadata={"sim_rendering_time": sample.rendering_time_s, "model_seed": self.model_seed,
+                      "approach_context": self.approach_context,
                       "sim_acquisition_id": sample.acquisition_id,
                       "pose_source": "render_camera_params",
                       "robot_self_mask": self.robot_mask_provider() if self.robot_mask_provider else None,

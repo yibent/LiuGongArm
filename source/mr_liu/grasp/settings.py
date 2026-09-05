@@ -94,6 +94,7 @@ class FineGraspSettings:
                 collision_margin_m=float(select["collision_margin_m"]),
                 table_height_m=float(select.get("table_height_m", 0.0)),
                 max_candidates=int(select["max_candidates"]),
+                max_feasible_candidates=int(select.get("max_feasible_candidates", 0)),
                 max_elongated_axis_error_deg=float(
                     select.get("max_elongated_axis_error_deg", 18.0)
                 ),

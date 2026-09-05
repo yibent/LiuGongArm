@@ -100,12 +100,14 @@ selection:
   pregrasp_distance_m: 0.060
   collision_margin_m: 0.006
   max_candidates: 128
+  # Stop after a complete model/IK/collision/transition-validated candidate.
+  max_feasible_candidates: 1
   # For elongated handles, fingers must close across the short cross-section.
   # The desired candidate and the actual five-DOF FK realization are checked.
   max_elongated_axis_error_deg: 18.0
 
 loop:
-  max_total_s: 45.0
+  max_total_s: 90.0
   max_observation_failures: 5
   max_replans: 6
   model_period_s: 0.50

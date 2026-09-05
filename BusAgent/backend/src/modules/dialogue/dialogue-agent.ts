@@ -14,6 +14,7 @@ import { ConversationInterruptions } from '../conversation/conversation-interrup
 import { TtsAgent } from '../tts/tts-agent.js';
 import { streamQwenChat, type ChatMessage } from './qwen-chat.js';
 import { guardedAcknowledgement, isReadOnlyInteraction } from './acknowledgement.js';
+import { failureFeedbackBoundary, guardedFailureFeedback } from './recovery-feedback.js';
 import { readInteractionSnapshot } from '../../apps/desktop-robot/interaction-snapshot.js';
 import { isImmediateInterrupt } from '../../apps/desktop-robot/interrupt-monitor-node.js';
 import {
@@ -441,7 +442,9 @@ export class DialogueAgent implements InProcessAgent, OnModuleInit, OnModuleDest
     if (synthesize) {
       let full = '';
       try {
-        for await (const delta of streamQwenChat({
+        const boundary = context.event.eventType === 'execution.failed'
+          ? failureFeedbackBoundary(context.event.payload) : feedbackBoundary(context.event.eventType);
+        const source = streamQwenChat({
           apiKey: this.hostConfig.dashscopeApiKey!,
           url: this.hostConfig.qwenChatUrl,
           model: asString(
@@ -458,7 +461,7 @@ export class DialogueAgent implements InProcessAgent, OnModuleInit, OnModuleDest
               content:
                 TASK_FEEDBACK_PROMPT +
                 '\n本次事实边界：' +
-                feedbackBoundary(context.event.eventType) +
+                boundary +
                 '\n本次事件的权威事实摘要（不是输出模板）：' +
                 text +
                 '\n' +
@@ -478,10 +481,12 @@ export class DialogueAgent implements InProcessAgent, OnModuleInit, OnModuleDest
               role: 'user',
               content:
                 '请依据刚收到的系统事件，向操作人简短反馈本次任务的真实进展或结果。以本次事实为准，即使与你先前的说法不同，也必须纠正。' +
-                feedbackBoundary(context.event.eventType),
+                boundary,
             },
           ],
-        })) {
+        });
+        for await (const delta of (context.event.eventType === 'execution.failed'
+          ? guardedFailureFeedback(source, context.event.payload) : source)) {
           if (this.generation.get(conversationId) !== gen || !canReport()) return;
           full += delta;
           this.hub.publish(conversationId, {

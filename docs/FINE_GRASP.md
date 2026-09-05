@@ -4,7 +4,8 @@
 
 当前接入入口与状态以 [BUSAGENT_README.md](BUSAGENT_README.md) 和
 [FINE_GRASP_BASELINE.md](FINE_GRASP_BASELINE.md) 为准。以下早期运行数据保留为历史证据，
-不能当作 `2c7b53f` 基线的验收结果；当前仍有抬升视觉验证失败。
+不能当作 `2c7b53f` 基线的验收结果。最新云端红方块回归已通过抓取与抬升验证，
+尚不能据此推断其他物体的泛化成功率。
 
 ## 能力边界与当前证据
 
@@ -12,6 +13,7 @@
 
 截至 2026-09-05，证据应按下面的范围解读：
 
+- 云端 BusAgent 同一实时控制入口的红方块试验 `waypoint-regression-grasp-97144bb9849b` 已成功。GraspGenX 模型推理 682 ms，11 个视觉伺服步，腕部验证抬升 80.06 mm，独立顶部 RGB-D 验证抬升 76.07 mm、随动误差 7.68 mm；抬升后实测夹爪宽度 24.43 mm，后续场景图仍显示方块悬空保持。没有使用几何 fallback、物体瞬移或固定约束吸附。远端证据目录：`/root/gpufree-data/LiuGongArm/output/busagent_grasp/a70fd788d2c449f8ad8c12ac9f114700/`，场景图 `overhead/obs_0047_rgb.png`。这是一次红方块成功回归，不是全部物体或真机验收。
 - 本机 Isaac Sim 已保存一次由 **GraspGenX primary 候选直接驱动、未使用 fallback** 的默认未知立方体闭环成功 run：模型 687 ms、19 个视觉伺服步、最终平移/姿态误差 3.39 mm/0.15°、视觉验证抬升 82.05 mm、Isaac 刚体实际抬升 82.06 mm、FineGrasp 节点循环 17.875 s（不含 server/Isaac 启动）。`selected_grasp.backend=graspgenx` 且没有 `fallback_reason`。证据目录为 `output/fine_grasp_runs/20260905_072102_graspgenx_cube/`；`output/` 被 Git 忽略，这是保留在本机的运行证据，不属于分支内容。这是单次工程回归，不是 unseen 泛化成功率。
 - unseen smoke 的球体单次试验以 `gripper_width_infeasible` 结束，物体没有抬升。该失败记录在 `output/unseen_benchmark_smoke/summary.json`，说明完整 unseen suite 仍需继续收敛。
 - 反光金属圆柱只执行过 geometric dry-run：产生可行候选（宽度 31.37 mm、score 0.577），没有闭合或抬升，因此不能计为抓取成功。证据在 `output/metallic_benchmark_smoke/`。
@@ -221,6 +223,25 @@ wrapper 单次 demo 默认写入唯一的 `output/fine_grasp_runs/<timestamp>_<b
 | `error.txt` | 未被节点分类的 Kit/Python 异常 |
 
 优先检查顺序：`result.failure` → trace 的最后一次 phase/event → 对应 observation overlay/depth → `rejected_*` metrics → `kinematic_diagnostics` → 目标实际抬升。节点 success 和物理抬升不一致时，batch runner 会分类成 `false_positive_no_physical_lift` 或 `verification_false_negative`。
+
+### 候选不可达诊断
+
+`candidate_filter.candidates` 记录本轮全部受检候选（上限为 `max_candidates`，默认 128），不再仅保留前 24 个。实时配置 `max_feasible_candidates: 1` 按模型分数顺序找到首个通过全部检查的候选后结束搜索；`considered` 是实际检查数。设为 0 可恢复穷举比较。BusAgent 运行的 trace 位于 `output/busagent_grasp/<run_id>/trace.jsonl`。
+
+- `failed_stage`：区分 `pregrasp_reachability`（到预抓取位）、`grasp_reachability`（到抓取位）、碰撞复查、观测点云手指路径与预抓取到抓取的连续路径。
+- `checks[]`：按实际检查顺序保存 `passed`、耗时、目标世界坐标矩阵与独立的 `planning` 快照；前一步失败仍短路，不为日志额外调用规划器。
+- `planning.attempts[]`：轴约束 IK 每个初始种子的关节角、解算关节角、距关节限位余量、位置误差（mm）、接近轴/闭合轴误差（度）、求解状态和迭代评估次数。闭合轴误差仅供诊断，不增加筛选门槛。
+- 每次求解的 `reason` 区分 `ik_tolerance`、`self_collision`、`obstacle_collision` 和 `reachable`。碰撞记录首个失败采样点的路径比例与关节角；当前接口不提供具体碰撞物体名，不推断物体名称。
+- `planning.cache_hit` 表明复用了该姿态的原始诊断；此时规划耗时是原计算耗时，`checks[].elapsed_ms` 是本次查询耗时。
+- `transition` 保存连续路径失败或夹持中心偏移的细节；`clearance` 保存桌面高度、末端高度和净空要求。
+
+顶层 `ik_unreachable` 保持兼容，不代表一定是纯 IK 无解。`planning.reason` 是最后尝试结果，判断所有种子失败原因时必须检查完整 `attempts[]`，不能只看最后一个种子。日志不会改变运动参数、误差阈值、候选排序或重试策略。
+
+实时 SO-101 抓取额外传入标定的机械臂底座位置及支撑面高度。GraspGenX 服务依据当前分割点云提出向工作区倾斜的接近姿态，并对每个准确姿态重新运行原模型 discriminator，标记 `tilt_scored`；模型错误仍然返回失败，没有几何抓取降级。候选池保留原模型分支和倾斜分支，防止大量垂直候选挤掉五轴臂可达的方向。此分支的接触高度已评分，选择器不会再事后改写高度。粗接近保持原求解权重；精抓按原位置/接近轴容差归一化求解，并弱化非必需的闭合轴和初始姿态偏好。位置、姿态、碰撞、夹持中心和抬升验证门槛不放宽。
+
+精抓使用 `contact_width_m` 将开爪余量与实际接触宽度分开；SO-101 的工具帧位于固定指内侧尖端附近，不能再把开爪的 10 mm 余量与指厚重复叠加到接触中心。粗接近的视野标定不随此改变。
+
+闭爪后不再直接倒放接近路径或复用仅约束接近轴的 IK。抬升从实测姿态开始，以不大于 5 mm 的分段同时约束位置、接近轴和闭合轴，全部检查通过后才执行；不可达时保持夹持，不切换到未经验证的回撤。`GRASP_PAYLOAD_LIFT` 保存每段实测工具矩阵与包含夹爪的关节角，trace 的 `gripper_closed` / `gripper_after_lift` 用于区分“未夹住”和“抬升中滑脱”。真实目标抬升与随动验证仍然决定最终成功。
 
 ## 失败码
 

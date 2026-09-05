@@ -29,6 +29,9 @@ class ResponsiveLocator:
 
 def approach_for_live_grasp(*, scene_camera, wrist_camera, motion, gripper,
                             locator, target, table_height_m, trace, recorder):
+    configure_solver = getattr(motion, "set_grasp_constraints", None)
+    if callable(configure_solver):
+        configure_solver(False)
     # The colleague's finger geometry assumes this observed opening.
     if not gripper.open(.075, speed_mps=.04):
         raise ValueError("夹爪未到达观察开度，尚未执行接近或闭爪。")
