@@ -663,6 +663,9 @@ class IsaacCumotionExecutor:
             key=lambda item: np.linalg.norm(np.asarray(item[0]).reshape(4, 4)[:3, 3] - target[:3, 3]),
         )
         seeds = [q, *(seed for _key, seed in cached_seeds[:6])]
+        self.last_axis_ik_diagnostics = []
+        self._observation_pose_suggestions = []
+        self._observation_suggestion_key = target_key
         for seed in seeds:
             result = least_squares(
                 residual,
@@ -678,6 +681,13 @@ class IsaacCumotionExecutor:
             goal_pose = kinematics.pose(q_goal, tool_frame)
             goal_position = np.asarray(goal_pose.translation, dtype=np.float64)
             goal_axis = np.asarray(goal_pose.rotation.matrix(), dtype=np.float64)[:, 2]
+            self.last_axis_ik_diagnostics.append({
+                "position_error_m": float(np.linalg.norm(goal_position - position_base)),
+                "axis_error_deg": float(np.rad2deg(axis_alignment_error(goal_axis, approach_axis_base))),
+            })
+            if (np.linalg.norm(goal_position - position_base) <= .003
+                    and axis_alignment_error(goal_axis, approach_axis_base) <= np.deg2rad(15)):
+                self._observation_pose_suggestions.append(self._world_ee_pose_from_joints(q_goal))
             if (
                 float(np.linalg.norm(goal_position - position_base)) > 0.003
                 or axis_alignment_error(goal_axis, approach_axis_base) > np.deg2rad(5.0)
@@ -690,6 +700,19 @@ class IsaacCumotionExecutor:
                     self._ik_seed_cache.pop(next(iter(self._ik_seed_cache)))
                 return path
         return None
+
+    def propose_observation_pose(self, requested):
+        """Offer an achieved IK orientation near an infeasible view request.
+
+        This is only a candidate, never permission to move. The caller must
+        plan/check the exact returned pose and perform a new visual handoff.
+        FineGrasp never calls this: grasp orientation constraints are unchanged.
+        """
+        if getattr(self, "_observation_suggestion_key", None) != self._pose_key(requested):
+            return None
+        candidates = getattr(self, "_observation_pose_suggestions", [])
+        return None if not candidates else min(candidates, key=lambda p:
+            axis_alignment_error(p[:3, 2], requested[:3, 2])).copy()
 
     def _linear_cspace_path(
         self,

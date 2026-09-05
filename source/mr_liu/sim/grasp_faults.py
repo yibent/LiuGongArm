@@ -24,3 +24,15 @@ class OneShotPreCloseShift:
         return {"phase": "test_fault", "event": "target_shift_before_first_close",
                 "shift_base_m": [self.shift_x_m, 0.0, 0.0],
                 "simulation_only": True}
+
+
+class OneShotCoarseShift(OneShotPreCloseShift):
+    """Move the scene after planning segment two, before its execution guard."""
+    def on_event(self, event):
+        if (self.applied or self.shift_x_m == 0.0 or event.get("event") != "coarse_move"
+                or event.get("iteration") != 1):
+            return None
+        self.applied = True
+        self.apply_shift((self.shift_x_m, 0.0, 0.0))
+        return {"phase": "test_fault", "event": "target_shift_during_coarse",
+                "shift_base_m": [self.shift_x_m, 0.0, 0.0], "simulation_only": True}

@@ -14,6 +14,7 @@ from mr_liu.control.coarse_approach import CoarseApproach
 from mr_liu.grasp.contracts import CameraIntrinsics, RGBDObservation, TargetSpec
 from mr_liu.perception.optical_flow import OpticalFlowTracker
 from mr_liu.perception.semantic_target import MetricTarget, SemanticFlowTarget, TargetObservationError, metric_component
+from mr_liu.sim.grasp_faults import OneShotCoarseShift
 
 
 def sample(sequence=1, timestamp=10., second=False):
@@ -101,6 +102,7 @@ class LabelPerceptionTests(unittest.TestCase):
         tracker = SemanticFlowTarget(Mock(), Mock(), TargetSpec("target", "part"), 1., clock=lambda: 10.)
         tracker.latest = metric_component(obs, obs.depth_m < 1, 1.)
         tracker.anchor_color = tracker.latest.color
+        tracker.handoff_after_s = 9.99
         verified = tracker.validate_wrist_handoff(obs, obs.depth_m < 1)
         self.assertEqual(verified["mask_pixels"], 400)
         with self.assertRaisesRegex(TargetObservationError, "stale_wrist_handoff"):
@@ -108,13 +110,16 @@ class LabelPerceptionTests(unittest.TestCase):
         pose = obs.T_base_camera.copy()
         pose[0, 3] += .10
         with self.assertRaisesRegex(TargetObservationError, "identity_mismatch"):
-            tracker.validate_wrist_handoff(replace(obs, T_base_camera=pose), obs.depth_m < 1)
+            tracker.validate_wrist_handoff(replace(obs, sequence=2, T_base_camera=pose), obs.depth_m < 1)
+        with self.assertRaisesRegex(TargetObservationError, "stale_wrist_handoff"):
+            tracker.validate_wrist_handoff(obs, obs.depth_m < 1)
 
     def test_wrist_table_mask_cannot_authorize_handoff(self):
         obs = sample()
         tracker = SemanticFlowTarget(Mock(), Mock(), TargetSpec("target", "part"), 1., clock=lambda: 10.)
         tracker.latest = metric_component(obs, obs.depth_m < 1, 1.)
         tracker.anchor_color = tracker.latest.color
+        tracker.handoff_after_s = 9.99
         with self.assertRaisesRegex(TargetObservationError, "insufficient_target_depth"):
             tracker.validate_wrist_handoff(obs, obs.depth_m == 1)
 
@@ -173,6 +178,33 @@ class CoarseHandoffTests(unittest.TestCase):
         coarse.command_center = np.array([.3, 0., 1.025])
         self.assertFalse(coarse._guard())
         self.assertEqual(coarse.guard_reason, "target_moved_during_transit")
+
+    def test_generic_alternate_clearance_is_still_safety_checked(self):
+        motion, events = FakeMotion(), []
+        original = motion.is_observation_path_safe
+        checks = []
+        def safety(pose, points, finger):
+            checks.append(pose.copy())
+            return len(checks) > 1 and original(pose, points, finger)
+        motion.is_observation_path_safe = safety
+        CoarseApproach(self.tracker(), motion, trace=events.append).run()
+        self.assertEqual(events[-1]["requested_clearance_m"], .05)
+        self.assertTrue(any(e["event"] == "coarse_alternate_clearance" for e in events))
+        self.assertGreater(len(checks), motion.moves)
+
+    def test_invalid_coarse_safety_parameters_rejected(self):
+        for kwargs in ({"clearance_m": .01}, {"step_m": .2}, {"speed_scale": 2}):
+            with self.assertRaises(ValueError):
+                CoarseApproach(self.tracker(), FakeMotion(), **kwargs)
+
+    def test_coarse_fault_only_changes_physics_once(self):
+        apply = Mock()
+        fault = OneShotCoarseShift(.025, apply)
+        self.assertIsNone(fault.on_event({"event": "coarse_move", "iteration": 0}))
+        event = fault.on_event({"event": "coarse_move", "iteration": 1})
+        self.assertTrue(event["simulation_only"])
+        fault.on_event({"event": "coarse_move", "iteration": 1})
+        apply.assert_called_once_with((.025, 0., 0.))
 
 
 if __name__ == "__main__":

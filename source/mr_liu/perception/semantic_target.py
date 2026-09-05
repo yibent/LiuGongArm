@@ -90,6 +90,8 @@ class SemanticFlowTarget:
         self.anchor_color = None
         self.last_sequence = -1
         self.find_count = self.flow_count = 0
+        self.handoff_after_s = None
+        self.last_wrist_sequence = -1
 
     def capture(self):
         obs = self.camera.capture(self.target)
@@ -140,6 +142,7 @@ class SemanticFlowTarget:
 
     def observe(self):
         obs = self.capture()
+        processing_started = time.perf_counter()
         mask = self.flow.update(obs.rgb)
         if mask is None:
             raise TargetObservationError(self.flow.diagnostic.get("flow_reason", "flow_lost"))
@@ -148,16 +151,22 @@ class SemanticFlowTarget:
             raise TargetObservationError("appearance_identity_changed")
         self.flow_count += 1
         self.latest = evidence
+        processing_ms = 1000 * (time.perf_counter() - processing_started)
         if self.recorder and self.flow_count % 5 == 0:
             self.recorder.record_segmentation(obs, evidence.mask, self.target)
         self.trace({"phase": "track", "event": "optical_flow", "sequence": obs.sequence,
                     "center_base_m": evidence.center_base_m.tolist(), "top_z_m": evidence.top_z_m,
+                    "timestamp_s": obs.timestamp_s,
+                    "flow_and_depth_ms": processing_ms,
                     **self.flow.diagnostic})
         return evidence
 
     def validate_wrist_handoff(self, observation, mask):
         """Cross-view identity/geometry gate, not merely a nonempty seed mask."""
-        if self.latest is None or not -0.02 <= self.clock() - observation.timestamp_s <= 0.35:
+        if (observation is None or self.latest is None or self.handoff_after_s is None
+                or observation.timestamp_s <= self.handoff_after_s
+                or observation.sequence <= self.last_wrist_sequence
+                or not -0.02 <= self.clock() - observation.timestamp_s <= 0.35):
             raise TargetObservationError("stale_wrist_handoff")
         if mask is None or np.count_nonzero(mask) < 80:
             raise TargetObservationError("wrist_handoff_insufficient_mask")
@@ -168,5 +177,6 @@ class SemanticFlowTarget:
         # coarse association gate; FineGrasp still refines the wrist geometry.
         if distance > 0.03 or color_error > 0.18:
             raise TargetObservationError("wrist_handoff_identity_mismatch")
+        self.last_wrist_sequence = observation.sequence
         return {"center_disagreement_m": distance, "color_disagreement": color_error,
                 "mask_pixels": int(evidence.mask.sum()), "sequence": observation.sequence}

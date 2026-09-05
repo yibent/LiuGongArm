@@ -4,6 +4,7 @@ param(
     [ValidateSet('geometric', 'graspgenx')][string]$Backend = 'graspgenx',
     [ValidateSet('off', 'assisted', 'active')][string]$Recovery = 'active',
     [string]$CaseJson = '', [string]$Output = '',
+    [ValidateRange(-0.05, 0.05)][double]$TestCoarseShiftM = 0,
     [int]$LocatorPort = 5570, [switch]$CoarseOnly, [switch]$RecordVideo, [switch]$NoHeadless
 )
 $ErrorActionPreference = 'Stop'
@@ -39,6 +40,7 @@ try {
         '-Backend', $Backend, '-Recovery', $Recovery, '-SceneView', 'oblique', '-Output', $Output)
     if ($CaseJson) { $argsForDemo += @('-CaseJson', $CaseJson) }
     if ($CoarseOnly) { $argsForDemo += '-CoarseOnly' }
+    if ($TestCoarseShiftM -ne 0) { $argsForDemo += @('-TestCoarseShiftM', "$TestCoarseShiftM") }
     if ($RecordVideo) { $argsForDemo += '-RecordVideo' }
     if ($NoHeadless) { $argsForDemo += '-NoHeadless' }
     & powershell @argsForDemo 2>&1 | Tee-Object -FilePath (Join-Path $Output 'console.log')

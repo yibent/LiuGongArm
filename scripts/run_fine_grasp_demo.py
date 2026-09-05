@@ -32,6 +32,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--locator-port", type=int, default=5570)
     parser.add_argument("--localization-mode", choices=("florence", "florence_yoloe"), default="florence_yoloe")
     parser.add_argument("--coarse-only", action="store_true", help="Test label approach and wrist handoff without closing")
+    parser.add_argument("--test-coarse-shift-m", type=float, default=0.,
+                        help="Simulation-only world-X perturbation during label coarse transit (<=5 cm)")
     parser.add_argument("--perception", choices=("single", "multiview"), default="single")
     parser.add_argument("--planner", choices=("graspmoe", "diffusion"), default="graspmoe")
     parser.add_argument("--segmenter", choices=("depth", "sam2"), default="depth")
@@ -54,6 +56,8 @@ def _parse_args() -> argparse.Namespace:
     args = parser.parse_args()
     if args.coarse_only and not args.label:
         parser.error("--coarse-only requires --label")
+    if args.test_coarse_shift_m and (not args.label or not abs(args.test_coarse_shift_m) <= .05):
+        parser.error("--test-coarse-shift-m requires --label and magnitude <=5 cm")
     if (args.keep_open or args.start_delay_s) and args.headless:
         parser.error("--keep-open and --start-delay-s require --no-headless")
     if not 0. <= args.start_delay_s <= 120.:
@@ -104,7 +108,7 @@ from mr_liu.grasp.verification import VisionGripperVerifier
 from mr_liu.perception.camera import spawn_configured_cameras
 from mr_liu.robot.so101 import So101Arm
 from mr_liu.sim.spawn import spawn_table_and_so101
-from mr_liu.sim.grasp_faults import OneShotPreCloseShift
+from mr_liu.sim.grasp_faults import OneShotPreCloseShift, OneShotCoarseShift
 
 
 TARGET_PATH = "/World/FineGraspTarget"
@@ -371,11 +375,20 @@ def main() -> int:
         from mr_liu.control.coarse_approach import CoarseApproach
         from mr_liu.perception.semantic_target import LocalSemanticLocator, SemanticFlowTarget
         coarse_recorder = FineGraspDebugRecorder(OUTPUT / "coarse" / "debug")
+        def coarse_physical_shift(delta):
+            # Test instrument only. No truth/hint updates to the controller.
+            position = np.asarray(_pose(XformPrim(TARGET_PATH)), float) + np.asarray(delta)
+            target_rigid.set_world_poses(positions=[position])
+            target_rigid.set_velocities(linear_velocities=[[0., 0., 0.]], angular_velocities=[[0., 0., 0.]])
+        coarse_fault = OneShotCoarseShift(ARGS.test_coarse_shift_m, coarse_physical_shift)
         def coarse_trace(event):
             coarse_recorder.trace(event)
             print(f"[LabelGrasp] {json.dumps(_jsonable(event))}", flush=True)
             if VIDEO is not None:
                 VIDEO.trace(event)
+            injected = coarse_fault.on_event(event)
+            if injected is not None:
+                coarse_recorder.trace(injected)
         external = IsaacSceneCamera(cameras["scene"], T_base_world=np.eye(4),
             advance_frame=advance_observation_frame,
             robot_mask_provider=lambda: cameras["scene"].instance_mask("/World/SO101", leaf_paths=True))
@@ -397,8 +410,11 @@ def main() -> int:
             coarse_trace({"phase": "failed", "event": "coarse_failed", "reason": str(exc)})
             raise
         finally:
+            executor.clear_grasp_plan()
             coarse_report.update(find_count=semantic_tracker.find_count, flow_count=semantic_tracker.flow_count,
                                  moves=coarse.move_count, guard_checks=coarse.guard_count,
+                                 test_coarse_shift_m=ARGS.test_coarse_shift_m,
+                                 test_coarse_shift_applied=coarse_fault.applied,
                                  trace=_jsonable(coarse_recorder.events))
             (OUTPUT / "coarse_report.json").write_text(json.dumps(coarse_report, indent=2), encoding="utf-8")
     camera = IsaacWristCamera(

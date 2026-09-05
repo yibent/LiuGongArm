@@ -2,6 +2,11 @@
 
 ## BusAgent：精细抓取模块交接入口
 
+新增可选 [标签到完整抓取入口](docs/LABEL_TO_GRASP.md)：
+`scripts\run_label_grasp.ps1 -Label 'red cube' -RecordVideo`。
+Florence/YOLOE 定位 → 真正的 LK 光流 → 经安全检查的粗接近 → 原腕部 FineGrasp；
+实测结果与尚未解决的泛化边界见该文档。
+
 **当前开发线请先读 [当前成果与工程交接](docs/FINE_GRASP_CURRENT_HANDOFF.md)**：
 包含双 RGB-D 分工、主动恢复逻辑、一键 GUI/无头视频、BusAgent 装配与失败处理，
 以及最新 4/5 cm 扰动、杯子/水果/锤子结果。下文保留旧基线背景，不作为最新状态。
