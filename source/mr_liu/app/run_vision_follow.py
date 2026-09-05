@@ -65,8 +65,10 @@ def setup(app) -> tuple[FollowTargetController, So101Arm, GeomPrim, SceneCamera]
 
 def _try_load_pipeline(prompt: str, fast: str) -> tuple[FindTrackPipeline | None, RuntimeConfig]:
     cfg = RuntimeConfig(prompt=prompt, fast_backend=fast)  # type: ignore[arg-type]
-    weights = repo_root() / "yoloe-26x-seg.pt"
-    if not weights.is_file():
+    from find_and_track.settings import default_yoloe
+
+    weights = default_yoloe()
+    if fast == "yoloe" and not weights.is_file():
         print(f"[mr_liu] YOLOE weights missing ({weights}); vision loop disabled, cube is still draggable.")
         return None, cfg
     pipe = FindTrackPipeline(yoloe_weights=weights)

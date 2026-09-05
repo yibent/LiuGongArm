@@ -342,9 +342,18 @@
       }).join("");
     }
 
+    let configInitialized = false;
     async function poll() {
       try {
         const s = await (await fetch("/api/status")).json();
+        if (!configInitialized && s.config) {
+          $("prompt").value = s.config.prompt;
+          $("backend").value = s.config.fast_backend;
+          $("interval").value = s.config.slow_interval;
+          $("conf").value = s.config.conf;
+          $("imgsz").value = s.config.imgsz;
+          configInitialized = true;
+        }
         const dot = $("loadDot");
         const loadText = $("loadText");
         const loading = $("loading");
@@ -359,7 +368,7 @@
           loading.classList.add("show");
         } else {
           dot.className = "status-dot ok";
-          loadText.textContent = (s.florence_id || "florence") + " + yoloe";
+          loadText.textContent = (s.florence_id || "florence") + " + " + (s.config?.fast_backend || "yoloe");
           loading.classList.remove("show");
         }
         const path = (s.stats && s.stats.path) || (s.running ? "run" : "idle");

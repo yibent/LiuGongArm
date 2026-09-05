@@ -30,6 +30,7 @@ _compiler/
 *.ts
 runs/
 /_models/
+/_envs/
 /_vendor/
 
 # Fine-grasp local benchmark artifacts

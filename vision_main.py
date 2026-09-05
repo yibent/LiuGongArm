@@ -7,7 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "source"))
-WEIGHTS = ROOT / "yoloe-26x-seg.pt"
+from find_and_track.settings import default_florence, default_yoloe
 
 
 def parse_args() -> argparse.Namespace:
@@ -24,8 +24,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--conf", type=float, default=0.25)
     parser.add_argument("--imgsz", type=int, default=640)
     parser.add_argument("--output", type=str, help="标注结果输出路径")
-    parser.add_argument("--weights", type=str, default=str(WEIGHTS))
-    parser.add_argument("--florence", type=str, default="florence-community/Florence-2-large")
+    parser.add_argument("--weights", type=str, default=str(default_yoloe()))
+    parser.add_argument("--florence", type=str, default=default_florence(), help="本地 Florence 模型目录（先运行 setup_vision.ps1）")
+    parser.add_argument("--device", default=None, help="例如 cuda:0 或 cpu；默认自动选择")
     return parser.parse_args()
 
 
@@ -34,7 +35,7 @@ def run_cli(args: argparse.Namespace) -> int:
     from find_and_track.types import RuntimeConfig
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    pipe = FindTrackPipeline(yoloe_weights=args.weights, florence_id=args.florence)
+    pipe = FindTrackPipeline(yoloe_weights=args.weights, florence_id=args.florence, device=args.device)
     cfg = RuntimeConfig(
         prompt=args.prompt,
         fast_backend=args.fast,
@@ -63,14 +64,21 @@ def run_cli(args: argparse.Namespace) -> int:
 def main() -> int:
     args = parse_args()
     weights = Path(args.weights)
-    if not weights.exists():
+    if args.fast == "yoloe" and not weights.is_file():
         print(f"YOLOE weights not found: {weights}", file=sys.stderr)
         return 1
     if args.source and not args.webui:
         return run_cli(args)
     from find_and_track.webui import serve
 
-    serve(host=args.host, port=args.port, weights=weights)
+    from find_and_track.types import RuntimeConfig
+
+    serve(
+        host=args.host, port=args.port, weights=weights,
+        florence_id=args.florence, device=args.device,
+        config=RuntimeConfig(prompt=args.prompt, fast_backend=args.fast,
+                             slow_interval=args.interval, conf=args.conf, imgsz=args.imgsz),
+    )
     return 0
 
 

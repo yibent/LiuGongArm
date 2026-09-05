@@ -34,9 +34,10 @@ class ConfigIn(BaseModel):
 
 
 class AppState:
-    def __init__(self, weights: Path):
-        self.pipeline = FindTrackPipeline(yoloe_weights=weights)
-        self.cfg = RuntimeConfig()
+    def __init__(self, weights: Path, *, florence_id: str | None = None,
+                 device: str | None = None, config: RuntimeConfig | None = None):
+        self.pipeline = FindTrackPipeline(yoloe_weights=weights, florence_id=florence_id, device=device)
+        self.cfg = config if config is not None else RuntimeConfig()
         self.lock = threading.Lock()
         self.worker: threading.Thread | None = None
         self.running = False
@@ -132,11 +133,12 @@ def _worker() -> None:
         STATE.running = False
 
 
-def create_app(weights: str | Path) -> FastAPI:
+def create_app(weights: str | Path, *, florence_id: str | None = None,
+               device: str | None = None, config: RuntimeConfig | None = None) -> FastAPI:
     global STATE
     UPLOADS.mkdir(parents=True, exist_ok=True)
     OUTPUTS.mkdir(parents=True, exist_ok=True)
-    STATE = AppState(Path(weights))
+    STATE = AppState(Path(weights), florence_id=florence_id, device=device, config=config)
     try:
         import torch
 
@@ -167,6 +169,7 @@ def create_app(weights: str | Path) -> FastAPI:
             "stats": STATE.stats,
             "detections": STATE.detections,
             "prompt": STATE.cfg.prompt,
+            "config": {key: getattr(STATE.cfg, key) for key in ("prompt", "fast_backend", "slow_interval", "conf", "imgsz")},
             "output": STATE.output_path,
             "has_frame": STATE.latest_jpeg is not None,
         }
@@ -189,9 +192,7 @@ def create_app(weights: str | Path) -> FastAPI:
     @app.post("/api/sample")
     def sample():
         assert STATE is not None
-        import ultralytics
-
-        src = Path(ultralytics.__file__).parent / "assets" / "bus.jpg"
+        src = ROOT / "samples" / "bus.jpg"
         if not src.exists():
             raise HTTPException(404, "Sample image not found")
         dest = UPLOADS / "sample_bus.jpg"
@@ -272,10 +273,11 @@ def create_app(weights: str | Path) -> FastAPI:
     return app
 
 
-def serve(host: str, port: int, weights: str | Path) -> None:
+def serve(host: str, port: int, weights: str | Path, *, florence_id: str | None = None,
+          device: str | None = None, config: RuntimeConfig | None = None) -> None:
     import uvicorn
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    app = create_app(weights)
+    app = create_app(weights, florence_id=florence_id, device=device, config=config)
     LOGGER.info("WebUI http://%s:%s", host, port)
     uvicorn.run(app, host=host, port=port, log_level="info")

@@ -13,6 +13,7 @@ from .florence_finder import FlorenceFinder, parse_prompts
 from .types import Detection, FrameResult, FrameStats, RuntimeConfig
 from .visualize import draw
 from .yoloe_tracker import YoloeVisualTracker
+from .settings import default_yoloe
 
 LOGGER = logging.getLogger("find_and_track")
 
@@ -30,12 +31,12 @@ def imread_unicode(path: str | Path) -> np.ndarray | None:
 class FindTrackPipeline:
     def __init__(
         self,
-        yoloe_weights: str | Path,
+        yoloe_weights: str | Path | None = None,
         florence_id: str | None = None,
         device: str | None = None,
     ):
         self.florence = FlorenceFinder(model_id=florence_id, device=device)
-        self.yoloe = YoloeVisualTracker(weights=yoloe_weights, device=device)
+        self.yoloe = YoloeVisualTracker(weights=yoloe_weights if yoloe_weights is not None else default_yoloe(), device=device)
         self.cv = CvFeatureTracker()
         self._frame_idx = 0
         self._seen_version = -1
@@ -45,6 +46,7 @@ class FindTrackPipeline:
         self._last_slow = -10_000
         self._fps_ema = 0.0
         self._loaded = False
+        self._seen_backend: str | None = None
 
     @property
     def loaded(self) -> bool:
@@ -67,6 +69,7 @@ class FindTrackPipeline:
         }
 
     def reset(self) -> None:
+        self._seen_backend = None
         self._frame_idx = 0
         self._seen_version = -1
         self._seen_epoch = -1
@@ -83,7 +86,9 @@ class FindTrackPipeline:
         prompts = parse_prompts(prompt_text)
         prompt_changed = cfg.prompt_version != self._seen_version
         find_requested = cfg.find_epoch != self._seen_epoch
-        if prompt_changed or find_requested:
+        backend_changed = cfg.fast_backend != self._seen_backend
+        if prompt_changed or find_requested or backend_changed:
+            self._seen_backend = cfg.fast_backend
             self._seen_version = cfg.prompt_version
             self._seen_epoch = cfg.find_epoch
             self._has_target = False
@@ -118,11 +123,12 @@ class FindTrackPipeline:
             slow_ms = (time.perf_counter() - t_slow) * 1000
             self._last_slow = self._frame_idx
             if slow_dets:
-                self.cv.init(frame_bgr, slow_dets)
                 if cfg.fast_backend == "yoloe":
                     self.yoloe.imgsz = cfg.imgsz
                     self.yoloe.conf = cfg.conf
                     self.yoloe.set_visual_prompt(frame_bgr, slow_dets, conf=cfg.conf)
+                else:
+                    self.cv.init(frame_bgr, slow_dets)
                 self._has_target = True
                 self._lost_frames = 0
                 path = "slow"
@@ -197,6 +203,7 @@ class FindTrackPipeline:
         self.reset()
         path = None if isinstance(source, int) else Path(source)
         writer = None
+        cap = None
         try:
             if path is not None and path.suffix.lower() in IMAGE_EXTS:
                 frame = imread_unicode(path)
@@ -222,8 +229,9 @@ class FindTrackPipeline:
                 if writer is not None:
                     writer.write(result.image)
                 yield result
-            cap.release()
         finally:
+            if cap is not None:
+                cap.release()
             if writer is not None:
                 writer.release()
 

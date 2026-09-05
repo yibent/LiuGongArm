@@ -64,13 +64,15 @@ D:\isaac\env_isaacsim60\python.exe -m pip install isaacsim[all,extscache]==6.0.1
 
 体积很大（`extscache-kit` 约 5.9 GB + kit-sdk 约 0.7 GB + 其它）。换机器时编辑 `isaac_env.bat` 里的 `ISAAC_ENV`。启动脚本会设置 `OMNI_KIT_ACCEPT_EULA=YES`。
 
-### 2. 视觉依赖（WebUI / vision follow）
+### 2. 独立视觉依赖（CLI / WebUI）
 
 ```bat
-D:\isaac\env_isaacsim60\python.exe -m pip install -r requirements-vision.txt
+powershell -ExecutionPolicy Bypass -File scripts\setup_vision.ps1
 ```
 
-视觉权重不进 Git。把 `yoloe-26x-seg.pt` 放到仓库根目录。没有权重时，仿真仍可手动拖绿立方体。
+安装到本地 `_envs/vision` overlay，复用 Isaac 的 CUDA torch，不修改原环境。
+固定版本权重下载到 `_models/florence2/large` 与 `_models/yoloe`，不进 Git。
+命令、接口、离线测试与能力边界见 [本地视觉支持](docs/LOCAL_VISION_SETUP.md)。
 
 ## 启动
 
@@ -118,8 +120,8 @@ Play 之后拖动 `/World/TargetCube`，SO-101 用 cuMotion RMPflow 跟随。Sto
 独立视觉 CLI：
 
 ```bat
-D:\isaac\env_isaacsim60\python.exe vision_main.py --source samples\bus.jpg --prompt "bus"
-D:\isaac\env_isaacsim60\python.exe vision_main.py --webui --host 127.0.0.1 --port 7860
+scripts\run_vision.bat --source samples\bus.jpg --prompt "bus"
+scripts\run_vision.bat --webui --host 127.0.0.1 --port 7860
 ```
 
 `--prompt` 多个目标用分号分隔；`--fast yoloe|cv`。

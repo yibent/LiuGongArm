@@ -41,7 +41,9 @@ class _SingleTrack:
         try:
             ww, hh = int(self.xyxy[2] - self.xyxy[0]), int(self.xyxy[3] - self.xyxy[1])
             mil = cv2.TrackerMIL_create()
-            if mil.init(frame_bgr, (int(self.xyxy[0]), int(self.xyxy[1]), max(2, ww), max(2, hh))):
+            initialized = mil.init(frame_bgr, (int(self.xyxy[0]), int(self.xyxy[1]), max(2, ww), max(2, hh)))
+            # Modern OpenCV returns None on success; older bindings return bool.
+            if initialized is None or bool(initialized):
                 self.mil = mil
         except Exception as exc:  # noqa: BLE001
             LOGGER.debug("MIL init failed: %s", exc)
