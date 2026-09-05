@@ -333,7 +333,14 @@ class IsaacPlaceMotion:
             self.last_failure = "scene_stale_after_plan"
             return False
         # A bounded step only. Scene/world/self collision checks remain active.
+        state_reader=getattr(self.executor,'robot_state',None)
+        before_move=state_reader().T_base_ee.copy() if state_reader is not None else None
         ok=self.executor.move_to(goal,speed_scale=.20)
         if not ok:
             self.last_failure="checked_motion_endpoint_not_reached"
+            actual=state_reader().T_base_ee if state_reader is not None else None
+            self.trace({'phase':'place_motion_endpoint_failed','goal_T_base_ee':goal.tolist(),
+                        'before_T_base_ee':None if before_move is None else before_move.tolist(),
+                        'actual_T_base_ee':None if actual is None else actual.tolist(),
+                        'plan_diagnostic':getattr(self.executor,'last_plan_diagnostic',None)})
         return ok
