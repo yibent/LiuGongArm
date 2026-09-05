@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import numpy as np
 import time
+import copy
 from isaacsim.core.experimental.objects import Cube, DistantLight, GroundPlane
 from isaacsim.core.experimental.prims import GeomPrim, XformPrim
 from isaacsim.core.experimental.utils import app as app_utils
 from isaacsim.core.experimental.utils import stage as stage_utils
-from isaacsim.core.simulation_manager import SimulationManager
+from isaacsim.core.simulation_manager import SimulationManager, SimulationEvent
 from isaacsim.core.utils.viewports import set_camera_view
 
 from mr_liu.config import motion_config, scene_config
@@ -19,6 +20,7 @@ from mr_liu.robot.so101 import So101Arm
 from mr_liu.sim.spawn import spawn_table_and_so101
 from mr_liu.vision import MultiViewFindTrackPipeline, RuntimeConfig
 from mr_liu.vision.control import VisionControlServer, VisionRuntimeControl
+from mr_liu.vision.worker import VisionWorker, frozen_unprojector
 
 
 def _bbox_to_table_xy(xyxy: np.ndarray, width: int, height: int) -> tuple[float, float]:
@@ -128,6 +130,7 @@ def main(
         app.update()
     else:
         print("[mr_liu] Vision-only mode keeps the USD initial arm pose for tabletop coverage.")
+    drive_info = arm.configure_drives()
 
     vis_cfg = RuntimeConfig(
         prompt=prompt,
@@ -141,11 +144,13 @@ def main(
     from mr_liu.motion.commands import MotionCommands
     from scipy.spatial.transform import Rotation
     robot_cfg = robot_config()
-    control.motion = MotionCommands(repo_root() / robot_cfg["robot_dir"] / robot_cfg["urdf"], robot_cfg["default_joint_positions"])
+    control.motion = MotionCommands(repo_root() / robot_cfg["robot_dir"] / robot_cfg["urdf"], robot_cfg["default_joint_positions"], config=motion.get("commands"))
+    control.motion.drive_info = drive_info
     robot_base = XformPrim(robot_cfg["usd_prim_path"])
 
     def update_motion():
         q = arm.articulation.get_dof_positions().numpy().reshape(-1)
+        qd = arm.articulation.get_dof_velocities().numpy().reshape(-1)
         base_position, base_orientation = robot_base.get_world_poses()
         base = np.eye(4)
         base[:3, 3] = base_position.numpy()[0]
@@ -153,7 +158,10 @@ def main(
         base[:3, :3] = Rotation.from_quat([quat[1], quat[2], quat[3], quat[0]]).as_matrix()
         def apply(values):
             arm.articulation.set_dof_position_targets([[values[name] for name in arm.dof_names]])
-        return control.motion.tick(dict(zip(arm.dof_names, q.tolist())), base, apply, app_utils.is_playing())
+            arm.articulation.set_dof_velocity_targets([[0.] * len(arm.dof_names)])
+        return control.motion.tick(dict(zip(arm.dof_names, q.tolist())), base, apply, app_utils.is_playing(),
+                                   sim_time=SimulationManager.get_simulation_time(),
+                                   velocities=dict(zip(arm.dof_names, qd.tolist())))
     server = VisionControlServer(control, host=control_host, port=control_port)
     host, port = server.start()
     print(f"[mr_liu] Runtime vision control: http://{host}:{port}")
@@ -174,22 +182,72 @@ def main(
         print("  Automatic follow disabled; manual motion commands remain available through the control API.")
     print(f"  Change targets while running: POST http://{host}:{port}/api/prompt")
 
-    t = 0.0
     reset_needed = True
     frames = 0
     vision_cycles = 0
+    motion_owns_arm = False
+    def physics_step(dt, context):
+        nonlocal motion_owns_arm, reset_needed
+        motion_owns_arm = update_motion()
+        sim_t = SimulationManager.get_simulation_time()
+        if reset_needed:
+            controller.reset(sim_t)
+            reset_needed = False
+        if control.follow_enabled() and not motion_owns_arm:
+            controller.step(sim_t)
+
+    # All joint reads/writes remain on Kit's physics thread; inference cannot
+    # make trajectory time jump ahead of actual simulated physics.
+    callback = SimulationManager.register_callback(physics_step, SimulationEvent.PHYSICS_POST_STEP)
+
+    def process_vision(packet):
+        results = pipe.process_frames(packet["frames"], packet["config"])
+        # JPEG encoding is also off the physics/render thread.
+        if control.snapshot().prompt_version == packet["config"].prompt_version:
+            for view, result in results.items():
+                control.publish(view, result)
+        return packet, results
+
+    worker = VisionWorker(process_vision) if pipe is not None else None
+    next_capture = 0.
     try:
         while app.is_running():
             app.update()
-            motion_owns_arm = update_motion()
             if app_utils.is_playing() and SimulationManager.is_simulating():
-                if reset_needed:
-                    t = 0.0
-                    controller.reset(t)
-                    reset_needed = False
-                else:
-                    t += physics_dt
-                    if pipe is not None:
+                if worker is not None:
+                    ready = worker.poll()
+                    if ready is not None:
+                        packet, results = ready
+                        current_cfg = packet["config"]
+                        if current_cfg.prompt_version == control.snapshot().prompt_version:
+                            camera_frames = packet["frames"]
+                            observed_at = packet["observed_at"]
+                            scene_depth, scene_semantics = packet["depth"], packet["semantics"]
+                            for view, result in results.items():
+                                stats = result.stats
+                                if stats.path == "slow" or vision_cycles % 30 == 0:
+                                    print(f"DUAL_TRACK view={view} frame={stats.frame_idx} path={stats.path} "
+                                          f"slow_ms={stats.slow_ms:.1f} fast_ms={stats.fast_ms:.1f}")
+                            scene_result = results["scene"]
+                            detections = scene_result.fast or scene_result.slow
+                            grounded_detections, rejections = [], []
+                            for det in detections:
+                                mask, rejection = confirmed_mask(camera_frames["scene"], scene_semantics, det.xyxy, current_cfg.prompt)
+                                if rejection:
+                                    rejections.append(rejection)
+                                    continue
+                                point = surface_point(det.xyxy, scene_depth, packet["unproject"], mask)
+                                grounded_detections.append(dict(xyxy=det.xyxy.tolist(), label=det.label,
+                                    score=float(det.score), world_position_m=point))
+                            control.grounding.publish(current_cfg.prompt_version, current_cfg.prompt,
+                                                      grounded_detections, observed_at, rejections)
+                            if control.follow_enabled() and not motion_owns_arm and detections and time.monotonic()-observed_at < 1:
+                                height, width = camera_frames["scene"].shape[:2]
+                                x, y = _bbox_to_table_xy(detections[0].xyxy, width, height)
+                                target_xform.set_world_poses(positions=[[x, y, table_z]])
+                            vision_cycles += 1
+                    if worker.available and time.monotonic() >= next_capture:
+                        next_capture = time.monotonic() + 1/float(motion.get("vision_capture_hz", 10))
                         camera_frames = {
                             name: frame
                             for name, camera in cameras.items()
@@ -197,49 +255,22 @@ def main(
                         }
                         if set(camera_frames) == set(pipe.pipelines):
                             observed_at = time.monotonic()
-                            scene_depth = cameras['scene'].depth_m()
-                            scene_semantics = cameras['scene'].semantic_frame()
-                            current_cfg = control.snapshot()
-                            results = pipe.process_frames(camera_frames, current_cfg)
-                            for view, result in results.items():
-                                control.publish(view, result)
-                                stats = result.stats
-                                if stats.path == "slow" or vision_cycles % 30 == 0:
-                                    print(
-                                        f"DUAL_TRACK view={view} frame={stats.frame_idx} "
-                                        f"path={stats.path} prompt={stats.prompt!r} "
-                                        f"find={stats.n_slow} track={stats.n_fast} "
-                                        f"slow_ms={stats.slow_ms:.1f} fast_ms={stats.fast_ms:.1f}"
-                                    )
-
-                            scene_result = results["scene"]
-                            detections = scene_result.fast or scene_result.slow
-                            grounded_detections = []
-                            rejections = []
-                            for det in detections:
-                                mask, rejection = confirmed_mask(camera_frames['scene'], scene_semantics, det.xyxy, current_cfg.prompt)
-                                if rejection:
-                                    rejections.append(rejection)
-                                    continue
-                                point = surface_point(det.xyxy, scene_depth, cameras['scene'].unproject, mask)
-                                grounded_detections.append(dict(xyxy=det.xyxy.tolist(), label=det.label,
-                                    score=float(det.score), world_position_m=point))
-                            control.grounding.publish(current_cfg.prompt_version, current_cfg.prompt,
-                                                      grounded_detections, observed_at, rejections)
-                            if control.follow_enabled() and not motion_owns_arm and detections:
-                                height, width = camera_frames["scene"].shape[:2]
-                                x, y = _bbox_to_table_xy(detections[0].xyxy, width, height)
-                                target_xform.set_world_poses(positions=[[x, y, table_z]])
-                            vision_cycles += 1
-                    if control.follow_enabled() and not motion_owns_arm:
-                        controller.step(t)
+                            scene_depth = cameras["scene"].depth_m()
+                            worker.submit(dict(frames=camera_frames, observed_at=observed_at,
+                                config=control.snapshot(), depth=scene_depth.copy() if scene_depth is not None else None,
+                                semantics=copy.deepcopy(cameras["scene"].semantic_frame()),
+                                unproject=frozen_unprojector(cameras["scene"].unproject)))
                 frames += 1
                 if test_frames is not None and frames >= test_frames:
                     break
             elif not app_utils.is_playing():
                 reset_needed = True
+                update_motion()  # paused simulation has no physics callbacks
     except Exception as exc:
         control.set_error(str(exc))
         raise
     finally:
+        SimulationManager.deregister_callback(callback)
+        if worker is not None:
+            worker.close()
         server.stop()

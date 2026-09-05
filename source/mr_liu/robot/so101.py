@@ -55,3 +55,16 @@ class So101Arm:
         self.articulation.set_dof_positions(positions)
         self.articulation.set_dof_position_targets(positions)
         print(f"[mr_liu] Applied default pose: {dict(zip(names, positions))}")
+
+    def configure_drives(self) -> dict:
+        """Call after physics warm-up; preserve stiffness and explicit force limits."""
+        cfg = robot_config()
+        values = cfg.get("drive_damping")
+        if values:
+            self.articulation.set_dof_gains(dampings=[[float(values[name]) for name in self.dof_names]])
+        self.articulation.set_dof_velocity_targets([[0.] * len(self.dof_names)])
+        stiffness, damping = self.articulation.get_dof_gains()
+        info = {name: {"stiffness_nm_rad": float(k), "damping_nm_s_rad": float(d)}
+                for name, k, d in zip(self.dof_names, stiffness.numpy().reshape(-1), damping.numpy().reshape(-1))}
+        print(f"[mr_liu] Runtime joint gains: {info}")
+        return info

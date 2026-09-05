@@ -18,7 +18,7 @@ MOTION_SKILLS = {"home", "move_joint", "move_cartesian", "rotate", "gripper", "s
 
 
 class MotionCommands:
-    def __init__(self, urdf, defaults, clock=time.monotonic):
+    def __init__(self, urdf, defaults, clock=time.monotonic, config=None):
         self.kinematics = ArmKinematics(urdf)
         self.defaults = defaults
         self.clock = clock
@@ -32,6 +32,17 @@ class MotionCommands:
         self.speed = 0.5  # rad/s
         self.holding = False
         self.hold_target = None
+        cfg = config or {}
+        self.speed = np.deg2rad(float(cfg.get("speed_deg_s", 28.65)))
+        self.acceleration = np.deg2rad(float(cfg.get("acceleration_deg_s2", 60)))
+        self.position_tolerance = np.deg2rad(float(cfg.get("position_tolerance_deg", 1.0)))
+        self.velocity_tolerance = np.deg2rad(float(cfg.get("velocity_tolerance_deg_s", 1.0)))
+        self.settle_seconds = float(cfg.get("settle_seconds", .35))
+        self.settle_timeout = float(cfg.get("settle_timeout_sim_s", 10))
+        self.wall_timeout = float(cfg.get("wall_timeout_s", 120))
+        self.settle_velocity_source = cfg.get("settle_velocity_source", "reported")
+        self.last_sim_time = None
+        self.last_joints = None
 
     def submit(self, skill, params, command_id=None):
         with self.lock:
@@ -66,6 +77,7 @@ class MotionCommands:
             return copy.deepcopy({**self.snapshot, "active_command_id": self.active or self.pending,
                                   "mode": "moving" if self.active else "hold" if self.holding else "idle",
                                   "can_resume": self.saved is not None, "speed_deg_s": np.rad2deg(self.speed),
+                                  "drives": getattr(self, "drive_info", {}),
                                   "last_command": next(reversed(self.records.values()), None)})
 
     def _finish(self, cid, state, message):
@@ -80,15 +92,26 @@ class MotionCommands:
             self.holding = False
             self.saved = None
 
-    def tick(self, joints, base, apply, playing=True):
+    def tick(self, joints, base, apply, playing=True, *, sim_time=None, velocities=None):
         """Return True when this lane owns the drives (including HOLD)."""
         with self.lock:
             now = self.clock()
+            # Production supplies the physics clock. The fallback keeps standalone
+            # pure-controller callers compatible, without conflating audit timestamps.
+            sim_time = now if sim_time is None else float(sim_time)
+            dt = max(0., sim_time-self.last_sim_time) if self.last_sim_time is not None and playing else 0.
+            frame_velocities = ({k: (v-self.last_joints[k])/dt for k, v in joints.items()}
+                                if dt > 0 and self.last_joints else {k: float("inf") for k in joints})
+            if velocities is None:
+                velocities = frame_velocities
+            self.last_sim_time, self.last_joints = sim_time, joints.copy()
             pose = self.kinematics.forward(joints, base)
             self.snapshot = {"joint_positions_deg": {k: float(np.rad2deg(v)) for k, v in joints.items()},
+                             "joint_velocities_deg_s": {k: float(np.rad2deg(v)) if np.isfinite(v) else None for k, v in velocities.items()},
+                             "joint_frame_velocities_deg_s": {k: float(np.rad2deg(v)) if np.isfinite(v) else None for k, v in frame_velocities.items()},
                              "tool_position_world_m": pose[:3, 3].tolist(),
                              "tool_orientation_xyzw": Rotation.from_matrix(pose[:3, :3]).as_quat().tolist(),
-                             "sampled_at": now, "simulation_playing": playing}
+                             "sampled_at": now, "simulation_time": sim_time, "simulation_playing": playing}
             if self.interruption:
                 cid, self.interruption = self.interruption, None
                 self.saved = copy.deepcopy(self.records[self.active].get("goal")) if self.active else self.saved
@@ -116,9 +139,13 @@ class MotionCommands:
                             lo, hi = self.kinematics.limits[name]
                             if not np.isfinite(value) or not lo <= value <= hi:
                                 raise ValueError(f"JOINT_LIMIT：{name} 目标超出 [{np.rad2deg(lo):.1f}, {np.rad2deg(hi):.1f}] 度；未执行")
-                        duration = max(0.5, max(abs(goal[k]-v) for k, v in joints.items()) / self.speed * 1.5)
+                        distance = max(abs(goal[k]-v) for k, v in joints.items())
+                        # Quintic smoothstep peak derivatives: 1.875 and 10/sqrt(3).
+                        duration = max(.5, 1.875*distance/self.speed,
+                                       np.sqrt((10/np.sqrt(3))*distance/self.acceleration))
                         record.update(state="started", message="轨迹已开始，等待实测到位", goal=goal,
-                                      start=joints.copy(), started_at=now, duration=duration, settled=0)
+                                      start=joints.copy(), started_at=now, started_sim_time=sim_time,
+                                      duration=duration, settled=0, settled_sim_s=0.)
                         self.active = cid
                         self.saved = None
                         self.holding = True
@@ -128,17 +155,30 @@ class MotionCommands:
             if self.active:
                 cid = self.active
                 record = self.records[cid]
-                fraction = min(1.0, (now-record["started_at"])/record["duration"])
-                fraction = fraction * fraction * (3 - 2*fraction)
+                elapsed = max(0., sim_time-record["started_sim_time"])
+                u = min(1., elapsed/record["duration"])
+                fraction = u*u*u*(10 + u*(-15 + 6*u))
                 target = {k: v+(record["goal"][k]-v)*fraction for k, v in record["start"].items()}
                 apply(target)
                 error = max(abs(joints[k]-v) for k, v in record["goal"].items())
                 record["max_joint_error_deg"] = float(np.rad2deg(error))
-                record["settled"] = record["settled"]+1 if fraction == 1 and error < np.deg2rad(1.5) else 0
-                if record["settled"] >= 5:
-                    self._finish(cid, "completed", "动作完成，实测关节已到位")
+                # TGS reports end-of-substep velocities, which can be nonzero at
+                # a stationary frame-level equilibrium under gravity. Preserve
+                # them in telemetry, but allow measured per-physics-step deltas
+                # (not command velocity) for frame-level settling.
+                settle_velocities = frame_velocities if self.settle_velocity_source == "position_delta" else velocities
+                speed = max(abs(v) for v in settle_velocities.values())
+                record["settle_velocity_source"] = self.settle_velocity_source
+                record["max_joint_speed_deg_s"] = float(np.rad2deg(speed)) if np.isfinite(speed) else None
+                stable = u == 1 and error < self.position_tolerance and speed < self.velocity_tolerance
+                record["settled"] = record["settled"]+1 if stable and dt > 0 else 0
+                record["settled_sim_s"] = record["settled_sim_s"]+dt if stable else 0.
+                record["elapsed_sim_s"] = elapsed
+                if playing and record["settled_sim_s"] >= self.settle_seconds:
+                    self._finish(cid, "completed", "动作完成，实测关节已到位并停稳")
                     self.hold_target, self.active = record["goal"].copy(), None
-                elif not playing or now-record["started_at"] > record["duration"]+10:
+                elif (not playing or sim_time < record["started_sim_time"] or elapsed > record["duration"]+self.settle_timeout
+                      or now-record["started_at"] > self.wall_timeout):
                     self._finish(cid, "failed", "仿真暂停或运动超时，未确认到位，已保持当前位置")
                     self.hold_target, self.active = joints.copy(), None
                     apply(joints)

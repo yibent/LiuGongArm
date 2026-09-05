@@ -1,6 +1,19 @@
 backend: rmpflow
 device: cuda
-physics_dt: 0.0166666667
+physics_dt: 0.008333333333333333
+
+# Finite commands use simulation time, independently of rendering/inference.
+commands:
+  speed_deg_s: 28.65
+  acceleration_deg_s2: 60
+  position_tolerance_deg: 1.0
+  velocity_tolerance_deg_s: 1.0
+  # Frame-to-frame measured velocity, not TGS's final internal substep velocity.
+  settle_velocity_source: position_delta
+  settle_seconds: 0.35
+  settle_timeout_sim_s: 10
+  wall_timeout_s: 120
+vision_capture_hz: 10
 
 # Follow-target: track cube position only. Identity cube orientation does not
 # match the SO-101 gripper frame, so orientation tracking makes the arm wander.

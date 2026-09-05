@@ -48,28 +48,43 @@ def _find_so101_base(stage):
 
 def mount_so101_to_table() -> None:
     import omni.usd
-    from pxr import UsdPhysics
+    from pxr import Gf, Usd, UsdGeom, UsdPhysics, PhysxSchema
 
     stage = omni.usd.get_context().get_stage()
     base = _find_so101_base(stage)
     if base is None:
         raise RuntimeError("SO-101 base rigid body not found. Load the robot first.")
 
-    existing = stage.GetPrimAtPath(MOUNT_JOINT_PATH)
-    if existing.IsValid() and existing.IsA(UsdPhysics.FixedJoint):
-        joint = UsdPhysics.FixedJoint(existing)
+    cfg = robot_config()
+    root = stage.GetPrimAtPath(cfg["articulation_prim_path"])
+    # The asset already has a world-fixed articulation root. Reuse it instead
+    # of constraining the base a second time at a different world frame.
+    if root.IsValid() and root.IsA(UsdPhysics.FixedJoint):
+        joint = UsdPhysics.FixedJoint(root)
+        duplicate = stage.GetPrimAtPath(MOUNT_JOINT_PATH)
+        if duplicate.IsValid():
+            duplicate.SetActive(False)
     else:
         joint = UsdPhysics.FixedJoint.Define(stage, MOUNT_JOINT_PATH)
-
-    table = stage.GetPrimAtPath("/World/Table")
-    if table.IsValid() and table.HasAPI(UsdPhysics.RigidBodyAPI):
-        joint.CreateBody0Rel().SetTargets([table.GetPath()])
-    else:
-        joint.CreateBody0Rel().ClearTargets(True)
+        root = joint.GetPrim()
+        UsdPhysics.ArticulationRootAPI.Apply(root)
+    joint.CreateBody0Rel().ClearTargets(True)
     joint.CreateBody1Rel().SetTargets([base.GetPath()])
+    world = UsdGeom.Xformable(base).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+    quat = world.ExtractRotationQuat()
+    joint.CreateLocalPos0Attr().Set(Gf.Vec3f(world.ExtractTranslation()))
+    joint.CreateLocalRot0Attr().Set(Gf.Quatf(quat.GetReal(), Gf.Vec3f(quat.GetImaginary())))
+    joint.CreateLocalPos1Attr().Set(Gf.Vec3f(0))
+    joint.CreateLocalRot1Attr().Set(Gf.Quatf(1))
     joint.CreateBreakForceAttr().Set(float("inf"))
     joint.CreateBreakTorqueAttr().Set(float("inf"))
-    print(f"[mr_liu] Mounted {base.GetPath()} with {MOUNT_JOINT_PATH}")
+    articulation = PhysxSchema.PhysxArticulationAPI.Apply(root)
+    articulation.CreateSolverPositionIterationCountAttr().Set(int(cfg.get("solver_position_iterations", 32)))
+    articulation.CreateSolverVelocityIterationCountAttr().Set(int(cfg.get("solver_velocity_iterations", 1)))
+    for prim in stage.Traverse():
+        if str(prim.GetPath()).startswith(cfg["usd_prim_path"]+"/") and prim.IsA(UsdPhysics.RevoluteJoint):
+            PhysxSchema.PhysxJointAPI.Apply(prim).CreateMaxJointVelocityAttr().Set(float(cfg.get("drive_max_velocity_deg_s", 60)))
+    print(f"[mr_liu] Mounted {base.GetPath()} using single fixed joint {joint.GetPath()}")
 
 
 def _subtree_prims(root):

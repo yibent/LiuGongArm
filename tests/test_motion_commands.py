@@ -104,4 +104,69 @@ class MotionTests(unittest.TestCase):
             self.assertEqual(self.complete(cid)['state'], 'completed')
             self.assertAlmostEqual(self.joints['gripper'],1.4*opening)
 
+    def test_wall_clock_stall_does_not_skip_simulation_trajectory(self):
+        self.motion.submit('move_joint', {'joint': 'shoulder_pan', 'degrees': 30}, 'slow')
+        targets = []
+        apply = lambda q: targets.append(q.copy())
+        zero = {k: 0. for k in self.joints}
+        self.motion.tick(self.joints, self.base, apply, sim_time=0, velocities=zero)
+        self.now = 20.  # inference/render stall, not twenty seconds of physics
+        self.motion.tick(self.joints, self.base, apply, sim_time=.01, velocities=zero)
+        self.assertLess(abs(targets[-1]['shoulder_pan']), .0001)
+        self.assertEqual(self.motion.result('slow')['state'], 'started')
+
+    def test_position_alone_is_not_settled_and_repeated_timestamp_does_not_count(self):
+        self.motion.submit('home', {}, 'settle')
+        fast = {k: .1 for k in self.joints}
+        zero = {k: 0. for k in self.joints}
+        for t in np.arange(0, 1., .01):
+            self.motion.tick(self.joints, self.base, lambda q: None, sim_time=t, velocities=fast)
+        self.assertEqual(self.motion.result('settle')['state'], 'started')
+        for _ in range(100):
+            self.motion.tick(self.joints, self.base, lambda q: None, sim_time=1., velocities=zero)
+        self.assertEqual(self.motion.result('settle')['state'], 'started')
+        for t in np.arange(1.01, 1.5, .01):
+            self.motion.tick(self.joints, self.base, lambda q: None, sim_time=t, velocities=zero)
+        self.assertEqual(self.motion.result('settle')['state'], 'completed')
+
+    def test_quintic_targets_obey_velocity_and_acceleration_limits(self):
+        self.motion.submit('move_joint', {'joint': 'shoulder_pan', 'degrees': 30}, 'smooth')
+        samples = []
+        for t in np.arange(0, 5, .002):
+            self.now = t
+            self.motion.tick(self.joints.copy(), self.base,
+                             lambda q: (samples.append(q['shoulder_pan']), self.joints.update(q)),
+                             sim_time=t)
+        velocity = np.diff(samples)/.002
+        acceleration = np.diff(velocity)/.002
+        self.assertLessEqual(abs(velocity).max(), self.motion.speed*1.001)
+        self.assertLessEqual(abs(acceleration).max(), self.motion.acceleration*1.001)
+        self.assertAlmostEqual(velocity[-1], 0.)
+
+    def test_pause_fails_active_motion_and_holds_measured_position(self):
+        self.motion.submit('move_joint', {'joint': 'shoulder_pan', 'degrees': 30}, 'pause')
+        self.tick()
+        self.motion.tick(self.joints, self.base, lambda q: None, playing=False)
+        self.assertEqual(self.motion.result('pause')['state'], 'failed')
+        self.assertEqual(self.motion.hold_target, self.joints)
+
+    def test_tgs_frame_level_settling_keeps_raw_velocities_visible(self):
+        self.motion.settle_velocity_source = 'position_delta'
+        self.motion.submit('home', {}, 'bias')
+        raw = {k: .1 for k in self.joints}
+        for t in np.arange(0, 1.5, .01):
+            self.motion.tick(self.joints, self.base, lambda q: None, sim_time=t, velocities=raw)
+        self.assertEqual(self.motion.result('bias')['state'], 'completed')
+        self.assertGreater(self.motion.status()['joint_velocities_deg_s']['shoulder_pan'], 5)
+        self.assertEqual(self.motion.status()['joint_frame_velocities_deg_s']['shoulder_pan'], 0)
+
+    def test_frame_level_settling_rejects_measured_oscillation_near_goal(self):
+        self.motion.settle_velocity_source = 'position_delta'
+        self.motion.submit('home', {}, 'oscillating')
+        for t in np.arange(0, 2, .01):
+            self.joints['shoulder_pan'] = np.deg2rad(.5)*np.sin(t*40)
+            self.motion.tick(self.joints.copy(), self.base, lambda q: None, sim_time=t,
+                             velocities={k: 0. for k in self.joints})
+        self.assertEqual(self.motion.result('oscillating')['state'], 'started')
+
 if __name__ == '__main__': unittest.main()

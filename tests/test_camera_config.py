@@ -19,9 +19,9 @@ class CameraConfigTests(unittest.TestCase):
     def test_rig_is_enabled(self) -> None:
         self.assertTrue(self.cfg["enabled"])
 
-    def test_tabletop_camera_is_rgb_only_and_above_table(self) -> None:
+    def test_tabletop_camera_provides_rgbd_semantics_and_is_above_table(self) -> None:
         scene = self.cfg["scene"]
-        self.assertEqual(scene["annotators"], ["rgb"])
+        self.assertEqual(set(scene["annotators"]), {"rgb", "distance_to_image_plane", "semantic_segmentation"})
         self.assertGreater(float(scene["position"][2]), float(scene["target"][2]))
         self.assertEqual(scene["position"][:2], scene["target"][:2])
 
