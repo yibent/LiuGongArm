@@ -6,6 +6,9 @@ param(
     [switch]$RecordVideo,
     [string]$CaseJson = "",
     [string]$Label = "",
+    [string]$PlaceLabel = "",
+    [ValidateSet('region','tray')][string]$PlaceFixture = 'region',
+    [ValidateSet('on','inside')][string]$PlaceRelation = 'on',
     [int]$LocatorPort = 5570,
     [ValidateSet("florence", "florence_yoloe")]
     [string]$LocalizationMode = "florence_yoloe",
@@ -178,6 +181,11 @@ try {
         $DemoArgs += @("--label", $Label, "--locator-port", "$LocatorPort", "--localization-mode", $LocalizationMode)
     }
     if ($CoarseOnly) { $DemoArgs += "--coarse-only" }
+    if ($PlaceLabel) {
+        if ($Benchmark) { throw 'Placement is not part of the grasp-only benchmark' }
+        $DemoArgs += @('--place-label', $PlaceLabel, '--locator-port', "$LocatorPort",
+                      '--place-fixture', $PlaceFixture, '--place-relation', $PlaceRelation)
+    }
     if (-not $Benchmark) { $DemoArgs += @("--wrist-camera-profile", $WristCameraProfile) }
     if ($TestCoarseShiftM -ne 0) { $DemoArgs += @("--test-coarse-shift-m", "$TestCoarseShiftM") }
     if ($StartDelayS -gt 0) { $DemoArgs += @("--start-delay-s", "$StartDelayS") }

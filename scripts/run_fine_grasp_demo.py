@@ -32,6 +32,9 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--locator-port", type=int, default=5570)
     parser.add_argument("--localization-mode", choices=("florence", "florence_yoloe"), default="florence_yoloe")
     parser.add_argument("--coarse-only", action="store_true", help="Test label approach and wrist handoff without closing")
+    parser.add_argument("--place-label", help="Opt-in Florence/RGB-D fine placement after verified grasp")
+    parser.add_argument("--place-fixture", choices=("region","tray"), default="region")
+    parser.add_argument("--place-relation", choices=("on","inside"), default="on")
     parser.add_argument("--wrist-camera-profile", choices=("fine_grasp", "tabletop_wide"), default="fine_grasp")
     parser.add_argument("--test-coarse-shift-m", type=float, default=0.,
                         help="Simulation-only world-X perturbation during label coarse transit (<=5 cm)")
@@ -57,6 +60,8 @@ def _parse_args() -> argparse.Namespace:
     args = parser.parse_args()
     if args.coarse_only and not args.label:
         parser.error("--coarse-only requires --label")
+    if args.place_label and (args.coarse_only or args.dry_run):
+        parser.error("Placement requires an executed, verified grasp")
     if args.test_coarse_shift_m and (not args.label or not abs(args.test_coarse_shift_m) <= .05):
         parser.error("--test-coarse-shift-m requires --label and magnitude <=5 cm")
     if (args.keep_open or args.start_delay_s) and args.headless:
@@ -215,6 +220,10 @@ def main() -> int:
     DistantLight("/World/DistantLight").set_intensities(float(scene["distant_intensity"]) * CASE.light_scale)
     # Isolated development fixture, not the live app's multi-object workspace.
     spawn_table_and_so101(include_tabletop_props=False)
+    place_obstacle_paths = []
+    if ARGS.place_label:
+        from mr_liu.place.isaac_session import spawn_place_fixture
+        place_obstacle_paths = spawn_place_fixture(ARGS.place_fixture)
     target_rigid = _spawn_target()
     simulation_app.update()
     # Keep large/tall benchmark objects out of the arm's startup sweep.  They
@@ -262,7 +271,7 @@ def main() -> int:
     def advance_observation_frame():
         simulation_app.update()
         capture_video()
-    if ARGS.recovery != "off" or ARGS.label:
+    if ARGS.recovery != "off" or ARGS.label or ARGS.place_label:
         for scene_camera in cameras.values():
             scene_camera.enable_instance_segmentation(leaf_paths=True)
     SimulationManager.setup_simulation(
@@ -313,6 +322,7 @@ def main() -> int:
         advance_frame=advance_control_physics,
         physics_dt_s=physics_dt,
         target_object_paths=[TARGET_PATH],
+        obstacle_margin_overrides={path:.003 for path in place_obstacle_paths},
         track_orientation=True,
     )
     # The upstream fast loop is expected to hand off 5--8 cm above the target,
@@ -653,16 +663,38 @@ def main() -> int:
     if ARGS.case_json:
         report["benchmark_case"] = CASE.to_dict()
     (OUTPUT / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+    place_result = None
+    if ARGS.place_label and result.success:
+        from mr_liu.place.isaac_session import run_place_after_grasp
+        from mr_liu.place.contracts import PlaceResult
+        place_scene = IsaacSceneCamera(cameras["scene"],T_base_world=np.eye(4),advance_frame=advance_observation_frame,
+            robot_mask_provider=lambda:cameras["scene"].instance_mask("/World/SO101",leaf_paths=True))
+        try:
+            place_result = run_place_after_grasp(result=result,initial_observation=initial_observation,
+                initial_mask=initial_mask,target=target,camera=camera,scene=place_scene,executor=executor,
+                gripper=gripper,port=ARGS.locator_port,label=ARGS.place_label,relation=ARGS.place_relation,
+                output=OUTPUT/"place",trace=trace_event,stable_base_asserted=CASE.shape=="cube")
+        except Exception as exc:
+            executor.stop()
+            place_result = PlaceResult(False,"handoff","isaac-fine-place",
+                getattr(exc,"code","place_handoff_error"),str(exc))
+        # Truth remains independent evaluation instrumentation, not control input.
+        placement_report={"result":_jsonable(place_result),"actual_final_object_position_m":_pose(target_xform),
+                          "actual_final_ee":arm.T_base_ee().tolist(),"gripper":_jsonable(gripper.state())}
+        (OUTPUT/"place_report.json").write_text(json.dumps(placement_report,indent=2),encoding="utf-8")
+        print("[FinePlace] RESULT "+json.dumps(_jsonable(place_result)),flush=True)
     if VIDEO is not None:
         report["video"] = {"path": "demo.mp4", "recording_overhead": True,
                            "overview_is_perception_input": False}
         (OUTPUT / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
         outcome = (f"成功：实际抬升 {report['actual_target_lift_m']*100:.1f} cm" if result.success
                    else f"未成功 / 安全停止：{getattr(result.failure, 'value', result.failure)}")
+        if place_result is not None:
+            outcome = "抓取后放置验证通过" if place_result.success else f"放置未完成 / 安全停止：{place_result.failure}"
         VIDEO.finish(overview_camera.get_rgba(), wrist_scene_camera.rgb_rgba(),
                      cameras["scene"].rgb_rgba(), outcome)
     print(json.dumps(report["result"], indent=2))
-    return 0 if result.success else 2
+    return 0 if result.success and (not ARGS.place_label or place_result is not None and place_result.success) else 2
 
 
 exit_code = 0

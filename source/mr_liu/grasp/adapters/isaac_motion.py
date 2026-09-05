@@ -62,6 +62,7 @@ class IsaacCumotionExecutor:
         advance_frame: Callable[[], None],
         physics_dt_s: float,
         target_object_paths: list[str] | None = None,
+        obstacle_margin_overrides: dict[str, float] | None = None,
         target_prim_path: str = "/World/FineGraspMotionTarget",
         position_tolerance_m: float = 0.002,
         joint_tolerance_rad: float = 0.020,
@@ -144,6 +145,7 @@ class IsaacCumotionExecutor:
             self.target,
             track_orientation=self.plan_orientation,
             extra_exclude_prim_paths=[target_prim_path, *(target_object_paths or [])],
+            **({"obstacle_margin_overrides":obstacle_margin_overrides} if obstacle_margin_overrides else {}),
         )
         self.planner = GraphBasedMotionPlanner(
             self.controller.cumotion_robot,

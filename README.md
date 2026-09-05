@@ -2,6 +2,10 @@
 
 ## BusAgent：精细抓取模块交接入口
 
+新增开发中的 [Florence + RGB-D 非快环放置](docs/FINE_PLACE.md)：
+`scripts\run_fine_place.ps1 -Destination 'blue square'`。
+独立 FinePlace 状态机与安全测试已加入，实际仿真验收状态见文档；尚未接入 Web place 或真机。
+
 新增可选 [标签到完整抓取入口](docs/LABEL_TO_GRASP.md)：
 `scripts\run_label_grasp.ps1 -Label 'red cube' -RecordVideo`。
 Florence/YOLOE 定位 → 真正的 LK 光流 → 经安全检查的粗接近 → 原腕部 FineGrasp；

@@ -73,6 +73,29 @@ class FlorenceFinder:
     def ready(self) -> bool:
         return self.model is not None and self.processor is not None
 
+    def describe(self, frame_bgr: np.ndarray, *, detail: str = "detailed", beams: int = 1) -> dict:
+        """Scene evidence, not a motion plan or an exhaustive object inventory."""
+        tasks = {"brief": "<CAPTION>", "detailed": "<DETAILED_CAPTION>",
+                 "more": "<MORE_DETAILED_CAPTION>", "regions": "<DENSE_REGION_CAPTION>"}
+        if detail not in tasks:
+            raise ValueError("Unsupported caption detail")
+        if not self.ready:
+            self.load()
+        task = tasks[detail]
+        return self._run_task(_bgr_to_pil(frame_bgr), task, "", beams)
+
+    def segment_box(self, frame_bgr: np.ndarray, box, *, beams: int = 1) -> dict:
+        """Florence region polygons in original image pixels; never depth/3D."""
+        box = np.asarray(box, dtype=float)
+        if box.shape != (4,) or not np.isfinite(box).all() or np.any(box[2:] <= box[:2]):
+            raise ValueError("Invalid segmentation box")
+        if not self.ready:
+            self.load()
+        h, w = frame_bgr.shape[:2]
+        quantized = np.clip(box / [w, h, w, h] * 1000, 0, 999).astype(int)
+        prompt = "".join(f"<loc_{v}>" for v in quantized)
+        return self._run_task(_bgr_to_pil(frame_bgr), "<REGION_TO_SEGMENTATION>", prompt, beams)
+
     def load(self) -> None:
         if self.ready:
             return

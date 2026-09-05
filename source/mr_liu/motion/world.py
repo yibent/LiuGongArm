@@ -13,6 +13,7 @@ def bind_world(
     root_poses=None,
     *,
     extra_exclude_prim_paths: list[str] | None = None,
+    obstacle_margin_overrides: dict[str, float] | None = None,
 ) -> mg.WorldBinding:
     motion = motion_config()
     robot_prim = robot_config()["usd_prim_path"]
@@ -36,6 +37,12 @@ def bind_world(
     obstacle_strategy = mg.ObstacleStrategy()
     for prim_type in (Mesh, Cone, Cylinder, Cube):
         obstacle_strategy.set_default_configuration(prim_type, mg.ObstacleConfiguration("obb", margin))
+    if obstacle_margin_overrides:
+        if any(not 0.001 <= float(v) <= margin for v in obstacle_margin_overrides.values()):
+            raise ValueError("Contact obstacle margins must be explicit positive values within the global margin")
+        obstacle_strategy.set_configuration_overrides({
+            path: mg.ObstacleConfiguration("obb",float(value))
+            for path,value in obstacle_margin_overrides.items()})
 
     world_binding = mg.WorldBinding(
         world_interface=CumotionWorldInterface(),

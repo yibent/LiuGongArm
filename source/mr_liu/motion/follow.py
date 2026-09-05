@@ -53,6 +53,7 @@ class FollowTargetController:
         *,
         track_orientation: bool | None = None,
         extra_exclude_prim_paths: list[str] | None = None,
+        obstacle_margin_overrides: dict[str, float] | None = None,
     ) -> None:
         self._articulation = articulation
         self._target = target
@@ -61,6 +62,7 @@ class FollowTargetController:
             articulation,
             root_poses=_robot_root_poses(articulation),
             extra_exclude_prim_paths=extra_exclude_prim_paths,
+            **({"obstacle_margin_overrides":obstacle_margin_overrides} if obstacle_margin_overrides else {}),
         )
         cfg = robot_config()
         motion = motion_config()

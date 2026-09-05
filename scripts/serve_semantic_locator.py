@@ -44,9 +44,16 @@ def locate(body):
         if found and mode == "florence_yoloe":
             pipe.yoloe.set_visual_prompt(frame, found)
             found = pipe.yoloe.detect(frame)
+        boxes = [{"xyxy": d.xyxy.tolist(), "score": float(d.score)} for d in found]
+        if body.get("segment", False):
+            if mode != "florence" or len(boxes) > 8:
+                raise ValueError("Segmentation requires Florence mode and <=8 candidates")
+            for item in boxes:
+                item["segmentation"] = pipe.florence.segment_box(frame, item["xyxy"])
+        description = pipe.florence.describe(frame) if body.get("describe", False) else None
         return {"protocol": 1, "sequence": int(body["sequence"]), "label": label,
                 "mode": mode, "florence_boxes": slow_boxes,
-                "boxes": [{"xyxy": d.xyxy.tolist(), "score": float(d.score)} for d in found],
+                "boxes": boxes, "description": description,
                 "elapsed_s": time.monotonic() - started}
     finally:
         # Coarse TRACK is CPU optical flow; release GPU weights for Isaac and
