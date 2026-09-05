@@ -161,7 +161,13 @@ class IsaacGraspSession:
             raise ValueError("双相机抓取需要固定 RGB-D 相机，未执行运动。")
         object_id = self.grounded.get("object_id")
         if not object_id:
-            raise ValueError("顶部相机检测到了目标，但实例分割尚未关联实体；未执行抓取。")
+            association = self.grounded.get("association") or {}
+            import json
+            print("GRASP_ASSOCIATION_FAILED " + json.dumps(association, ensure_ascii=False), flush=True)
+            reason = association.get("reason", "unresolved")
+            raise ValueError(f"目标实体关联失败（{reason}）；尚未调用抓取模型或执行闭爪。")
+        if isinstance(object_id, str) and (object_id == "/World/TargetCube" or object_id.startswith("/World/TargetCube/")):
+            raise ValueError("绿色方块是跟随控制标记，不是可抓取刚体；请改选桌面上的红色方块等物体。未执行抓取。")
         if not isinstance(object_id, str) or not object_id.startswith("/World/TabletopProps/"):
             raise ValueError("目标未关联到可抓取的桌面实体；控制用目标标记不能抓取。")
         stage = stage_utils.get_current_stage()
@@ -195,12 +201,25 @@ class IsaacGraspSession:
         if sample is None:
             raise ValueError("腕部相机尚无同步 RGB-D 与渲染位姿，未执行接近。")
         camera_pose = sample.T_world_camera
-        entry = next((pose for pose in observation_tool_candidates(self.arm.T_base_ee(), camera_pose, point)
-                      if motion.is_reachable(pose)), None)
-        if entry is None:
-            raise ValueError("NO_PATH：当前目标上方没有可达的腕部观察姿态，未执行闭爪。")
-        if not motion.move_to(entry, speed_scale=.4):
-            raise ValueError("NO_PATH：无法到达目标上方的腕部观察位姿，未执行闭爪。")
+        from mr_liu.grasp.observation import current_view_usable, observation_views
+        diagnostics = []
+        if not current_view_usable(sample, point):
+            entry = None
+            for pose in observation_views(self.arm.T_base_ee(), camera_pose, point):
+                if motion.is_reachable(pose):
+                    entry = pose
+                    break
+                diagnostics.append(dict(self.executor.last_plan_diagnostic))
+            if entry is None:
+                return self.observation_blocked(diagnostics)
+            if not motion.move_to(entry, speed_scale=.4):
+                return self.observation_blocked(diagnostics, "观察位置移动未确认到位")
+            # Approach-axis IK can leave some camera roll error. Validate the
+            # actual rendered view rather than claiming the requested pose won.
+            for _ in range(3):
+                self.advance()
+            if not current_view_usable(self.wrist.rgbd_frame(), point):
+                return self.observation_blocked(diagnostics, "到达候选位置后目标仍不在有效腕部视野内")
         if not gripper.open(.075, speed_mps=.025):
             raise ValueError("夹爪未到达观察开度，抓取已停止。")
         camera = GuardedAdapter(IsaacWristCamera(
@@ -230,6 +249,29 @@ class IsaacGraspSession:
             timeout_s=110., dry_run=False,
         ))
         return self.result_output(result)
+
+    def observation_blocked(self, diagnostics, reason="当前姿态下未找到可达且无碰撞的腕部观察位置"):
+        proposal = self.executor.initial_pose_proposal()
+        if proposal is not None:
+            proposal.update(id=uuid.uuid4().hex, requires_confirmation=True,
+                            description="回到配置的初始准备姿态，保持夹爪开度；到位后重新评估抓取条件，不自动抓取，也不保证可抓取。")
+        message = reason + "，尚未闭爪。"
+        message += ("可先回初始准备姿态，保持夹爪开度，再评估能否抓取。是否同意先移动？"
+                    if proposal else "当前没有已验证的初始准备路径；请先调整目标位置或相机安装，不会自动移动。")
+        output = dict(success=False, failure="observation_unavailable", message=message,
+                      diagnostics=diagnostics, preparation=proposal, retry_available=False)
+        (self.recorder.output_dir / "observation-blocked.json").write_text(json.dumps(output, ensure_ascii=False, indent=2))
+        print("GRASP_OBSERVATION_BLOCKED " + json.dumps(output, ensure_ascii=False), flush=True)
+        return output
+
+    def prepare(self, command_id):
+        self.check()
+        self.progress("preparation", "已确认，正在移动到初始准备姿态，保持夹爪开度。", event="preparation_start")
+        reached = self.executor.move_to_initial_pose()
+        self.check()
+        return dict(success=bool(reached), preparation_only=True,
+                    message=("已到初始准备姿态，夹爪开度保持；尚未抓取，可重新下达抓取指令进行评估。" if reached
+                             else "初始准备姿态未到位或路径不再可用，已保持当前位置；尚未抓取。"))
 
     def result_output(self, result):
         output = {**jsonable(result), "retry_available": self.node.pending_retry is not None,

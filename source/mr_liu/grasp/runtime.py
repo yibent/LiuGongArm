@@ -29,11 +29,12 @@ class GraspRuntime:
         self.job = None
         self.running = False
         self.pending_retry = None
+        self.pending_preparation = None
 
     def capabilities(self):
         return dict(dual_camera_default=True, retry_via_dialogue=True, max_attempts=2,
                     scene_assisted_verification=True, robot_self_mask=True,
-                    geometric_fallback=False)
+                    geometric_fallback=False, preparation_via_dialogue=True)
 
     def status(self):
         with self.motion.lock:
@@ -41,7 +42,36 @@ class GraspRuntime:
             result = copy.deepcopy(record)
             if result is not None:
                 result["retry_available"] = self._retry_valid()
+                result["preparation_available"] = self._preparation_valid()
             return result
+
+    def _preparation_valid(self):
+        p = self.pending_preparation
+        if not p or self.clock() >= p["expires"]:
+            return False
+        latest = next((r for r in reversed(self.motion.records.values())
+                       if r.get("skill") not in {"status", "capabilities", "set_speed"}), None)
+        return latest is not None and latest.get("command_id") == p["cid"]
+
+    def submit_preparation(self, params, cid):
+        with self.motion.lock:
+            previous = self.motion.result(cid)
+            if previous:
+                return previous
+            if self.motion.external_owner or self.motion.active or self.motion.pending or self.motion.interruption:
+                return dict(ok=False, message="BUSY：机械臂正在执行其他动作。")
+            if not self._preparation_valid() or params.get("proposal_id") != self.pending_preparation["id"]:
+                return dict(ok=False, message="初始准备建议已失效或未获对应确认；未执行移动，请重新评估抓取。")
+            p, self.pending_preparation = self.pending_preparation, None
+            self.control.set_follow_enabled(False)
+            self.motion.saved = None
+            self.motion.external_owner = cid
+            self.motion.records[cid] = dict(ok=True, state="accepted", command_id=cid, skill="grasp",
+                message="已确认初始准备移动，尚未抓取。", phase="preparation", accepted_at=self.clock(),
+                progress_seq=0, grasp=dict(attempt=0, max_attempts=2, dual_camera=True, preparation_only=True))
+            self.job = dict(cid=cid, target=p["target"], deadline=self.clock()+self.timeout_s,
+                            cancelled=threading.Event(), preparation_session=p["session"])
+            return copy.deepcopy(self.motion.records[cid])
 
     def _retry_valid(self):
         pending = self.pending_retry
@@ -53,6 +83,8 @@ class GraspRuntime:
 
     def submit(self, params, command_id=None):
         cid = command_id or str(uuid.uuid4())
+        if params.get("prepare_last") is True:
+            return self.submit_preparation(params, cid)
         if "recovery_mode" in params or "perception" in params:
             return dict(ok=False, message="双相机默认启用；不接受模式选择，重试请通过对话下达。")
         if params.get("retry_last") is True:
@@ -134,6 +166,8 @@ class GraspRuntime:
                 self.job["cancelled"].set()
             if self.pending_retry:
                 self.pending_retry["expires"] = -float("inf")
+            if self.pending_preparation:
+                self.pending_preparation["expires"] = -float("inf")
         self.control.grounding.cancel()
 
     def guard(self):
@@ -157,10 +191,13 @@ class GraspRuntime:
         if self.pending_retry and not self._retry_valid():
             pending, self.pending_retry = self.pending_retry, None
             pending["session"].close(stop_motion=False)
+        if self.pending_preparation and not self._preparation_valid():
+            pending, self.pending_preparation = self.pending_preparation, None
+            pending["session"].close(stop_motion=False)
         job = self.job
         if not job or self.running:
             return
-        session = job.get("retry_session")
+        session = job.get("retry_session") or job.get("preparation_session")
         waiting = False
         state, message, result = "failed", "抓取未完成。", None
         try:
@@ -182,11 +219,14 @@ class GraspRuntime:
                 self.motion.records[job["cid"]].update(state="started", started_at=self.clock())
             self.running = True
             self.guard()
-            result = session.retry(job["cid"]) if "retry_session" in job else session.execute(job["cid"])
+            result = (session.prepare(job["cid"]) if "preparation_session" in job else
+                      session.retry(job["cid"]) if "retry_session" in job else session.execute(job["cid"]))
             self.guard()  # A cancelled request cannot be reported successful.
             state = "completed" if result.get("success") is True else "failed"
             message = ("目标已抓起，夹持与抬升视觉验证通过。" if state == "completed"
                        else f"抓取未完成：{result.get('failure') or 'verification_failed'}；{result.get('message', '')}")
+            if result.get("preparation_only") is True:
+                message = result["message"]
             if result.get("metrics", {}).get("recovery_stop_reason") == "payload_uncertain_do_not_open":
                 message = "夹持状态不确定，已停止恢复并保持夹爪；未确认抓取成功，请检查当前持物状态。"
             elif result.get("retry_available") is True:
@@ -201,7 +241,11 @@ class GraspRuntime:
                 return
             try:
                 if session:
-                    if state == "failed" and result and result.get("retry_available") is True and not job["cancelled"].is_set() and not self.motion.interruption:
+                    if state == "failed" and result and result.get("preparation") and not job["cancelled"].is_set() and not self.motion.interruption:
+                        session.hold_for_retry()
+                        self.pending_preparation = dict(session=session, cid=job["cid"], target=job["target"],
+                                                        id=result["preparation"]["id"], expires=self.clock()+120)
+                    elif state == "failed" and result and result.get("retry_available") is True and not job["cancelled"].is_set() and not self.motion.interruption:
                         session.hold_for_retry()
                         self.pending_retry = dict(session=session, cid=job["cid"], target=job["target"], expires=self.clock()+120)
                     else:

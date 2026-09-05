@@ -43,6 +43,35 @@ class CameraRGBDFrameTests(unittest.TestCase):
         self.camera._cam.get_rgba.assert_not_called()
         self.camera._cam.get_depth.assert_not_called()
 
+    def test_grounding_copies_one_acquisition_not_direct_annotator_reads(self):
+        for key in ('semantic_segmentation', 'instance_segmentation', 'instance_id_segmentation'):
+            self.frame[key] = {'data': np.ones((2, 3), dtype=np.uint32),
+                               'info': {'idToLabels': {'1': '/World/TabletopProps/Block'}}}
+        packet = self.camera.grounding_frame()
+        self.camera._cam.get_current_frame.assert_called_once()
+        self.camera._cam.get_rgba.assert_not_called()
+        self.camera._cam.get_depth.assert_not_called()
+        self.camera._cam.get_world_pose.assert_not_called()
+        self.frame['rgb'][:] = 0
+        self.frame['instance_id_segmentation']['data'][:] = 0
+        self.frame['instance_segmentation']['info']['idToLabels'].clear()
+        np.testing.assert_array_equal(packet['bgr'], 42)
+        np.testing.assert_array_equal(packet['leaf_instances']['data'], 1)
+        self.assertIn('1', packet['instances']['info']['idToLabels'])
+        np.testing.assert_allclose(packet['unproject'](np.array([[0, 0]]), np.array([1.25])),
+                                   self.pose[:3, 3][None] + self.pose[:3, 2][None] * 1.25)
+
+    def test_grounding_does_not_fill_missing_buffered_rgb_from_live_image(self):
+        del self.frame['rgb']
+        self.assertIsNone(self.camera.grounding_frame())
+        self.camera._cam.get_rgba.assert_not_called()
+
+    def test_grounding_accepts_legacy_leaf_key(self):
+        payload = {'data': np.ones((2, 3)), 'info': {'idToLabels': {}}}
+        self.frame['instance_id_segmentation_fast'] = payload
+        packet = self.camera.grounding_frame()
+        np.testing.assert_array_equal(packet['leaf_instances']['data'], 1)
+
     def test_instance_frame_accepts_isaac6_normalized_and_legacy_keys(self):
         from mr_liu.vision.grounding import instance_object_path
         for key in ("instance_segmentation", "instance_segmentation_fast"):

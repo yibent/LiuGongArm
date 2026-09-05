@@ -101,6 +101,7 @@ class VisionRuntimeControl:
     def status(self) -> dict[str, Any]:
         motion = self.motion.status() if self.motion is not None else None
         grounding = self.grounding.snapshot() if self.grounding else None
+        grounding_diagnostics = self.grounding.diagnostics() if self.grounding else None
         grasp_status = self.grasp.status() if self.grasp else None
         with self._lock:
             return {
@@ -115,6 +116,7 @@ class VisionRuntimeControl:
                 "error": self._error,
                 "motion": motion,
                 "grounding": grounding,
+                "grounding_diagnostics": grounding_diagnostics,
                 "grasp": grasp_status,
                 "capabilities": self.capabilities(),
             }

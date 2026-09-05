@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import copy
 from typing import Any
 
 import numpy as np
@@ -31,6 +32,11 @@ class CameraRGBDFrame:
     @property
     def acquisition_id(self) -> int | tuple[int, int] | None:
         return self.render_reference if self.render_reference is not None else self.rendering_frame
+
+    def unproject(self, pixels: np.ndarray, depth: np.ndarray) -> np.ndarray:
+        rays = np.c_[np.asarray(pixels), np.ones(len(pixels))] @ np.linalg.inv(self.intrinsics).T
+        camera_points = rays * np.asarray(depth).reshape(-1, 1)
+        return camera_points @ self.T_world_camera[:3, :3].T + self.T_world_camera[:3, 3]
 
 
 class SceneCamera:
@@ -131,7 +137,7 @@ class SceneCamera:
             return None
         return frame
 
-    def rgbd_frame(self) -> CameraRGBDFrame | None:
+    def rgbd_frame(self, *, frame=None) -> CameraRGBDFrame | None:
         """Copy RGB, depth and pose from a single acquisition callback.
 
         Does not advance simulation or promise a newer frame on each call.
@@ -139,7 +145,8 @@ class SceneCamera:
         """
         if self._cam is None or not self.has_depth:
             return None
-        frame = self._cam.get_current_frame()
+        if frame is None:
+            frame = self._cam.get_current_frame()
         rgb, depth = frame.get("rgb"), frame.get("distance_to_image_plane")
         params = frame.get("camera_params")
         stamp, number = frame.get("rendering_time"), frame.get("rendering_frame")
@@ -173,6 +180,27 @@ class SceneCamera:
             T_world_camera=pose, rendering_time_s=float(stamp),
             rendering_frame=None if number is None else int(number), render_reference=reference,
         )
+
+    def grounding_frame(self):
+        """Snapshot RGB-D, pose and both instance maps from one acquisition.
+
+        Do not mix direct annotator reads (get_rgba/get_depth) with the
+        frequency-limited Camera callback's buffered segmentation maps.
+        """
+        if self._cam is None:
+            return None
+        frame = self._cam.get_current_frame()
+        sample = self.rgbd_frame(frame=frame)
+        if sample is None:
+            return None
+        def payload(key):
+            value = frame.get(key)
+            return copy.deepcopy(value if value is not None else frame.get(key + "_fast"))
+        return dict(bgr=sample.rgba[:, :, :3][:, :, ::-1].copy(), depth=sample.depth_m,
+                    semantics=payload("semantic_segmentation"),
+                    instances=payload("instance_segmentation"),
+                    leaf_instances=payload("instance_id_segmentation"),
+                    acquisition_id=sample.acquisition_id, unproject=sample.unproject)
 
     def world_pose(self, camera_axes: str = "world") -> tuple[np.ndarray, np.ndarray]:
         if self._cam is None:

@@ -7,10 +7,50 @@ from types import SimpleNamespace
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'source'))
-from mr_liu.vision.grounding import SceneGrounding, surface_point, confirmed_mask
+from mr_liu.vision.grounding import SceneGrounding, surface_point, confirmed_mask, instance_association
 
 
 class GroundingTests(unittest.TestCase):
+    def test_leaf_meshes_resolve_when_grouped_annotator_has_no_paths(self):
+        mask = np.ones((2, 3), dtype=bool)
+        grouped = {'data': np.ones((2, 3)), 'info': {'idToLabels': {'1': {'class': 'block'}}}}
+        leaf = {'data': np.array([[5, 5, 6], [6, 6, 5]]), 'info': {'idToLabels': {
+            '5': '/World/TabletopProps/Block/meshA', '6': {'primPath': '/World/TabletopProps/Block/meshB'}}}}
+        result = instance_association(grouped, mask, leaf)
+        self.assertEqual(result['object_id'], '/World/TabletopProps/Block')
+        self.assertEqual(result['grouped']['reason'], 'no_instance_paths')
+        self.assertEqual(result['leaf']['coverage'], 1)
+
+    def test_conflicting_instances_and_low_coverage_are_not_guessed(self):
+        mask = np.ones((2, 3), dtype=bool)
+        def payload(path):
+            return {'data': np.ones((2, 3)), 'info': {'idToLabels': {'1': path}}}
+        result = instance_association(payload('/World/TabletopProps/A'), mask, payload('/World/TabletopProps/B'))
+        self.assertIsNone(result['object_id'])
+        self.assertEqual(result['reason'], 'conflicting_instances')
+        sparse = payload('/World/TabletopProps/A')
+        sparse['data'][1] = 0
+        result = instance_association(sparse, mask)
+        self.assertIsNone(result['object_id'])
+        self.assertEqual(result['grouped']['reason'], 'insufficient_coverage')
+
+    def test_control_marker_is_not_relabelled_as_a_tabletop_prop(self):
+        mask = np.ones((2, 3), dtype=bool)
+        # Actual Isaac 6 runtime: the grouped annotator returns an empty
+        # path for TargetCube, while the leaf annotator retains its identity.
+        grouped = {'data': np.full((2, 3), 2), 'info': {'idToLabels': {'2': ''}}}
+        leaf = {'data': np.ones((2, 3)), 'info': {'idToLabels': {'1': '/World/TargetCube'}}}
+        result = instance_association(grouped, mask, leaf)
+        self.assertEqual(result['object_id'], '/World/TargetCube')
+        self.assertEqual(result['grouped']['reason'], 'no_instance_paths')
+        self.assertEqual(result['leaf']['coverage'], 1.0)
+
+    def test_missing_and_misaligned_segmentation_have_diagnostics(self):
+        result = instance_association({'data': np.ones((3, 3))}, np.ones((2, 3), dtype=bool))
+        self.assertIsNone(result['object_id'])
+        self.assertEqual(result['grouped']['reason'], 'shape_mismatch_or_empty_mask')
+        self.assertEqual(result['leaf']['reason'], 'missing_annotator')
+
     def test_wrong_class_or_color_cannot_become_a_target(self):
         image = np.full((20,20,3), [0,255,255], dtype=np.uint8)
         semantic = {'data': np.ones((20,20), dtype=np.uint32), 'info': {'idToLabels': {'1': {'class': 'nut'}}}}

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import numpy as np
 import time
-import copy
 from isaacsim.core.experimental.objects import Cube, DistantLight, GroundPlane
 from isaacsim.core.experimental.prims import GeomPrim, XformPrim
 from isaacsim.core.experimental.utils import app as app_utils
@@ -20,7 +19,7 @@ from mr_liu.robot.so101 import So101Arm
 from mr_liu.sim.spawn import spawn_table_and_so101
 from mr_liu.vision import MultiViewFindTrackPipeline, RuntimeConfig
 from mr_liu.vision.control import VisionControlServer, VisionRuntimeControl
-from mr_liu.vision.worker import VisionWorker, frozen_unprojector
+from mr_liu.vision.worker import VisionWorker
 
 
 def _bbox_to_table_xy(xyxy: np.ndarray, width: int, height: int) -> tuple[float, float]:
@@ -141,7 +140,7 @@ def main(
         slow_interval=max(0, int(slow_interval)),
     )
     control = VisionRuntimeControl(vis_cfg, follow_enabled=follow_target)
-    from mr_liu.vision.grounding import SceneGrounding, surface_point, confirmed_mask, instance_object_path
+    from mr_liu.vision.grounding import SceneGrounding, surface_point, confirmed_mask, instance_association
     control.grounding = SceneGrounding()
     from mr_liu.config import robot_config
     from mr_liu.motion.commands import MotionCommands
@@ -255,9 +254,12 @@ def main(
                                     rejections.append(rejection)
                                     continue
                                 point = surface_point(det.xyxy, scene_depth, packet["unproject"], mask)
+                                association = instance_association(packet.get("instances"), mask,
+                                                                   packet.get("leaf_instances"))
                                 grounded_detections.append(dict(xyxy=det.xyxy.tolist(), label=det.label,
                                     score=float(det.score), world_position_m=point,
-                                    object_id=instance_object_path(packet.get("instances"), mask)))
+                                    object_id=association["object_id"], association=association,
+                                    acquisition_id=packet.get("acquisition_id")))
                             control.grounding.publish(current_cfg.prompt_version, current_cfg.prompt,
                                                       grounded_detections, observed_at, rejections)
                             if control.follow_enabled() and not motion_owns_arm and detections and time.monotonic()-observed_at < 1:
@@ -267,19 +269,19 @@ def main(
                             vision_cycles += 1
                     if worker.available and time.monotonic() >= next_capture:
                         next_capture = time.monotonic() + 1/float(motion.get("vision_capture_hz", 10))
-                        camera_frames = {
-                            name: frame
-                            for name, camera in cameras.items()
-                            if (frame := camera.rgb_bgr()) is not None
-                        }
+                        scene_packet = cameras["scene"].grounding_frame()
+                        wrist_bgr = cameras["wrist"].rgb_bgr()
+                        camera_frames = {}
+                        if scene_packet is not None and wrist_bgr is not None:
+                            camera_frames = {"scene": scene_packet["bgr"], "wrist": wrist_bgr}
                         if set(camera_frames) == set(pipe.pipelines):
                             observed_at = time.monotonic()
-                            scene_depth = cameras["scene"].depth_m()
                             worker.submit(dict(frames=camera_frames, observed_at=observed_at,
-                                config=control.snapshot(), depth=scene_depth.copy() if scene_depth is not None else None,
-                                semantics=copy.deepcopy(cameras["scene"].semantic_frame()),
-                                instances=copy.deepcopy(cameras["scene"].instance_frame()),
-                                unproject=frozen_unprojector(cameras["scene"].unproject)))
+                                config=control.snapshot(), depth=scene_packet["depth"],
+                                semantics=scene_packet["semantics"], instances=scene_packet["instances"],
+                                leaf_instances=scene_packet["leaf_instances"],
+                                acquisition_id=scene_packet["acquisition_id"],
+                                unproject=scene_packet["unproject"]))
                 frames += 1
                 if test_frames is not None and frames >= test_frames:
                     break

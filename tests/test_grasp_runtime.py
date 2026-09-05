@@ -77,6 +77,47 @@ class GraspRuntimeTests(unittest.TestCase):
         self.assertEqual(self.submit()["state"], "completed")
         self.factory.assert_called_once()
 
+    def offer_preparation(self):
+        self.submit()
+        self.ready()
+        self.session.execute.return_value = dict(success=False, failure='observation_unavailable',
+            message='当前无法观察，是否同意回初始准备姿态？', preparation=dict(id='offer-1', requires_confirmation=True))
+        self.runtime.poll()
+
+    def test_preparation_waits_for_matching_confirmation_and_does_not_grasp(self):
+        self.offer_preparation()
+        self.session.prepare.assert_not_called()
+        self.assertTrue(self.runtime.status()['preparation_available'])
+        self.assertFalse(self.runtime.submit({'prepare_last':True, 'proposal_id':'wrong'},'bad')['ok'])
+        self.session.prepare.return_value = dict(success=True, preparation_only=True, message='准备到位，尚未抓取。')
+        self.assertEqual(self.runtime.submit({'prepare_last':True,'proposal_id':'offer-1'},'confirmed')['state'],'accepted')
+        self.runtime.poll()
+        self.session.prepare.assert_called_once_with('confirmed')
+        self.session.execute.assert_called_once()  # Only the original failed observation.
+        result = self.control.motion.result('confirmed')
+        self.assertEqual(result['state'],'completed')
+        self.assertIn('尚未抓取',result['message'])
+        self.assertNotIn('目标已抓起',result['message'])
+        self.assertFalse(self.runtime.submit({'prepare_last':True,'proposal_id':'offer-1'},'again')['ok'])
+
+    def test_preparation_expiry_and_other_motion_invalidate_advice(self):
+        self.offer_preparation()
+        self.now += 121
+        self.assertFalse(self.runtime.submit({'prepare_last':True,'proposal_id':'offer-1'},'late')['ok'])
+        self.now -= 121
+        self.control.motion.records['other'] = dict(command_id='other',skill='home',state='completed')
+        self.assertFalse(self.runtime.status()['preparation_available'])
+        self.assertFalse(self.runtime.submit({'prepare_last':True,'proposal_id':'offer-1'},'stale')['ok'])
+        self.session.prepare.assert_not_called()
+
+    def test_stop_invalidates_preparation_without_any_preparation_move(self):
+        self.offer_preparation()
+        self.runtime.cancel()
+        self.runtime.poll()
+        self.assertFalse(self.runtime.status()['preparation_available'])
+        self.session.prepare.assert_not_called()
+        self.session.close.assert_called_once_with(stop_motion=False)
+
     def test_external_owner_does_not_write_old_hold_targets(self):
         self.control.motion.holding = True
         self.control.motion.hold_target = {k: 5. for k in self.q}

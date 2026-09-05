@@ -6,26 +6,54 @@ import time
 import numpy as np
 
 
-def instance_object_path(payload, mask):
-    """Map confirmed sensor pixels to one scene instance, not spawn coordinates."""
+def _instance_association(payload, mask):
+    """Keep pixel evidence when an annotator cannot resolve an instance."""
+    result = dict(object_id=None, reason="missing_annotator", candidates={}, labels={})
     if not isinstance(payload, dict) or mask is None:
-        return None
+        return result
     ids = np.asarray(payload.get("data")).squeeze()
     if ids.shape != mask.shape or not np.any(mask):
-        return None
+        result.update(reason="shape_mismatch_or_empty_mask", shape=list(ids.shape))
+        return result
     labels = (payload.get("info") or {}).get("idToLabels", {})
     counts = {}
     for value, count in zip(*np.unique(ids[mask], return_counts=True)):
         label = labels.get(str(int(value)), labels.get(int(value)))
-        path = label if isinstance(label, str) else (label or {}).get("primPath") if isinstance(label, dict) else None
+        if len(result["labels"]) < 8:
+            result["labels"][str(int(value))] = dict(pixels=int(count), label=str(label)[:240])
+        path = label if isinstance(label, str) else label.get("primPath") if isinstance(label, dict) else None
         if isinstance(path, str) and path.startswith("/World/"):
             # Mesh instances beneath one prop belong to the same grasp target.
             root = "/".join(path.split("/")[:4]) if path.startswith("/World/TabletopProps/") else path
             counts[root] = counts.get(root, 0) + int(count)
+    result.update(candidates=counts, mask_pixels=int(mask.sum()), reason="no_instance_paths")
     if not counts:
-        return None
+        return result
     selected = max(counts, key=counts.get)
-    return selected if counts[selected] / int(mask.sum()) >= .6 else None
+    coverage = counts[selected] / int(mask.sum())
+    result.update(coverage=coverage, reason="insufficient_coverage")
+    if coverage >= .6:
+        result.update(object_id=selected, reason="matched")
+    return result
+
+
+def instance_association(payload, mask, leaf_payload=None):
+    """Use leaf mesh paths too, without guessing from class or spawn position.
+
+    Both annotators must refer to the same camera acquisition. Leaf meshes
+    are aggregated under their prop root; conflicting confident IDs fail.
+    """
+    grouped = _instance_association(payload, mask)
+    leaf = _instance_association(leaf_payload, mask)
+    paths = {r["object_id"] for r in (grouped, leaf) if r["object_id"]}
+    object_id = next(iter(paths)) if len(paths) == 1 else None
+    reason = "matched" if object_id else "conflicting_instances" if len(paths) > 1 else "unresolved"
+    return dict(object_id=object_id, reason=reason, grouped=grouped, leaf=leaf)
+
+
+def instance_object_path(payload, mask):
+    """Compatibility wrapper for a single confirmed segmentation payload."""
+    return _instance_association(payload, mask)["object_id"]
 
 
 def confirmed_mask(bgr, semantic, xyxy, prompt):
@@ -121,6 +149,10 @@ class SceneGrounding:
         with self.condition:
             return copy.deepcopy(self.last_result)
 
+    def diagnostics(self):
+        with self.condition:
+            return copy.deepcopy(self.observation)
+
     def valid(self, token):
         with self.condition:
             return (isinstance(token, dict) and token.get('cancel_epoch') == self.cancel_epoch
@@ -171,6 +203,7 @@ class SceneGrounding:
                 result['object_position_world_m'] = selected.get('world_position_m')
                 result['confidence'] = selected.get('score')
                 result['object_id'] = selected.get('object_id')
+                result['association'] = selected.get('association')
             if request.get('offset_m') is not None:
                 if selected is None:
                     return dict(ok=False, message=f'检测到 {len(candidates)} 个 {prompt} 候选，请说明最左边或最右边的那个。')
