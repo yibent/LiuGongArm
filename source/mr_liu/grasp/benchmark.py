@@ -42,6 +42,7 @@ class BenchmarkCase:
     fragile: bool = False
     thin: bool = False
     reflective: bool = False
+    expected_feasible: bool = True
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -75,6 +76,11 @@ class BenchmarkCase:
             if key in data:
                 data[key] = tuple(float(item) for item in data[key])
         data["seed"] = int(data.get("seed", 0))
+        # Older case JSON predates explicit expected feasibility. Preserve the
+        # physical intent of the tabletop thin-object regression when loading
+        # those archived runs.
+        if "expected_feasible" not in data and bool(data.get("thin", False)):
+            data["expected_feasible"] = False
         return cls(**data)
 
 
@@ -139,6 +145,7 @@ def default_unseen_cases(seed: int) -> list[BenchmarkCase]:
             color_rgb=(0.72, 0.55, 0.08),
             mass_kg=0.012,
             thin=True,
+            expected_feasible=False,
         ),
         varied(
             name="metallic_part",
@@ -323,14 +330,18 @@ def classify_report(
     process_returncode: int | None = None,
     process_error: str | None = None,
     lift_threshold_m: float = PHYSICAL_LIFT_THRESHOLD_M,
+    expected_feasible: bool = True,
 ) -> dict[str, Any]:
     """Normalize one worker report and apply physical-success semantics."""
     if report is None:
         category = "process_error" if process_error or process_returncode else "missing_report"
         return {
             "success": False,
+            "task_success": False,
             "node_success": False,
             "physical_lift_success": False,
+            "expected_feasible": bool(expected_feasible),
+            "correct_infeasibility_rejection": False,
             "failure_category": category,
             "process_returncode": process_returncode,
             "process_error": process_error,
@@ -359,10 +370,20 @@ def classify_report(
     else:
         category = None
     alignment_m = _number(metrics.get("final_translation_error_m"))
+    physical_success = bool(node_success and physical_lift)
+    correct_infeasibility_rejection = bool(
+        not expected_feasible
+        and not node_success
+        and not physical_lift
+        and failure in {"table_clearance", "gripper_width_infeasible", "collision"}
+    )
     return {
-        "success": bool(node_success and physical_lift),
+        "success": physical_success,
+        "task_success": physical_success if expected_feasible else correct_infeasibility_rejection,
         "node_success": node_success,
         "physical_lift_success": physical_lift,
+        "expected_feasible": bool(expected_feasible),
+        "correct_infeasibility_rejection": correct_infeasibility_rejection,
         "failure_category": category,
         "actual_lift_m": actual_lift_m,
         "alignment_error_mm": alignment_m * 1000.0 if alignment_m is not None else None,
@@ -393,6 +414,9 @@ def _metric_summary(rows: Iterable[Mapping[str, Any]], key: str) -> dict[str, fl
 
 def aggregate_runs(runs: list[Mapping[str, Any]]) -> dict[str, Any]:
     successes = sum(bool(run.get("success")) for run in runs)
+    task_successes = sum(bool(run.get("task_success", run.get("success"))) for run in runs)
+    feasible_runs = [run for run in runs if bool(run.get("expected_feasible", True))]
+    infeasible_runs = [run for run in runs if not bool(run.get("expected_feasible", True))]
     failure_counts = Counter(
         str(run["failure_category"])
         for run in runs
@@ -413,6 +437,14 @@ def aggregate_runs(runs: list[Mapping[str, Any]]) -> dict[str, Any]:
         "trials": len(runs),
         "successes": successes,
         "success_rate": successes / len(runs) if runs else 0.0,
+        "task_successes": task_successes,
+        "task_success_rate": task_successes / len(runs) if runs else 0.0,
+        "feasible_trials": len(feasible_runs),
+        "feasible_physical_successes": sum(bool(run.get("success")) for run in feasible_runs),
+        "infeasible_trials": len(infeasible_runs),
+        "correct_infeasibility_rejections": sum(
+            bool(run.get("correct_infeasibility_rejection")) for run in infeasible_runs
+        ),
         "node_success_rate": (
             sum(bool(run.get("node_success")) for run in runs) / len(runs) if runs else 0.0
         ),
@@ -440,12 +472,18 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
     lines = [
         "# FineGrasp unseen-object physical benchmark",
         "",
-        f"Physical success: **{successes}/{trials} ({float(summary.get('success_rate', 0.0)):.1%})**",
+        f"Task-correct outcome: **{int(summary.get('task_successes', successes))}/{trials} "
+        f"({float(summary.get('task_success_rate', summary.get('success_rate', 0.0))):.1%})**",
+        "",
+        f"Feasible-object physical success: **{int(summary.get('feasible_physical_successes', successes))}/"
+        f"{int(summary.get('feasible_trials', trials))}**; correct infeasibility rejection: "
+        f"**{int(summary.get('correct_infeasibility_rejections', 0))}/"
+        f"{int(summary.get('infeasible_trials', 0))}**.",
         "",
         "A trial counts as success only when the FineGrasp node reports success and the",
         f"ground-truth rigid body rises at least {PHYSICAL_LIFT_THRESHOLD_M * 1000:.0f} mm.",
         "",
-        "| Case | Seed | Shape | Material | Backend | Result | Failure | Lift (mm) | Align (mm) | Model (ms) | Cycle (s) |",
+        "| Case | Seed | Shape | Expected | Backend | Task | Failure | Lift (mm) | Align (mm) | Model (ms) | Cycle (s) |",
         "|---|---:|---|---|---|---|---|---:|---:|---:|---:|",
     ]
     for run in summary.get("runs", []):
@@ -454,13 +492,13 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
             return "-" if value is None else f"{value * multiplier:.2f}"
 
         lines.append(
-            "| {case} | {seed} | {shape} | {material} | {backend} | {result} | {failure} | {lift} | {align} | {model} | {cycle} |".format(
+            "| {case} | {seed} | {shape} | {expected} | {backend} | {result} | {failure} | {lift} | {align} | {model} | {cycle} |".format(
                 case=run.get("case", "-"),
                 seed=run.get("seed", "-"),
                 shape=run.get("shape", "-"),
-                material=run.get("material", "-"),
+                expected="grasp" if run.get("expected_feasible", True) else "reject",
                 backend=run.get("backend", "-"),
-                result="PASS" if run.get("success") else "FAIL",
+                result="PASS" if run.get("task_success", run.get("success")) else "FAIL",
                 failure=run.get("failure_category") or "-",
                 lift=formatted("actual_lift_m", 1000.0),
                 align=formatted("alignment_error_mm"),

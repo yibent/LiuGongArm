@@ -38,6 +38,7 @@ class BenchmarkCaseTests(unittest.TestCase):
         )
         self.assertTrue(any(case.reflective for case in first))
         self.assertTrue(any(case.thin for case in first))
+        self.assertTrue(all(not case.expected_feasible for case in first if case.thin))
         self.assertTrue(any(case.fragile for case in first))
         self.assertTrue(
             any(case.metadata.get("scenario") == "industrial_tool" for case in first)
@@ -113,6 +114,15 @@ class BenchmarkReportTests(unittest.TestCase):
         process = classify_report(None, process_returncode=1, process_error="boom")
         self.assertEqual(failed["failure_category"], "ik_unreachable")
         self.assertEqual(process["failure_category"], "process_error")
+
+    def test_physical_infeasibility_rejection_is_a_correct_task_outcome(self):
+        row = classify_report(
+            self._report(success=False, lift=0.0, failure="table_clearance"),
+            expected_feasible=False,
+        )
+        self.assertFalse(row["success"])
+        self.assertTrue(row["correct_infeasibility_rejection"])
+        self.assertTrue(row["task_success"])
 
     def test_aggregate_and_markdown_include_metrics_and_failures(self):
         good = {

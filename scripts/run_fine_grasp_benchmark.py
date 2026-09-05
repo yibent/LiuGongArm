@@ -160,6 +160,7 @@ def _run_case(args: argparse.Namespace, case: BenchmarkCase, run_dir: Path) -> d
         report,
         process_returncode=returncode,
         process_error=error,
+        expected_feasible=case.expected_feasible,
     )
     row.update(
         {
