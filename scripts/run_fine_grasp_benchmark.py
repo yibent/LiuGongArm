@@ -48,7 +48,10 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--seeds", type=_parse_seed_list, default=[0])
     parser.add_argument(
         "--cases",
-        default="cube,sphere,cylinder,thin,metallic_part",
+        default=(
+            "cube,sphere,cylinder,thin,metallic_part,apple,bottle,hammer,"
+            "wrench,screwdriver,key,coffee_mug"
+        ),
         help="Comma-separated default case names",
     )
     parser.add_argument(

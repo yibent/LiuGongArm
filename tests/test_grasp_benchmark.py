@@ -34,7 +34,17 @@ class BenchmarkCaseTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(
             {case.shape for case in first},
-            {"cube", "sphere", "cylinder", "thin", "hammer", "mug"},
+            {
+                "cube",
+                "sphere",
+                "cylinder",
+                "thin",
+                "hammer",
+                "wrench",
+                "screwdriver",
+                "key",
+                "mug",
+            },
         )
         self.assertTrue(any(case.reflective for case in first))
         self.assertTrue(any(case.thin for case in first))
@@ -42,6 +52,10 @@ class BenchmarkCaseTests(unittest.TestCase):
         self.assertTrue(any(case.fragile for case in first))
         self.assertTrue(
             any(case.metadata.get("scenario") == "industrial_tool" for case in first)
+        )
+        self.assertGreaterEqual(
+            sum(case.metadata.get("scenario") == "industrial_tool" for case in first),
+            4,
         )
         self.assertTrue(any(case.metadata.get("has_handle") for case in first))
         self.assertNotEqual(default_unseen_cases(18), first)

@@ -48,7 +48,17 @@ class BenchmarkCase:
     def __post_init__(self) -> None:
         if not self.name.strip():
             raise ValueError("Benchmark case name is required")
-        if self.shape not in {"cube", "sphere", "cylinder", "thin", "hammer", "mug"}:
+        if self.shape not in {
+            "cube",
+            "sphere",
+            "cylinder",
+            "thin",
+            "hammer",
+            "wrench",
+            "screwdriver",
+            "key",
+            "mug",
+        }:
             raise ValueError(f"Unsupported benchmark shape: {self.shape}")
         if len(self.dimensions_m) != 3 or any(value <= 0 for value in self.dimensions_m):
             raise ValueError("dimensions_m must contain three positive values")
@@ -182,6 +192,36 @@ def default_unseen_cases(seed: int) -> list[BenchmarkCase]:
             metadata={"scenario": "industrial_tool", "preferred_region": "handle"},
         ),
         varied(
+            name="wrench",
+            shape="wrench",
+            dimensions=(0.125, 0.038, 0.016),
+            color_rgb=(0.42, 0.46, 0.50),
+            material="metallic",
+            reflective=True,
+            mass_kg=0.095,
+            metadata={"scenario": "industrial_tool", "preferred_region": "handle"},
+        ),
+        varied(
+            name="screwdriver",
+            shape="screwdriver",
+            dimensions=(0.130, 0.022, 0.020),
+            color_rgb=(0.72, 0.12, 0.08),
+            mass_kg=0.080,
+            metadata={"scenario": "industrial_tool", "preferred_region": "handle"},
+        ),
+        varied(
+            name="key",
+            shape="key",
+            dimensions=(0.075, 0.028, 0.003),
+            color_rgb=(0.56, 0.59, 0.62),
+            material="reflective",
+            reflective=True,
+            mass_kg=0.010,
+            thin=True,
+            expected_feasible=False,
+            metadata={"scenario": "industrial_tool", "reason": "tabletop_clearance"},
+        ),
+        varied(
             name="coffee_mug",
             shape="mug",
             dimensions=(0.082, 0.056, 0.062),
@@ -218,7 +258,7 @@ def spawn_benchmark_target(case: BenchmarkCase, path: str):
     orientation = [[math.cos(yaw_rad * 0.5), 0.0, 0.0, math.sin(yaw_rad * 0.5)]]
     orientation_kwargs = {} if abs(yaw_rad) < 1e-12 else {"orientations": orientation}
     x_size, y_size, z_size = case.dimensions_m
-    compound = case.shape in {"hammer", "mug"}
+    compound = case.shape in {"hammer", "wrench", "screwdriver", "key", "mug"}
     if compound:
         stage = omni.usd.get_context().get_stage()
         root = UsdGeom.Xform.Define(stage, path)
@@ -259,6 +299,22 @@ def spawn_benchmark_target(case: BenchmarkCase, path: str):
             # enough for SO-101 while the head tests region-aware proposals.
             box("Handle", (-0.010, 0.0, -0.006), (0.090, 0.014, 0.014))
             box("Head", (0.035, 0.0, 0.0), (0.026, 0.050, 0.028))
+        elif case.shape == "wrench":
+            # Open-ended spanner: a narrow graspable shank and two jaw ears.
+            # It is deliberately metallic and only 16 mm high; a thinner
+            # tabletop spanner is correctly allowed to fail finger clearance.
+            box("Handle", (-0.010, 0.0, 0.0), (0.090, 0.012, z_size))
+            box("JawTop", (0.045, 0.013, 0.0), (0.035, 0.012, z_size))
+            box("JawBottom", (0.045, -0.013, 0.0), (0.035, 0.012, z_size))
+        elif case.shape == "screwdriver":
+            # Horizontal driver with a bulky polymer handle and a thin shaft.
+            box("Handle", (-0.030, 0.0, 0.0), (0.070, 0.022, 0.020))
+            box("Shaft", (0.035, 0.0, -0.006), (0.060, 0.006, 0.006))
+        elif case.shape == "key":
+            # A physically representative 3 mm tabletop key proxy. The bow is
+            # wider than the blade, but neither offers finger/table clearance.
+            box("Bow", (-0.025, 0.0, 0.0), (0.030, 0.028, 0.003))
+            box("Blade", (0.018, 0.0, 0.0), (0.060, 0.010, 0.003))
         else:
             # External mug body plus a collision-bearing C handle.  This proxy
             # exercises handle occlusion and fragile-object policy without a

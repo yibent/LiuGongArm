@@ -107,6 +107,29 @@ class GraspGeometryTests(unittest.TestCase):
         assert mask is not None
         self.assertEqual(int(mask.sum()), 121)
 
+    def test_seeded_segmenter_finds_foreground_when_coarse_point_hits_a_hole(self) -> None:
+        intrinsics = CameraIntrinsics(width=80, height=60, fx=100, fy=100, cx=40, cy=30)
+        depth = np.full((60, 80), 0.30, dtype=np.float32)
+        # The projected coarse point (40, 30) is background. A disconnected
+        # wrench-jaw-like foreground lies nearby and is 20 mm closer.
+        depth[22:39, 50:67] = 0.288
+        rgb = np.full((60, 80, 3), [120, 120, 120], dtype=np.uint8)
+        observation = RGBDObservation(
+            1, 0.0, rgb, depth, intrinsics, np.eye(4)
+        )
+        target = TargetSpec("concave", coarse_position_base_m=(0.0, 0.0, 0.29))
+
+        mask = SeededDepthSegmenter(
+            depth_tolerance_m=0.010,
+            max_radius_px=35,
+            coarse_search_radius_px=30,
+        ).segment(observation, target)
+
+        self.assertIsNotNone(mask)
+        assert mask is not None
+        self.assertEqual(int(mask.sum()), 17 * 17)
+        self.assertFalse(mask[30, 40])
+
     def test_appearance_tracker_rejects_background_area_takeover(self) -> None:
         intrinsics = CameraIntrinsics(width=40, height=30, fx=100, fy=100, cx=20, cy=15)
         rgb = np.full((30, 40, 3), [80, 80, 80], dtype=np.uint8)

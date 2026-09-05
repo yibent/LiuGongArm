@@ -6,7 +6,7 @@ param(
     [string]$Output = "",
     [switch]$Benchmark,
     [string]$Seeds = "0",
-    [string]$Cases = "cube,sphere,cylinder,thin,metallic_part"
+    [string]$Cases = "cube,sphere,cylinder,thin,metallic_part,apple,bottle,hammer,wrench,screwdriver,key,coffee_mug"
 )
 
 $ErrorActionPreference = "Stop"

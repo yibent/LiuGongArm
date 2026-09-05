@@ -23,6 +23,7 @@ class SelectionConfig:
     collision_margin_m: float
     table_height_m: float
     max_candidates: int = 128
+    max_elongated_axis_error_deg: float = 18.0
 
 
 @dataclass(frozen=True)
@@ -44,6 +45,24 @@ def select_grasp(
     rejected: Counter[str] = Counter()
     feasible: list[SelectedGrasp] = []
     diagnostics: list[dict[str, Any]] = []
+    elongated_minor_axis: np.ndarray | None = None
+    xy = np.asarray(geometry.points_base[:, :2], dtype=np.float64)
+    if len(xy) >= 32:
+        covariance = np.cov(xy - np.median(xy, axis=0), rowvar=False)
+        eigenvalues, eigenvectors = np.linalg.eigh(covariance)
+        if eigenvalues[0] > 1e-12 and np.sqrt(eigenvalues[1] / eigenvalues[0]) >= 2.0:
+            elongated_minor_axis = eigenvectors[:, 0]
+
+    def closing_axis_error_deg(pose: np.ndarray) -> float | None:
+        if elongated_minor_axis is None:
+            return None
+        axis = np.asarray(pose[:2, 0], dtype=np.float64)
+        norm = float(np.linalg.norm(axis))
+        if norm < 1e-6:
+            return 90.0
+        cosine = float(np.clip(abs(np.dot(axis / norm, elongated_minor_axis)), 0.0, 1.0))
+        return float(np.degrees(np.arccos(cosine)))
+
     ordered = sorted(candidates, key=lambda item: item.score, reverse=True)[: config.max_candidates]
     for candidate_index, candidate in enumerate(ordered):
         diagnostic: dict[str, Any] | None = None
@@ -72,6 +91,13 @@ def select_grasp(
             reject("gripper_width")
             continue
         T_base_grasp_center = observation.T_base_camera @ candidate.T_camera_grasp
+        desired_axis_error = closing_axis_error_deg(T_base_grasp_center)
+        if desired_axis_error is not None:
+            if diagnostic is not None:
+                diagnostic["elongated_axis_error_deg"] = desired_axis_error
+            if desired_axis_error > config.max_elongated_axis_error_deg:
+                reject("closing_axis_misaligned")
+                continue
         support_height_constrained = False
         if float(T_base_grasp_center[2, 2]) < -0.6:
             # Eye-in-hand depth mainly observes the top surface during the
@@ -140,6 +166,20 @@ def select_grasp(
                 )
             )
             continue
+        realized_pose = getattr(motion, "realized_grasp_pose", None)
+        if elongated_minor_axis is not None and callable(realized_pose):
+            realized = realized_pose(T_base_grasp)
+            realized_axis_error = (
+                None if realized is None else closing_axis_error_deg(np.asarray(realized))
+            )
+            if diagnostic is not None:
+                diagnostic["realized_elongated_axis_error_deg"] = realized_axis_error
+            if (
+                realized_axis_error is None
+                or realized_axis_error > config.max_elongated_axis_error_deg
+            ):
+                reject("realized_closing_axis_misaligned")
+                continue
         T_object_grasp = invert_transform(geometry.T_base_object) @ T_base_grasp
         distance_from_center = float(np.linalg.norm(T_object_grasp[:3, 3]))
         extent_scale = max(float(np.linalg.norm(geometry.extents_m)), 0.02)

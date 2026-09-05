@@ -23,6 +23,7 @@ from mr_liu.grasp.contracts import (  # noqa: E402
     CameraIntrinsics,
     FailureCode,
     GraspBackendError,
+    ObjectProperties,
     RGBDObservation,
     TargetSpec,
 )
@@ -92,6 +93,70 @@ class GraspGenXBackendTests(unittest.TestCase):
         self.assertEqual(candidates[0].metadata["units"], "m")
         self.assertIn("T_camera_pinch_center", candidates[0].metadata["output_pose_convention"])
         self.assertEqual(transport.calls[0][0], "object_points")
+
+    def test_top_down_width_covers_larger_one_sided_local_extent(self) -> None:
+        pose = make_transform(
+            np.diag([1.0, -1.0, -1.0]), np.asarray([0.0, 0.0, 0.245])
+        )
+        score = 0.8
+        transport = QueueTransport([(np.asarray([pose]), np.asarray([score]), ["obb"])])
+        config = replace(self.config, width_margin_m=0.006)
+        backend = GraspGenXBackend(config, transport=transport)
+        # The pinch centre is 10 mm off-centre in X. A symmetric span would
+        # request only 56 mm including margin, while the fixed finger needs
+        # about 64 mm to clear the robust +29 mm side with 3 mm clearance.
+        xs = np.linspace(-0.020, 0.030, 64)
+        ys = np.linspace(-0.004, 0.004, 8)
+        points = np.asarray(
+            [[x, y, 0.200] for x in xs for y in ys], dtype=np.float64
+        )
+
+        candidate = backend.generate(observation(), points, self.target)[0]
+
+        self.assertGreater(candidate.width_m, 0.063)
+        self.assertEqual(
+            candidate.metadata["width_strategy"], "fixed_finger_local_section"
+        )
+        self.assertGreater(candidate.metadata["width_section_points"], 24)
+
+    def test_tool_handle_hint_moves_obb_pose_to_long_stable_region(self) -> None:
+        pose = make_transform(
+            np.diag([1.0, -1.0, -1.0]), np.asarray([0.040, 0.0, 0.245])
+        )
+        handle = np.asarray(
+            [
+                [x, y, 0.200]
+                for x in np.linspace(-0.065, 0.015, 90)
+                for y in np.linspace(-0.006, 0.006, 14)
+            ]
+        )
+        head = np.asarray(
+            [
+                [x, y, 0.200]
+                for x in np.linspace(0.020, 0.055, 36)
+                for y in np.linspace(-0.025, 0.025, 28)
+            ]
+        )
+        points = np.concatenate((handle, head), axis=0)
+        target = TargetSpec(
+            "tool",
+            "unseen industrial tool",
+            properties=ObjectProperties(metadata={"preferred_region": "handle"}),
+        )
+        backend = GraspGenXBackend(
+            self.config,
+            transport=QueueTransport(
+                [(np.asarray([pose]), np.asarray([0.8]), ["obb"])]
+            ),
+        )
+
+        candidate = backend.generate(observation(), points, target)[0]
+
+        self.assertLess(candidate.T_camera_grasp[0, 3], 0.0)
+        self.assertEqual(
+            candidate.metadata["region_strategy"], "stable_elongated_handle"
+        )
+        self.assertGreater(candidate.metadata["region_shift_m"], 0.02)
 
     def test_large_close_range_cloud_is_deterministically_capped(self) -> None:
         pose, score = self.model_pose()

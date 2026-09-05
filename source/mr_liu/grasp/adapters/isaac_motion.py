@@ -19,6 +19,7 @@ from mr_liu.grasp.contracts import GripperState, RobotState, SelectedGrasp
 from mr_liu.grasp.transforms import (
     axis_alignment_error,
     invert_transform,
+    make_transform,
     matrix_to_quaternion_wxyz,
     pose_error,
     quaternion_wxyz_to_matrix,
@@ -227,6 +228,33 @@ class IsaacCumotionExecutor:
         self._active_grasp_q = self._active_waypoints[-1].copy()
         self._active_grasp_pose = np.asarray(grasp.T_base_grasp, dtype=np.float64).copy()
         return True
+
+    def realized_grasp_pose(self, T_base_ee: np.ndarray) -> np.ndarray | None:
+        """Return the actual FK pose of the cached five-axis IK solution."""
+        q_goal = self._ik_seed_cache.get(self._pose_key(T_base_ee))
+        if q_goal is None:
+            return None
+        kinematics = self.controller.cumotion_robot.kinematics
+        tool_frame = str(robot_config()["tool_frame"])
+        goal = kinematics.pose(q_goal, tool_frame)
+        position_robot = np.asarray(goal.translation, dtype=np.float64)
+        rotation_robot = np.asarray(goal.rotation.matrix(), dtype=np.float64)
+        base_position, base_orientation = (
+            self.controller.world_binding.get_world_interface().get_world_to_robot_base_transform()
+        )
+        base_position_np = np.asarray(
+            base_position.numpy() if hasattr(base_position, "numpy") else base_position,
+            dtype=np.float64,
+        ).reshape(-1, 3)[0]
+        base_quaternion = np.asarray(
+            base_orientation.numpy() if hasattr(base_orientation, "numpy") else base_orientation,
+            dtype=np.float64,
+        ).reshape(-1, 4)[0]
+        R_world_robot = quaternion_wxyz_to_matrix(base_quaternion)
+        return make_transform(
+            R_world_robot @ rotation_robot,
+            base_position_np + R_world_robot @ position_robot,
+        )
 
     def is_grasp_transition_reachable(
         self, T_base_pregrasp: np.ndarray, T_base_grasp: np.ndarray
@@ -503,6 +531,7 @@ class IsaacCumotionExecutor:
         ).reshape(-1, 4)[0]
         R_world_base = quaternion_wxyz_to_matrix(base_quaternion)
         approach_axis_base = R_world_base.T @ target[:3, 2]
+        closing_axis_base = R_world_base.T @ target[:3, 0]
         kinematics = self.controller.cumotion_robot.kinematics
         tool_frame = str(robot_config()["tool_frame"])
         if not self._fk_reported:
@@ -526,14 +555,17 @@ class IsaacCumotionExecutor:
             [kinematics.cspace_coord_limits(i).upper for i in range(len(q))], dtype=np.float64
         )
         regularization = np.asarray([0.02, 0.02, 0.02, 0.03, 0.25], dtype=np.float64)
+        closing_axis_weight = 0.30
 
         def residual(q_trial: np.ndarray) -> np.ndarray:
             pose = kinematics.pose(q_trial, tool_frame)
             axis = np.asarray(pose.rotation.matrix(), dtype=np.float64)[:, 2]
+            closing_axis = np.asarray(pose.rotation.matrix(), dtype=np.float64)[:, 0]
             return np.concatenate(
                 (
                     (np.asarray(pose.translation) - position_base) / 0.01,
                     axis - approach_axis_base,
+                    closing_axis_weight * (closing_axis - closing_axis_base),
                     regularization * (q_trial - q),
                 )
             )
@@ -541,6 +573,7 @@ class IsaacCumotionExecutor:
         def jacobian(q_trial: np.ndarray) -> np.ndarray:
             pose = kinematics.pose(q_trial, tool_frame)
             axis = np.asarray(pose.rotation.matrix(), dtype=np.float64)[:, 2]
+            closing_axis = np.asarray(pose.rotation.matrix(), dtype=np.float64)[:, 0]
             position_jacobian = np.asarray(
                 kinematics.position_jacobian(q_trial, tool_frame), dtype=np.float64
             )
@@ -550,7 +583,20 @@ class IsaacCumotionExecutor:
             axis_jacobian = np.column_stack(
                 [np.cross(angular_jacobian[:, index], axis) for index in range(len(q_trial))]
             )
-            return np.vstack((position_jacobian / 0.01, axis_jacobian, np.diag(regularization)))
+            closing_axis_jacobian = np.column_stack(
+                [
+                    np.cross(angular_jacobian[:, index], closing_axis)
+                    for index in range(len(q_trial))
+                ]
+            )
+            return np.vstack(
+                (
+                    position_jacobian / 0.01,
+                    axis_jacobian,
+                    closing_axis_weight * closing_axis_jacobian,
+                    np.diag(regularization),
+                )
+            )
 
         cached_seeds = sorted(
             self._ik_seed_cache.items(),

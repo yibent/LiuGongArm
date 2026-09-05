@@ -321,11 +321,134 @@ class _Proposal:
     width_m: float
     branch: str
     source_index: int
+    width_strategy: str = "global_percentile"
+    width_section_points: int = 0
+    region_strategy: str = "model_pose"
+    region_shift_m: float = 0.0
     cluster_id: int = -1
     cluster_size: int = 1
     consensus_bonus: float = 0.0
     continuity_bonus: float = 0.0
     score: float = 0.0
+
+
+def _conservative_top_down_width(
+    points: np.ndarray,
+    T_model_grasp: np.ndarray,
+    *,
+    transverse_span_m: float,
+    width_margin_m: float,
+    fallback_width_m: float,
+) -> tuple[float, int]:
+    """Estimate the opening needed by an asymmetric fixed-finger gripper.
+
+    GraspGenX exposes a symmetric pinch-centre pose, but SO-101 approaches with
+    one finger fixed. A global percentile width silently assumes the proposal
+    is exactly centred. That is unsafe for partial wrist views and compound
+    objects: a mug handle or tool head can move the proposal a few millimetres,
+    putting the fixed finger inside the main body.
+
+    Only points inside the physical finger's transverse slab are relevant to
+    insertion. Twice the larger one-sided extent keeps either jaw-swap
+    interpretation outside the observed silhouette; the explicit margin
+    covers depth quantisation and the unseen back surface.
+    """
+    local = (np.asarray(points, dtype=np.float64) - T_model_grasp[:3, 3]) @ (
+        T_model_grasp[:3, :3]
+    )
+    half_span = max(float(transverse_span_m) * 0.5, 0.004)
+    section = local[np.abs(local[:, 1]) <= half_span]
+    minimum = max(24, int(math.ceil(len(local) * 0.01)))
+    if len(section) < minimum:
+        return float(fallback_width_m), int(len(section))
+    low, high = np.percentile(section[:, 0], [3.0, 97.0])
+    one_sided_extent = max(abs(float(low)), abs(float(high)))
+    required = 2.0 * one_sided_extent + float(width_margin_m)
+    return max(float(fallback_width_m), required), int(len(section))
+
+
+def _stable_elongated_region_center(
+    points: np.ndarray,
+    *,
+    min_width_m: float = 0.008,
+    max_width_m: float = 0.065,
+) -> tuple[np.ndarray, float, float] | None:
+    """Find the longest stable-width region of an elongated point cloud.
+
+    This is a geometry affordance, not an object-category template. It finds a
+    long section whose transverse width remains approximately constant, which
+    is the property shared by hammer, wrench, screwdriver and similar handles.
+    Bulky heads, open jaws and thin shafts form shorter or invalid runs.
+    """
+    cloud = np.asarray(points, dtype=np.float64)
+    if len(cloud) < 128:
+        return None
+    xy = cloud[:, :2]
+    origin = np.median(xy, axis=0)
+    covariance = np.cov(xy - origin, rowvar=False)
+    eigenvalues, eigenvectors = np.linalg.eigh(covariance)
+    if eigenvalues[0] <= 1e-12:
+        return None
+    elongation = float(np.sqrt(eigenvalues[1] / eigenvalues[0]))
+    if elongation < 2.0:
+        return None
+    major = eigenvectors[:, 1]
+    minor = eigenvectors[:, 0]
+    projected_major = (xy - origin) @ major
+    projected_minor = (xy - origin) @ minor
+    low_t, high_t = np.percentile(projected_major, [3.0, 97.0])
+    if high_t - low_t < 0.045:
+        return None
+    step = 0.004
+    half_window = 0.009
+    centers = np.arange(low_t + half_window, high_t - half_window + step * 0.5, step)
+    minimum_points = max(32, int(math.ceil(len(cloud) * 0.008)))
+    samples: list[tuple[float, float, float, int]] = []
+    for center_t in centers:
+        section_mask = np.abs(projected_major - center_t) <= half_window
+        count = int(section_mask.sum())
+        if count < minimum_points:
+            continue
+        section_minor = projected_minor[section_mask]
+        low_s, high_s = np.percentile(section_minor, [5.0, 95.0])
+        width = float(high_s - low_s)
+        if not min_width_m <= width <= max_width_m:
+            continue
+        samples.append((float(center_t), width, float(np.median(section_minor)), count))
+    if not samples:
+        return None
+
+    runs: list[list[tuple[float, float, float, int]]] = []
+    current: list[tuple[float, float, float, int]] = []
+    for sample in samples:
+        if current:
+            gap = sample[0] - current[-1][0]
+            width_ratio = max(sample[1], current[-1][1]) / max(
+                min(sample[1], current[-1][1]), 1e-6
+            )
+            if gap > step * 1.6 or width_ratio > 1.40:
+                runs.append(current)
+                current = []
+        current.append(sample)
+    if current:
+        runs.append(current)
+    viable = [run for run in runs if run[-1][0] - run[0][0] >= 0.028]
+    if not viable:
+        return None
+    # Length is the primary affordance. Integrated point support breaks ties,
+    # which favours a substantial driver handle over a similarly long shaft.
+    best = max(
+        viable,
+        key=lambda run: (
+            run[-1][0] - run[0][0],
+            sum(item[3] for item in run),
+            np.median([item[1] for item in run]),
+        ),
+    )
+    center_sample = best[len(best) // 2]
+    center_xy = origin + major * center_sample[0] + minor * center_sample[2]
+    run_length = float(best[-1][0] - best[0][0] + 2.0 * half_window)
+    return center_xy, float(np.median([item[1] for item in best])), run_length
 
 
 def _symmetric_rotation_distance(R_a: np.ndarray, R_b: np.ndarray) -> float:
@@ -412,7 +535,7 @@ class GraspGenXBackend:
         with self._lock:
             grasps, scores, tags = self._infer(observation, model_points)
             proposals = self._proposals(
-                observation, model_points, grasps, scores, tags
+                observation, model_points, grasps, scores, tags, target
             )
             candidates = self._stabilize(observation, target, proposals)
             return [
@@ -518,6 +641,7 @@ class GraspGenXBackend:
         grasps: np.ndarray,
         scores: np.ndarray,
         tags: Sequence[str],
+        target: TargetSpec,
     ) -> list[_Proposal]:
         proposals = []
         # GraspGenX poses are gripper-base poses.  FineGrasp candidates use a
@@ -527,12 +651,35 @@ class GraspGenXBackend:
             translation=np.asarray([0.0, 0.0, self.config.sweep_volume.fingertip_depth_m])
         )
         invalid_poses = 0
+        preferred_region = str(target.properties.metadata.get("preferred_region", ""))
+        stable_region = (
+            _stable_elongated_region_center(points)
+            if preferred_region == "handle"
+            else None
+        )
         for index, (raw_pose, raw_score, branch) in enumerate(zip(grasps, scores, tags)):
             T_model_model_base = _sanitize_model_pose(raw_pose)
             if T_model_model_base is None or not np.isfinite(raw_score):
                 invalid_poses += 1
                 continue
             T_model_grasp = T_model_model_base @ T_model_base_pinch
+            region_strategy = "model_pose"
+            region_shift_m = 0.0
+            T_base_for_direction = (
+                T_model_grasp
+                if self.config.inference_frame == "base"
+                else observation.T_base_camera @ T_model_grasp
+            )
+            if (
+                stable_region is not None
+                and str(branch) == "obb"
+                and float(T_base_for_direction[2, 2]) < -0.75
+            ):
+                original_xy = T_model_grasp[:2, 3].copy()
+                T_model_grasp = T_model_grasp.copy()
+                T_model_grasp[:2, 3] = stable_region[0]
+                region_shift_m = float(np.linalg.norm(T_model_grasp[:2, 3] - original_xy))
+                region_strategy = "stable_elongated_handle"
             local_x = (points - T_model_grasp[:3, 3]) @ T_model_grasp[:3, 0]
             low, high = np.percentile(local_x, [5.0, 95.0])
             width = max(float(high - low) + self.config.width_margin_m, 0.0)
@@ -542,6 +689,17 @@ class GraspGenXBackend:
             else:
                 T_camera_grasp = T_model_grasp
                 T_base_grasp = observation.T_base_camera @ T_camera_grasp
+            width_strategy = "global_percentile"
+            width_section_points = 0
+            if float(T_base_grasp[2, 2]) < -0.75:
+                width, width_section_points = _conservative_top_down_width(
+                    points,
+                    T_model_grasp,
+                    transverse_span_m=self.config.sweep_volume.extents_mid[1],
+                    width_margin_m=self.config.width_margin_m,
+                    fallback_width_m=width,
+                )
+                width_strategy = "fixed_finger_local_section"
             proposals.append(
                 _Proposal(
                     T_camera_grasp=T_camera_grasp,
@@ -550,6 +708,10 @@ class GraspGenXBackend:
                     width_m=width,
                     branch=branch,
                     source_index=index,
+                    width_strategy=width_strategy,
+                    width_section_points=width_section_points,
+                    region_strategy=region_strategy,
+                    region_shift_m=region_shift_m,
                 )
             )
         if len(grasps) and not proposals:
@@ -680,6 +842,10 @@ class GraspGenXBackend:
                     "model_pose_convention": "T_model_gripper_base,+X_close,+Z_approach",
                     "output_pose_convention": "T_camera_pinch_center,+X_close,+Z_approach",
                     "model_base_to_pinch_center_m": self.config.sweep_volume.fingertip_depth_m,
+                    "width_strategy": proposals[index].width_strategy,
+                    "width_section_points": proposals[index].width_section_points,
+                    "region_strategy": proposals[index].region_strategy,
+                    "region_shift_m": proposals[index].region_shift_m,
                     "units": "m",
                 },
             )

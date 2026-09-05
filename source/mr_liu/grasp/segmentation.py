@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections import deque
 
 import cv2
@@ -37,11 +38,13 @@ class SeededDepthSegmenter:
         chromaticity_tolerance: float = 0.18,
         seed_window_px: int = 7,
         max_radius_px: int = 140,
+        coarse_search_radius_px: int = 48,
     ) -> None:
         self.depth_tolerance_m = float(depth_tolerance_m)
         self.chromaticity_tolerance = float(chromaticity_tolerance)
         self.seed_window_px = int(seed_window_px)
         self.max_radius_px = int(max_radius_px)
+        self.coarse_search_radius_px = int(coarse_search_radius_px)
 
     def segment(self, observation: RGBDObservation, target: TargetSpec) -> np.ndarray | None:
         if observation.target_mask is not None:
@@ -61,26 +64,101 @@ class SeededDepthSegmenter:
         radius = max(self.seed_window_px // 2, 1)
         y0, y1 = max(v - radius, 0), min(v + radius + 1, K.height)
         x0, x1 = max(u - radius, 0), min(u + radius + 1, K.width)
-        patch = np.asarray(observation.depth_m[y0:y1, x0:x1], dtype=np.float64)
-        valid_patch = patch[np.isfinite(patch) & (patch > 0)]
-        seed_depth = float(np.median(valid_patch)) if valid_patch.size else float(point_camera[2])
         depth_tolerance = min(
             self.depth_tolerance_m,
             0.004 if bool(target.properties.thin) else self.depth_tolerance_m,
         )
+        # The coarse 3-D point may project into a hole or concavity (mug mouth,
+        # open wrench jaw, key bow). A tiny patch then measures the table and
+        # grows a large circular background mask. Search a bounded wrist-local
+        # area and choose its robust near-depth mode; foreground object surfaces
+        # are closer to the wrist than their support plane.
+        search_radius = min(self.max_radius_px, max(self.coarse_search_radius_px, radius))
+        sy0, sy1 = max(v - search_radius, 0), min(v + search_radius + 1, K.height)
+        sx0, sx1 = max(u - search_radius, 0), min(u + search_radius + 1, K.width)
+        search_depth = np.asarray(
+            observation.depth_m[sy0:sy1, sx0:sx1], dtype=np.float64
+        )
+        plausible = (
+            np.isfinite(search_depth)
+            & (search_depth > 0)
+            & (np.abs(search_depth - float(point_camera[2])) <= 0.060)
+        )
+        plausible_depth = search_depth[plausible]
+        growth_tolerance = depth_tolerance
+        if plausible_depth.size:
+            # Pick the nearest supported depth mode rather than a percentile:
+            # a thin wrench jaw can occupy <5% of the search crop, while a few
+            # isolated depth outliers must not become seeds.
+            bin_width = max(0.001, min(0.004, depth_tolerance * 0.25))
+            depth_min = float(plausible_depth.min())
+            depth_bins = np.floor((plausible_depth - depth_min) / bin_width).astype(
+                np.int64
+            )
+            counts = np.bincount(depth_bins)
+            support_threshold = max(8, int(math.ceil(plausible_depth.size * 0.003)))
+            supported = np.flatnonzero(counts >= support_threshold)
+            if supported.size:
+                nearest_bin = int(supported[0])
+                seed_depth = float(np.median(plausible_depth[depth_bins == nearest_bin]))
+                # If a second dense mode is separated by a genuine histogram
+                # valley, it is normally the support surface behind a low or
+                # concave object. Keep region growing on the foreground side
+                # of that valley. Curved objects have continuous occupied bins
+                # and therefore retain the configured tolerance.
+                strong_threshold = max(
+                    support_threshold * 4,
+                    int(math.ceil(counts[nearest_bin] * 0.12)),
+                )
+                valley_threshold = max(
+                    support_threshold,
+                    int(math.ceil(counts[nearest_bin] * 0.03)),
+                )
+                for candidate_bin in range(nearest_bin + 2, len(counts)):
+                    valley = counts[nearest_bin + 1 : candidate_bin]
+                    if (
+                        counts[candidate_bin] >= strong_threshold
+                        and valley.size
+                        and int(valley.max()) <= valley_threshold
+                    ):
+                        mode_separation = (candidate_bin - nearest_bin) * bin_width
+                        growth_tolerance = min(
+                            growth_tolerance,
+                            max(0.0015, mode_separation * 0.40),
+                        )
+                        break
+            else:
+                seed_depth = float(np.percentile(plausible_depth, 5.0))
+        else:
+            patch = np.asarray(observation.depth_m[y0:y1, x0:x1], dtype=np.float64)
+            valid_patch = patch[np.isfinite(patch) & (patch > 0)]
+            seed_depth = (
+                float(np.median(valid_patch))
+                if valid_patch.size
+                else float(point_camera[2])
+            )
         allowed = np.isfinite(observation.depth_m) & (
-            np.abs(observation.depth_m - seed_depth) <= depth_tolerance
+            np.abs(observation.depth_m - seed_depth) <= growth_tolerance
         )
         rgb = np.asarray(observation.rgb[:, :, :3], dtype=np.float32)
         chromaticity = rgb / np.maximum(rgb.sum(axis=2, keepdims=True), 12.0)
-        seed_chromaticity = np.median(chromaticity[y0:y1, x0:x1].reshape(-1, 3), axis=0)
+        search_chromaticity = chromaticity[sy0:sy1, sx0:sx1]
+        foreground = plausible & (np.abs(search_depth - seed_depth) <= growth_tolerance)
+        if foreground.any():
+            seed_chromaticity = np.median(search_chromaticity[foreground], axis=0)
+        else:
+            seed_chromaticity = np.median(
+                chromaticity[y0:y1, x0:x1].reshape(-1, 3), axis=0
+            )
         allowed &= (
             np.linalg.norm(chromaticity - seed_chromaticity.reshape(1, 1, 3), axis=2)
             <= self.chromaticity_tolerance
         )
         yy, xx = np.ogrid[: K.height, : K.width]
         allowed &= (xx - u) ** 2 + (yy - v) ** 2 <= self.max_radius_px**2
-        return _connected_component_from_nearest_seed(allowed, u, v, radius)
+        return _connected_component_from_nearest_seed(
+            allowed, u, v, search_radius
+        )
 
 
 class AppearanceDepthTrackerSegmenter:

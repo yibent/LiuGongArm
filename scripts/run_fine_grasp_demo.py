@@ -283,6 +283,13 @@ def main() -> int:
     cv2.imwrite(
         str(OUTPUT / "initial_wrist.png"), initial_observation.rgb[:, :, ::-1]
     )
+    np.savez_compressed(
+        OUTPUT / "initial_rgbd.npz",
+        depth_m=initial_observation.depth_m,
+        rgb=initial_observation.rgb,
+        intrinsics=initial_observation.intrinsics.matrix,
+        T_base_camera=initial_observation.T_base_camera,
+    )
     seed_segmenter = SeededDepthSegmenter(depth_tolerance_m=0.010, max_radius_px=180)
     initial_mask = seed_segmenter.segment(initial_observation, target)
     if initial_mask is None or not initial_mask.any():

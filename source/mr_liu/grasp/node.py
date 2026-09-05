@@ -210,6 +210,7 @@ class GeneralGraspNode:
                 reference_points_base = geometry.points_base.copy()
                 replan_required = False
                 before_close: RGBDObservation | None = None
+                before_close_center_base: np.ndarray | None = None
                 final_desired = selected.T_base_grasp
                 for servo_index in range(self.settings.loop.servo_max_steps):
                     terminal = self._terminal_check(request, deadline, metrics, selected)
@@ -291,6 +292,19 @@ class GeneralGraspNode:
                     # symmetric objects (axis permutations can move the grasp by cm).
                     final_desired = selected.T_base_grasp.copy()
                     final_desired[:3, 3] += tracked_center - planned_center
+                    # Registration can observe a low object settling a few
+                    # millimetres into the simulated/contact support plane.
+                    # Never let closed-loop correction undo the selector's
+                    # explicit finger/table clearance guarantee.
+                    minimum_contact_z = (
+                        self.settings.selection.table_height_m
+                        + policy.required_table_clearance_m
+                    )
+                    if final_desired[2, 3] < minimum_contact_z:
+                        metrics["servo_table_clearance_clamps"] = int(
+                            metrics.get("servo_table_clearance_clamps", 0)
+                        ) + 1
+                        final_desired[2, 3] = minimum_contact_z
                     translation_from_plan, rotation_from_plan = pose_error(
                         selected.T_base_grasp, final_desired
                     )
@@ -328,6 +342,7 @@ class GeneralGraspNode:
                     )
                     if update.aligned:
                         before_close = current_observation
+                        before_close_center_base = tracked_center.copy()
                         break
                     if update.within_tolerance:
                         # Validate stable alignment with another fresh wrist
@@ -400,7 +415,11 @@ class GeneralGraspNode:
                         started,
                         selected,
                     )
-                after_close_result = self._capture_for_verification(request, metrics)
+                after_close_result = self._capture_for_verification(
+                    request,
+                    metrics,
+                    coarse_position_base_m=before_close_center_base,
+                )
                 if isinstance(after_close_result, FineGraspResult):
                     return self._with_elapsed(after_close_result, started, metrics)
                 after_close = after_close_result
@@ -437,7 +456,22 @@ class GeneralGraspNode:
                         lift_pose, speed_scale=min(policy.motion_speed_scale, 0.4)
                     )
                 metrics["lift_motion_completed"] = int(lift_motion_completed)
-                after_lift_result = self._capture_for_verification(request, metrics)
+                current_state = self.motion.robot_state()
+                expected_center_after_lift = None
+                if before_close_center_base is not None:
+                    expected_center_after_lift = before_close_center_base + (
+                        current_state.T_base_ee[:3, 3] - state.T_base_ee[:3, 3]
+                    )
+                    self._emit(
+                        FineGraspPhase.OBSERVE,
+                        event="lift_tracking_seed",
+                        expected_center_base_m=expected_center_after_lift.tolist(),
+                    )
+                after_lift_result = self._capture_for_verification(
+                    request,
+                    metrics,
+                    coarse_position_base_m=expected_center_after_lift,
+                )
                 if isinstance(after_lift_result, FineGraspResult):
                     return self._with_elapsed(after_lift_result, started, metrics)
                 after_lift = after_lift_result
@@ -634,6 +668,8 @@ class GeneralGraspNode:
         self,
         request: FineGraspRequest,
         metrics: dict[str, float | int | str],
+        *,
+        coarse_position_base_m: np.ndarray | None = None,
     ) -> RGBDObservation | FineGraspResult:
         """Capture a fresh frame but allow the held object to be fully occluded.
 
@@ -641,16 +677,23 @@ class GeneralGraspNode:
         evidence. Requiring a segmentable point cloud here would incorrectly
         fail exactly when the fingers hide a successfully held small object.
         """
+        vision_target = request.target
+        if coarse_position_base_m is not None:
+            center = np.asarray(coarse_position_base_m, dtype=np.float64).reshape(3)
+            vision_target = replace(
+                request.target,
+                coarse_position_base_m=tuple(float(value) for value in center),
+            )
         for _ in range(self.settings.loop.max_observation_failures):
             self._emit(FineGraspPhase.OBSERVE, event="verification_frame")
-            observation = self.camera.capture(request.target)
+            observation = self.camera.capture(vision_target)
             if observation is None:
                 continue
             metrics["observations"] = int(metrics["observations"]) + 1
             age = self.clock() - observation.timestamp_s
             if age > self.settings.observation.max_age_s or observation.sequence <= self._last_sequence:
                 continue
-            mask = self.segmenter.segment(observation, request.target)
+            mask = self.segmenter.segment(observation, vision_target)
             self._last_sequence = observation.sequence
             if mask is None:
                 return observation

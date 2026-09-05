@@ -31,9 +31,10 @@ backends:
     # width/clearance/collision/IK filters, so retain the full ranked set.
     min_confidence: 0.0
     # A close wrist view sees only the upper silhouette of rounded/reflective
-    # objects.  Reserve 10 mm for that single-view width underestimate and for
-    # the fixed-finger SO-101 jaw; otherwise an apparently feasible top-down
-    # approach can place the fixed finger inside a bottle/cup rim.
+    # objects. Reserve 10 mm for single-view width uncertainty. The backend
+    # additionally uses the larger one-sided extent in the local finger slab,
+    # so off-centre compound geometry cannot put SO-101's fixed jaw inside the
+    # target during a top-down insertion.
     width_margin_m: 0.010
     fallback_backend: geometric
     fallback_on_empty: true
@@ -92,6 +93,9 @@ selection:
   pregrasp_distance_m: 0.060
   collision_margin_m: 0.006
   max_candidates: 128
+  # For elongated handles, fingers must close across the short cross-section.
+  # The desired candidate and the actual five-DOF FK realization are checked.
+  max_elongated_axis_error_deg: 18.0
 
 loop:
   max_total_s: 45.0
