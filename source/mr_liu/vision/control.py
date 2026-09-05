@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from dataclasses import asdict, replace
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -37,6 +38,9 @@ class VisionRuntimeControl:
         self._frames: dict[str, bytes] = {}
         self._raw_frames: dict[str, Any] = {}
         self._detections: dict[str, list[dict[str, Any]]] = {}
+        self._capture_meta = {}
+        self._scene_captures = []
+        self._inventory = None
         self._models: dict[str, Any] = {}
         self._error: str | None = None
         self.motion = None
@@ -86,7 +90,8 @@ class VisionRuntimeControl:
         with self._lock:
             self._error = str(message)
 
-    def publish(self, view: str, result: FrameResult, frame_bgr: Any = None) -> None:
+    def publish(self, view: str, result: FrameResult, frame_bgr: Any = None,
+                *, prompt_version=None, observed_at=None) -> None:
         detections = [_detection_dict(det) for det in (result.fast or result.slow)]
         ok, encoded = cv2.imencode(
             ".jpg", result.image, [int(cv2.IMWRITE_JPEG_QUALITY), 84]
@@ -100,19 +105,41 @@ class VisionRuntimeControl:
             if frame_bgr is not None:
                 self._raw_frames[str(view)] = frame_bgr.copy()
             self._detections[str(view)] = detections
+            self._capture_meta[str(view)] = (prompt_version, observed_at)
+            if view == "scene" and frame_bgr is not None:
+                self._scene_captures.append((prompt_version, observed_at, self._raw_frames[view]))
+                self._scene_captures = self._scene_captures[-4:]
             if ok:
                 self._frames[str(view)] = encoded.tobytes()
 
     def remember(self, label: str, *, memory_id: str | None = None,
-                 aliases: list[str] | None = None, metadata: dict | None = None) -> dict[str, Any]:
+                 aliases: list[str] | None = None, metadata: dict | None = None,
+                 fresh=False, selected_box=None, selected_at=None) -> dict[str, Any]:
         if self.memory_store is None:
             raise RuntimeError("object memory store is not configured")
         with self._lock:
             frames = dict(self._raw_frames)
+            if fresh:
+                frames = {v: f for v, f in frames.items()
+                          if self._capture_meta.get(v, (None, None))[0] == self._config.prompt_version
+                          and self._capture_meta[v][1] is not None
+                          and 0 <= time.monotonic() - self._capture_meta[v][1] < 3}
             detections = {
-                view: max(items, key=lambda item: float(item.get("score", 0.0)))
-                for view, items in self._detections.items() if items
+                view: items[0]
+                for view, items in self._detections.items() if len(items) == 1 and view in frames
             }
+            if selected_box is not None:
+                # Pair the grounded box with its exact RGB frame, not the next
+                # tracker update. Other-camera identity is not assumed.
+                sample = next((f for version, at, f in reversed(self._scene_captures)
+                               if version == self._config.prompt_version and at == selected_at
+                               and at is not None and 0 <= time.monotonic() - at < 3), None)
+                if sample is None:
+                    raise ValueError("定位画面已更新，未写入可能错配的物体记忆，请重试记忆指令。")
+                frames = {"scene": sample}
+                detections = {"scene": dict(xyxy=selected_box, score=1.)}
+            if fresh and "scene" not in detections:
+                raise ValueError("没有唯一且新鲜的目标画面，未写入记忆。")
         memory = self.memory_store.remember(
             label, frames, detections, memory_id=memory_id,
             aliases=aliases, metadata=metadata,
@@ -124,7 +151,7 @@ class VisionRuntimeControl:
         if memory is None:
             raise ValueError(f"unknown object memory: {memory_id}")
         with self._lock:
-            self._config.prompt = memory.label
+            self._config.prompt = memory.metadata.get("prompt") or memory.label
             self._config.memory_id = memory_id
             self._config.memory_view = view
             self._config.prompt_version += 1
@@ -166,7 +193,8 @@ class VisionRuntimeControl:
         return {
             "skills": ["select_target", "perceive", "follow", "hold", "stop", "status", "capabilities"]
                       + (sorted(MOTION_SKILLS - {"hold", "stop"}) if self.motion is not None else [])
-                      + (["remember", "recall", "forget"] if self.memory_store is not None else [])
+                      + (["remember", "recall", "forget", "list_memories"] if self.memory_store is not None else [])
+                      + ["scene_inventory"]
                       + (["grasp"] if self.grasp is not None else []),
             "unsupported": ["plan_grasp", "transport", "place", "verify_placement"] + ([] if self.grasp else ["grasp"]),
             "grasp": self.grasp.capabilities() if self.grasp else None,
@@ -218,24 +246,54 @@ def execute_control_command(
         return {"ok": True, "message": f"target set to {prompt}", "prompt": cfg.prompt}
     if skill == "remember":
         label = str(values.get("label") or values.get("category") or control.snapshot().prompt).strip()
+        target = values.get("target")
+        grounded = None
+        metadata = values.get("metadata") if isinstance(values.get("metadata"), dict) else {}
+        if isinstance(target, dict):
+            grounded = control.grounding.resolve(control, dict(category=target.get("category"),
+                color=(target.get("attributes") or {}).get("color"),
+                selector=target.get("spatial_ref"), offset_m=[0, 0, 0]))
+            if not grounded.get("ok"):
+                return grounded
+            metadata = {**metadata, "prompt": grounded["prompt"], "target": target}
         result = control.remember(
             label,
             memory_id=values.get("memory_id"),
             aliases=values.get("aliases") if isinstance(values.get("aliases"), list) else None,
-            metadata=values.get("metadata") if isinstance(values.get("metadata"), dict) else None,
+            metadata=metadata, fresh=True,
+            selected_box=grounded.get("xyxy") if grounded else None,
+            selected_at=grounded.get("observed_at") if grounded else None,
         )
-        return {"ok": True, "message": f"memory captured for {label}", "memory": result}
+        return {"ok": True, "message": f"已记住{label}的视觉外观；再次使用时会重新定位，不复用旧坐标。", "memory": result}
+    if skill == "list_memories":
+        items = control.memory_store.list() if control.memory_store else []
+        return {"ok": True, "memories": items, "message": "已保存的物体：" + "、".join(i["label"] for i in items) if items else "尚未保存物体记忆。"}
+    if skill == "scene_inventory":
+        with control._lock:
+            inventory = control._inventory
+        if inventory is None or time.monotonic() - inventory["observed_at"] > 3:
+            return dict(ok=False, message="场景全览尚无新鲜画面，不能确认桌面物品。")
+        return dict(ok=True, **inventory)
     if skill == "recall":
         memory_id = str(values.get("memory_id") or "").strip()
         if not memory_id:
             raise ValueError("recall requires memory_id")
+        memory = control.memory_store.get(memory_id) if control.memory_store else None
+        if memory is None:
+            return dict(ok=False, message="这条物体记忆已不存在。")
+        if control.grounding:
+            result = control.grounding.resolve(control, dict(category=memory.metadata.get("prompt") or memory.label, memory_id=memory_id))
+            return {**result, "memory_id": memory_id}
         cfg = control.recall(memory_id, values.get("view"))
-        return {"ok": True, "message": "memory prompt armed", "memory_id": cfg.memory_id, "prompt": cfg.prompt}
+        return {"ok": True, "message": "已启用记忆外观，尚未确认找到物体。", "memory_id": cfg.memory_id, "prompt": cfg.prompt}
     if skill == "forget":
         memory_id = str(values.get("memory_id") or "").strip()
         if not memory_id or control.memory_store is None:
             raise ValueError("forget requires memory_id")
-        return {"ok": control.memory_store.delete(memory_id), "memory_id": memory_id}
+        deleted = control.memory_store.delete(memory_id)
+        if deleted and control.snapshot().memory_id == memory_id:
+            control.set_prompt(control.snapshot().prompt)
+        return {"ok": deleted, "memory_id": memory_id, "message": "已删除这条物体记忆。" if deleted else "这条物体记忆不存在。"}
     if skill == "perceive":
         cfg = control.force_find()
         return {"ok": True, "message": "new perception requested", "find_epoch": cfg.find_epoch}

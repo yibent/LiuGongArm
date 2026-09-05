@@ -20,8 +20,9 @@ def default_florence() -> str:
     if override := os.environ.get("BUSAGENT_FLORENCE_MODEL"):
         return override
     legacy = ROOT / ".cache" / "huggingface" / "Florence-2-large"
-    return str(legacy if (legacy / "model.safetensors").is_file()
-               and not (FLORENCE_DIR / "model.safetensors").is_file() else FLORENCE_DIR)
+    hub = ROOT / ".cache" / "huggingface" / "hub" / "models--florence-community--Florence-2-large" / "snapshots" / FLORENCE_REVISION
+    return str(next((path for path in (FLORENCE_DIR, legacy, hub)
+                     if (path / "model.safetensors").is_file()), FLORENCE_DIR))
 
 
 def default_yoloe() -> Path:

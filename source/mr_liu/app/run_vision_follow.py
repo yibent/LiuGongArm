@@ -69,6 +69,12 @@ def setup(
     cameras = spawn_configured_cameras()
     if set(cameras) != {"scene", "wrist"}:
         raise RuntimeError(f"Dual-view vision requires scene and wrist cameras, got {sorted(cameras)}")
+    # Same fixed observation mount as the colleague's tested label-grasp entry.
+    from mr_liu.grasp.transforms import look_at_opencv, matrix_to_quaternion_wxyz
+    mount = cameras["scene"].config["recovery_oblique"]
+    pose = look_at_opencv(mount["position"], mount["target"])
+    cameras["scene"]._cam.set_world_pose(position=pose[:3, 3],
+        orientation=matrix_to_quaternion_wxyz(pose[:3, :3]), camera_axes="ros")
     app.update()
 
     arm = So101Arm()
@@ -227,7 +233,12 @@ def main(
         # JPEG encoding is also off the physics/render thread.
         if control.snapshot().prompt_version == packet["config"].prompt_version:
             for view, result in results.items():
-                control.publish(view, result, packet["frames"].get(view))
+                control.publish(view, result, packet["frames"].get(view),
+                                prompt_version=packet["config"].prompt_version, observed_at=packet["observed_at"])
+            from mr_liu.vision.inventory import visible_inventory
+            inventory = visible_inventory(packet["frames"]["scene"], packet["semantics"], packet["observed_at"])
+            with control._lock:
+                control._inventory = inventory
         return packet, results
 
     worker = VisionWorker(process_vision) if pipe is not None else None
@@ -269,9 +280,11 @@ def main(
                                     acquisition_id=packet.get("acquisition_id")))
                             control.grounding.publish(current_cfg.prompt_version, current_cfg.prompt,
                                                       grounded_detections, observed_at, rejections)
-                            if control.follow_enabled() and not motion_owns_arm and detections and time.monotonic()-observed_at < 1:
-                                height, width = camera_frames["scene"].shape[:2]
-                                x, y = _bbox_to_table_xy(detections[0].xyxy, width, height)
+                            if (control.follow_enabled() and not motion_owns_arm and len(grounded_detections) == 1
+                                    and grounded_detections[0]["world_position_m"] is not None
+                                    and time.monotonic()-observed_at < 1):
+                                # Pixel-to-table heuristics are invalid for an oblique camera.
+                                x, y, _ = grounded_detections[0]["world_position_m"]
                                 target_xform.set_world_poses(positions=[[x, y, table_z]])
                             vision_cycles += 1
                     if worker.available and time.monotonic() >= next_capture:

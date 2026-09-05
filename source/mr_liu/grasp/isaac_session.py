@@ -22,6 +22,11 @@ PHASE_MESSAGES = {
 }
 
 RECOVERY_MESSAGES = {
+    "label_request": "正在重新观察并定位目标。",
+    "semantic_find": "已获得视觉候选，正在核对新画面。",
+    "coarse_start": "正在接近目标，途中持续跟踪位置。",
+    "coarse_guard_stop": "目标观测发生变化，已暂停接近并重新定位。",
+    "coarse_handoff": "已接近目标，正在核对腕部视野。",
     "attempt_start": "正在开始第{attempt}次抓取尝试。",
     "safe_retreat": "正在退让，准备重新观察目标。",
     "target_reacquired": "已重新定位目标，准备再次尝试。",
@@ -72,6 +77,15 @@ class GuardedAdapter:
     """Interrupt before and after blocking operations; stop itself is unguarded."""
     def __init__(self, delegate, guard):
         self.delegate, self.guard = delegate, guard
+
+    @property
+    def execution_guard(self):
+        return self.delegate.execution_guard
+
+    @execution_guard.setter
+    def execution_guard(self, value):
+        # CoarseApproach assigns this callback; it must reach the real executor.
+        self.delegate.execution_guard = value
 
     def __getattr__(self, name):
         value = getattr(self.delegate, name)
@@ -195,33 +209,6 @@ class IsaacGraspSession:
         gripper = GuardedAdapter(IsaacGripperController(
             self.arm.articulation, advance_frame=self.advance, physics_dt_s=self.physics_dt,
         ), self.check)
-        point = self.grounded["object_position_world_m"]
-        self.progress("approach", "正在规划到目标上方的接近路径。")
-        sample = self.wrist.rgbd_frame()
-        if sample is None:
-            raise ValueError("腕部相机尚无同步 RGB-D 与渲染位姿，未执行接近。")
-        camera_pose = sample.T_world_camera
-        from mr_liu.grasp.observation import current_view_usable, observation_views
-        diagnostics = []
-        if not current_view_usable(sample, point):
-            entry = None
-            for pose in observation_views(self.arm.T_base_ee(), camera_pose, point):
-                if motion.is_reachable(pose):
-                    entry = pose
-                    break
-                diagnostics.append(dict(self.executor.last_plan_diagnostic))
-            if entry is None:
-                return self.observation_blocked(diagnostics)
-            if not motion.move_to(entry, speed_scale=.4):
-                return self.observation_blocked(diagnostics, "观察位置移动未确认到位")
-            # Approach-axis IK can leave some camera roll error. Validate the
-            # actual rendered view rather than claiming the requested pose won.
-            for _ in range(3):
-                self.advance()
-            if not current_view_usable(self.wrist.rgbd_frame(), point):
-                return self.observation_blocked(diagnostics, "到达候选位置后目标仍不在有效腕部视野内")
-        if not gripper.open(.075, speed_mps=.025):
-            raise ValueError("夹爪未到达观察开度，抓取已停止。")
         camera = GuardedAdapter(IsaacWristCamera(
             self.wrist, ee_pose_provider=self.arm.T_base_ee, advance_frame=self.advance,
             robot_mask_provider=lambda: self.wrist.instance_mask("/World/SO101", leaf_paths=True),
@@ -238,7 +225,28 @@ class IsaacGraspSession:
 
         self.backend_instance = create_grasp_backend(config)
         target = TargetSpec(object_id=object_id, semantic_label=self.grounded.get("prompt"),
-                            coarse_position_base_m=tuple(point))
+                            coarse_position_base_m=None)
+        from mr_liu.grasp.live_coarse import ResponsiveLocator, approach_for_live_grasp
+        from mr_liu.perception.semantic_target import LocalSemanticLocator, TargetObservationError
+        locator = LocalSemanticLocator()
+        locator.memory_id = self.target.get("memory_id")
+        try:
+            self.progress("find", "正在定位目标，随后接近并核对腕部视野。")
+            target = approach_for_live_grasp(
+                scene_camera=scene_camera, wrist_camera=camera, motion=motion, gripper=gripper,
+                locator=ResponsiveLocator(locator, self.advance, self.target.get("spatial_ref")),
+                target=target, table_height_m=config["selection"]["table_height_m"],
+                trace=trace, recorder=FineGraspDebugRecorder(recorder.output_dir / "coarse"),
+            )
+        except TargetObservationError as exc:
+            # Keep the colleague's algorithm intact; surface its failure and only
+            # offer a checked preparation move for reach/view failures.
+            reason = str(exc)
+            if reason.startswith(("coarse_path", "coarse_motion", "coarse_step", "wrist_handoff")):
+                return self.observation_blocked([{"reason": reason}], "接近或腕部交接未通过：" + reason)
+            return dict(success=False, failure=reason, message="目标观测未确认，已停止，尚未闭爪。", retry_available=False)
+        finally:
+            locator.session.close()
         self.node = assemble_live_grasp(
             config=config, camera=camera, scene_camera=scene_camera, motion=motion, gripper=gripper,
             backend=GuardedAdapter(self.backend_instance, self.check),

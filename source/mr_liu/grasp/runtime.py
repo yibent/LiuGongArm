@@ -19,7 +19,7 @@ class GraspInterrupted(RuntimeError):
 
 
 class GraspRuntime:
-    def __init__(self, control, session_factory, *, clock=time.monotonic, timeout_s=150):
+    def __init__(self, control, session_factory, *, clock=time.monotonic, timeout_s=240):
         self.control = control
         self.motion = control.motion
         self.session_factory = session_factory
@@ -34,7 +34,8 @@ class GraspRuntime:
     def capabilities(self):
         return dict(dual_camera_default=True, retry_via_dialogue=True, max_attempts=2,
                     scene_assisted_verification=True, robot_self_mask=True,
-                    geometric_fallback=False, preparation_via_dialogue=True)
+                    geometric_fallback=False, preparation_via_dialogue=True,
+                    label_coarse_approach=True, optical_flow_tracking=True)
 
     def status(self):
         with self.motion.lock:
@@ -127,6 +128,7 @@ class GraspRuntime:
                 job["future"] = self.pool.submit(self.control.grounding.resolve, self.control, {
                     "category": target["category"], "color": attributes.get("color"),
                     "selector": selector, "offset_m": [0, 0, 0],
+                    "memory_id": target.get("memory_id"),
                     "cancel_epoch": self.control.grounding.cancel_epoch,
                 })
             except Exception as exc:

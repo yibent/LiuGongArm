@@ -172,7 +172,10 @@ class SceneGrounding:
                 epoch = self.cancel_epoch
                 if request.get("cancel_epoch", epoch) != epoch:
                     return dict(ok=False, message="物体定位请求已被中断。")
-                cfg = control.set_prompt(prompt)
+                cfg = (control.recall(request["memory_id"]) if request.get("memory_id")
+                       else control.set_prompt(prompt))
+                if request.get("memory_id"):
+                    prompt = cfg.prompt
             deadline = time.monotonic()+timeout
             with self.condition:
                 while True:
@@ -200,6 +203,7 @@ class SceneGrounding:
                           observed_at=obs['observed_at'], cancel_epoch=epoch,
                           message=f'顶部相机检测并经Isaac语义标签与颜色核对，当前有 {len(candidates)} 个 {prompt} 候选。')
             if selected:
+                result['xyxy'] = selected.get('xyxy')
                 result['object_position_world_m'] = selected.get('world_position_m')
                 result['confidence'] = selected.get('score')
                 result['object_id'] = selected.get('object_id')
