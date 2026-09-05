@@ -105,16 +105,22 @@ class RGBDPlacePerception:
         self.latest_destination = evidence
         return evidence
 
-    def payload(self, held, expected, *, released=False):
+    def payload_at_destination(self,held,expected,destination):
+        """Release-time object/support evidence from one current RGB-D frame."""
+        obs=destination.observation
+        if not -.02<=self.clock()-obs.timestamp_s<=.35:raise PlaceError('stale_observation')
+        return self.payload(held,expected,observation=obs)
+
+    def payload(self, held, expected, *, released=False, observation=None):
         # Wrist first during alignment. After release, external vision is needed
         # to establish independence from the moving wrist, not a fixed image box.
-        cameras = [self.scene] if released else [self.wrist,self.scene]
+        cameras = [self.scene] if released or observation is not None else [self.wrist,self.scene]
         failures = []
         for camera in cameras:
             if camera is None:
                 continue
             try:
-                obs = self.capture(camera)
+                obs = observation if observation is not None else self.capture(camera)
                 points, rows, cols = scene_cloud(obs)
                 radius = np.linalg.norm(held.half_extents_m) + .025
                 chosen = ((np.linalg.norm(points-expected[:3,3],axis=1)<radius)

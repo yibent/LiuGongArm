@@ -69,9 +69,19 @@ class GeneralPlaceNode:
                 # tilt, instead of selecting a barely-fitting initial footprint.
                 reserved_radius = (np.linalg.norm(held.half_extents_m[:2])
                     + held.half_extents_m[2]*np.sin(np.deg2rad(cfg.max_object_tilt_deg)))
-                xy = select_site(destination, np.array([reserved_radius,reserved_radius,held.half_extents_m[2]]),
-                                 cfg.boundary_margin_m+held.uncertainty_m)
-                metrics['reserved_footprint_radius_m']=float(reserved_radius)
+                try:
+                    xy = select_site(destination, np.array([reserved_radius,reserved_radius,held.half_extents_m[2]]),
+                                     cfg.boundary_margin_m+held.uncertainty_m)
+                    metrics['footprint_policy']='all_yaw_envelope'
+                except PlaceError as exc:
+                    if exc.code!='no_supported_placement_region':raise
+                    # A destination may fit the actual upright orientation but
+                    # not every possible yaw. Use fresh-footprint feedback in
+                    # that case, without weakening the support/boundary checks.
+                    xy=select_site(destination,np.r_[initial_radius+cfg.xy_tolerance_m,held.half_extents_m[2]],
+                                   cfg.boundary_margin_m+held.uncertainty_m)
+                    metrics['footprint_policy']='observed_orientation_reselect'
+                metrics['preferred_all_yaw_radius_m']=float(reserved_radius)
                 metrics['place_backend']='geometric'
                 if request.relation == "relative":
                     xy=destination.center_base_m[:2].copy()
@@ -109,15 +119,30 @@ class GeneralPlaceNode:
                 xy = destination.center_base_m[:2]+local_xy
                 state = self.motion.robot_state()
                 expected = state.T_base_ee @ held.T_ee_object
-                payload = self.perception.payload(held,expected)
-                fresh(payload.observation)
+                shared_payload=getattr(self.perception,'payload_at_destination',None)
+                payload=(shared_payload(held,expected,destination)
+                         if stage=='descend' and shared_payload is not None
+                         else self.perception.payload(held,expected))
+                if payload.observation is not destination.observation:
+                    fresh(payload.observation)
                 drift = np.linalg.norm(payload.T_base_object[:3,3]-expected[:3,3])
                 if drift > cfg.max_slip_m:
                     raise PlaceError("payload_slipped")
                 corners = transform_points(payload.T_base_object,box_corners(held.half_extents_m))
                 radius = np.max(np.abs(corners[:,:2]-payload.T_base_object[:2,3]),axis=0)
                 if not footprint_supported(destination,xy,radius,cfg.boundary_margin_m+held.uncertainty_m):
-                    raise PlaceError("support_no_longer_valid")
+                    if self.backend is not None or request.relation=='relative':
+                        raise PlaceError("support_no_longer_valid")
+                    xy=select_site(destination,np.r_[radius+cfg.xy_tolerance_m,held.half_extents_m[2]],
+                                   cfg.boundary_margin_m+held.uncertainty_m)
+                    local_xy=xy-destination.center_base_m[:2]
+                    # If a new site is needed after descending, return to the
+                    # clearance stage (vertical lift first) before translating.
+                    stage='align'
+                    metrics['footprint_policy']='observed_orientation_reselect'
+                    metrics['site_reselections']=metrics.get('site_reselections',0)+1
+                    event('place_reselect_supported_site',xy_base_m=xy.tolist())
+                    metrics['target_object_position_m'][:2]=xy.tolist()
                 tilt = np.degrees(np.arccos(np.clip(payload.T_base_object[2,2],-1,1)))
                 if tilt > cfg.max_object_tilt_deg:
                     raise PlaceError("payload_tilted")
@@ -153,28 +178,38 @@ class GeneralPlaceNode:
             event("place_release_check")
             if not self.motion.opening_safe(held,destination):
                 raise PlaceError("opening_or_retreat_infeasible",getattr(self.motion,"last_failure","") or "")
-            # Planning can be slow: acquire both destination and payload again.
-            latest = self.perception.destination(request)
-            fresh(latest.observation)
-            if np.linalg.norm(latest.center_base_m-anchor) > cfg.max_destination_shift_m:
-                raise PlaceError("destination_moved_before_release")
-            expected = self.motion.robot_state().T_base_ee @ held.T_ee_object
-            payload = self.perception.payload(held,expected)
-            fresh(payload.observation)
-            corners = transform_points(payload.T_base_object,box_corners(held.half_extents_m))
-            gap = corners[:,2].min()-latest.support_z_m
-            if (np.linalg.norm(payload.T_base_object[:2,3]-xy)>cfg.xy_tolerance_m
-                    or not cfg.release_gap_m-cfg.release_gap_tolerance_m <= gap <= cfg.release_gap_m+cfg.release_gap_tolerance_m
-                    or np.linalg.norm(payload.T_base_object[:3,3]-expected[:3,3])>cfg.max_slip_m):
-                raise PlaceError("release_pose_changed")
+            # A slow check can be retried only by acquiring new evidence, never
+            # by refreshing its timestamp or skipping geometry/held-state checks.
+            for release_attempt in range(3):
+                latest = self.perception.destination(request)
+                fresh(latest.observation)
+                if np.linalg.norm(latest.center_base_m-anchor) > cfg.max_destination_shift_m:
+                    raise PlaceError("destination_moved_before_release")
+                expected = self.motion.robot_state().T_base_ee @ held.T_ee_object
+                shared_payload=getattr(self.perception,'payload_at_destination',None)
+                payload=(shared_payload(held,expected,latest) if shared_payload is not None
+                         else self.perception.payload(held,expected))
+                if payload.observation is not latest.observation:
+                    fresh(payload.observation)
+                corners = transform_points(payload.T_base_object,box_corners(held.half_extents_m))
+                gap = corners[:,2].min()-latest.support_z_m
+                if (np.linalg.norm(payload.T_base_object[:2,3]-xy)>cfg.xy_tolerance_m
+                        or not cfg.release_gap_m-cfg.release_gap_tolerance_m <= gap <= cfg.release_gap_m+cfg.release_gap_tolerance_m
+                        or np.linalg.norm(payload.T_base_object[:3,3]-expected[:3,3])>cfg.max_slip_m):
+                    raise PlaceError("release_pose_changed")
+                if self.cancelled:
+                    raise PlaceError("cancelled")
+                if not self.motion.opening_safe(held,latest):
+                    raise PlaceError("release_space_changed",getattr(self.motion,"last_failure","") or "")
+                if max(self.clock()-payload.observation.timestamp_s,
+                       self.clock()-latest.observation.timestamp_s) <= cfg.max_age_s:
+                    break
+                event("place_release_reobserve",attempt=release_attempt+1)
+            else:
+                raise PlaceError("release_observation_stale_after_check")
             event("place_open")
             if self.cancelled:
                 raise PlaceError("cancelled")
-            if not self.motion.opening_safe(held,latest):
-                raise PlaceError("release_space_changed")
-            if max(self.clock()-payload.observation.timestamp_s,
-                   self.clock()-latest.observation.timestamp_s) > cfg.max_age_s:
-                raise PlaceError("release_observation_stale_after_check")
             # released means opening may have begun, even if actuator fails.
             released = True
             if not self.gripper.open(cfg.open_width_m,speed_mps=cfg.open_speed_mps):

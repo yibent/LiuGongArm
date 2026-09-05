@@ -57,6 +57,114 @@ class Rig:
 
 
 class FinePlaceTests(unittest.TestCase):
+    def test_payload_flow_is_current_frame_bounded_and_identity_checked(self):
+        from mr_liu.place.payload_mask import Sam2PayloadRefiner
+        r=Rig();seed=np.zeros((80,100),bool);seed[20:40,20:40]=True
+        transport=Mock();transport._request.side_effect=lambda request:{'sequence':request['sequence'],'mask':seed,'segmentation_score':.95}
+        refiner=Sam2PayloadRefiner(transport,track_between_inference=True)
+        refiner.flow=SimpleNamespace(initialize=Mock(),update=Mock(return_value=seed),diagnostic={'flow_reason':'lk_forward_backward'})
+        refiner(r.obs(),seed)
+        for _ in range(3):np.testing.assert_array_equal(refiner(r.obs(),seed),seed)
+        self.assertEqual(transport._request.call_count,1)
+        refiner(r.obs(),seed);self.assertEqual(transport._request.call_count,2)
+        refiner.flow.update.return_value=np.ones(seed.shape,bool)
+        refiner(r.obs(),seed);self.assertEqual(transport._request.call_count,3)
+        refiner.flow.update.return_value=seed;r.t+=3
+        refiner(r.obs(),seed);self.assertEqual(transport._request.call_count,4)
+
+    def test_retreat_proposal_preserves_exact_pose_but_rechecks_safety(self):
+        from scipy.spatial.transform import Rotation
+        pose=np.diag([1.,-1.,-1.,1.])
+        executor=SimpleNamespace(clear_grasp_plan=lambda:None,robot_state=lambda:SimpleNamespace(T_base_ee=pose.copy()))
+        motion=IsaacPlaceMotion(executor,SimpleNamespace(state=lambda:SimpleNamespace(width_m=.03)))
+        motion._points=Mock(return_value=np.empty((0,3)));motion._safe=Mock(return_value=True)
+        self.assertTrue(motion.opening_safe(Rig().held,None));target=motion.retreat_target()
+        pose[:3,:3]=Rotation.from_euler('z',.02,degrees=True).as_matrix()@pose[:3,:3]
+        pose[0,3]+=.00002
+        self.assertTrue(motion.opening_safe(Rig().held,None))
+        np.testing.assert_array_equal(motion._safe.call_args.args[0],target)
+        self.assertEqual(motion._safe.call_count,2)
+
+    def test_release_can_share_destination_frame_without_duplicate_rejection(self):
+        r=Rig();calls=[]
+        def shared(held,expected,destination):
+            calls.append(destination.observation.sequence)
+            return PayloadEvidence(destination.observation,expected,held.reference_points_object,.001)
+        r.payload_at_destination=shared
+        result=r.node().execute(PlaceRequest('region'),r.held)
+        self.assertTrue(result.success,result);self.assertGreater(len(calls),0)
+
+    def test_reselect_after_descent_lifts_before_lateral_motion(self):
+        r=Rig();changed=[False];first=[];move=r.move_checked
+        def supported(*a,**k):
+            if not changed[0] and r.pose[2,3]<1.055:
+                changed[0]=True;return False
+            return True
+        def moving(goal,*a,**k):
+            if changed[0] and not first:first.append(goal[:3,3]-r.pose[:3,3])
+            return move(goal,*a,**k)
+        r.move_checked=moving
+        with patch('mr_liu.place.node.footprint_supported',side_effect=supported), \
+             patch('mr_liu.place.node.select_site',side_effect=[np.array([.03,0]),np.array([.05,0])]):
+            result=r.node().execute(PlaceRequest('region'),r.held)
+        self.assertTrue(result.success,result)
+        np.testing.assert_allclose(first[0][:2],[0,0]);self.assertGreater(first[0][2],0)
+        self.assertEqual(result.metrics['site_reselections'],1)
+
+    def test_partial_region_can_use_observed_orientation_with_full_margin(self):
+        r=Rig()
+        from mr_liu.place.geometry import select_site as actual
+        calls=[0]
+        def choose(e,half,margin):
+            calls[0]+=1
+            if calls[0]==1:raise PlaceError('no_supported_placement_region')
+            self.assertAlmostEqual(margin,.013)
+            return actual(e,half,margin)
+        with patch('mr_liu.place.node.select_site',side_effect=choose):
+            result=r.node().execute(PlaceRequest('region'),r.held)
+        self.assertTrue(result.success,result)
+        self.assertEqual(result.metrics['footprint_policy'],'observed_orientation_reselect')
+
+    def test_release_reobserves_after_slow_check_but_never_opens_stale(self):
+        r=Rig();original=r.opening_safe;calls=[0]
+        def delayed(*a):
+            calls[0]+=1;ok=original(*a)
+            if calls[0]==2:r.t+=.4
+            return ok
+        r.opening_safe=delayed
+        result=r.node().execute(PlaceRequest('region'),r.held)
+        self.assertTrue(result.success,result);self.assertEqual(calls[0],3)
+        r=Rig();original=r.opening_safe
+        def always_slow(*a):
+            ok=original(*a);r.t+=.4;return ok
+        r.opening_safe=always_slow
+        result=r.node().execute(PlaceRequest('region'),r.held)
+        self.assertFalse(r.opened)
+        self.assertEqual(result.failure,'release_observation_stale_after_check')
+
+    def test_slow_preflight_reobserves_without_moving_on_stale_depth(self):
+        now=[1.]
+        def evidence():return SimpleNamespace(observation=SimpleNamespace(timestamp_s=now[0]),center_base_m=np.zeros(3))
+        executor=SimpleNamespace(clear_grasp_plan=lambda:None,move_to=Mock(return_value=True))
+        refresh=Mock(side_effect=evidence)
+        motion=IsaacPlaceMotion(executor,None,refresh_destination=refresh)
+        checks=[0]
+        def safe(*a,**k):
+            checks[0]+=1
+            now[0]+=.4 if checks[0]==2 else .01
+            return True
+        motion._safe=Mock(side_effect=safe)
+        with patch('mr_liu.place.isaac_motion.time.monotonic',side_effect=lambda:now[0]):
+            self.assertTrue(motion.move_checked(np.eye(4),Rig().held,evidence()))
+        self.assertEqual(refresh.call_count,2);executor.move_to.assert_called_once()
+        executor.move_to.reset_mock();refresh.reset_mock()
+        def always_slow(*a,**k):now[0]+=.4;return True
+        motion._safe.side_effect=always_slow
+        with patch('mr_liu.place.isaac_motion.time.monotonic',side_effect=lambda:now[0]):
+            self.assertFalse(motion.move_checked(np.eye(4),Rig().held,evidence()))
+        self.assertEqual(refresh.call_count,3);executor.move_to.assert_not_called()
+        self.assertEqual(motion.last_failure,'scene_stale_after_plan')
+
     def test_collision_point_cache_requires_same_snapshot_and_robot_pose(self):
         pose=np.eye(4);pose[2,3]=1.1
         executor=SimpleNamespace(clear_grasp_plan=lambda:None,robot_state=lambda:SimpleNamespace(T_base_ee=pose.copy()))
@@ -187,7 +295,7 @@ class FinePlaceTests(unittest.TestCase):
         inspector=SimpleNamespace(in_self_collision=Mock(return_value=False),in_collision_with_obstacle=Mock(return_value=False))
         executor=SimpleNamespace(_plan=lambda target:plan,_arm_values=lambda getter:np.zeros(2),
             articulation=SimpleNamespace(get_dof_positions=lambda:np.zeros(2)),_collision_inspector=inspector,
-            controller=SimpleNamespace(world_binding=SimpleNamespace(get_world_interface=lambda:
+            controller=SimpleNamespace(synchronize_world=Mock(),world_binding=SimpleNamespace(get_world_interface=lambda:
                 SimpleNamespace(get_world_to_robot_base_transform=lambda:base))),
             _world_ee_pose_from_joints=Mock(return_value=np.eye(4)))
         finger=SimpleNamespace(path_collision_count=Mock(return_value=0))
@@ -198,6 +306,7 @@ class FinePlaceTests(unittest.TestCase):
         self.assertEqual(inspector.in_self_collision.call_count,6)
         self.assertEqual(inspector.in_collision_with_obstacle.call_count,6)
         self.assertEqual(finger.path_collision_count.call_count,6)
+        self.assertEqual(executor.controller.synchronize_world.call_count,2)
         base[0][0]=.001
         self.assertTrue(check());self.assertEqual(executor._world_ee_pose_from_joints.call_count,2*calls)
 

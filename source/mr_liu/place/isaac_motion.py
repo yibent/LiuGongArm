@@ -28,7 +28,9 @@ class HeldSweep:
         self.contact_uncertainty_m=contact_uncertainty_m
 
     def _contact_depth(self,points,pose):
-        local=transform_points(invert_transform(pose),points)
+        # pose is validated FK; direct rigid inverse avoids repeatedly running
+        # transform validation for every point subset at every path sample.
+        local=(points-pose[:3,3])@pose[:3,:3]
         depths=[np.min(half-np.abs(local-center),axis=1)
                 for center,half in FingerGeometry(open_width_m=self.width).boxes()]
         return np.maximum.reduce(depths)
@@ -53,7 +55,7 @@ class HeldSweep:
                                        &(initial<=self.contact_uncertainty_m))
         if self._last_pose is not None and np.array_equal(pose,self._last_pose):
             return self._last_count
-        widths = np.linspace(self.width,.075,12) if self.opening else [self.width]
+        widths = np.unique(np.linspace(self.width,.075,12)) if self.opening else [self.width]
         # Exact conservative broad phase: each sphere contains its entire box,
         # including the original margin. Keep the unchanged narrow-phase test.
         centers,radii=[],[]
@@ -73,9 +75,17 @@ class HeldSweep:
                       & (depth<=self._contact_initial[indices]+.0002)&(depth<=self.contact_uncertainty_m))
             indices=indices[~escaping]
         nearby=points[indices]
-        count = max(FingerGeometry(open_width_m=float(w)).collision_count(nearby,pose) for w in widths)
+        local=(nearby-pose[:3,3])@pose[:3,:3]
+        count=0
+        for width in widths:
+            finger=FingerGeometry(open_width_m=float(width))
+            occupied=np.zeros(len(local),bool)
+            for center,half in finger.boxes():
+                occupied |= np.all(np.abs(local-center)<half+finger.margin_m,axis=1)
+            count=max(count,int(occupied.sum()))
         if self.held is not None:
-            local = transform_points(invert_transform(pose @ self.held.T_ee_object),nearby)
+            object_pose=pose@self.held.T_ee_object
+            local = (nearby-object_pose[:3,3])@object_pose[:3,:3]
             count += int(np.all(np.abs(local)<self.held.half_extents_m+.001,axis=1).sum())
         self._last_pose=pose.copy();self._last_count=count
         return count
@@ -250,17 +260,22 @@ class IsaacPlaceMotion:
         offsets=[np.zeros(2)]
         offsets += [v*distance for distance in (.003,.006,.010,.015,.020)
                     for v in directions if np.dot(v,away)>=0]
+        candidates=[]
         if self._release_retreat is not None:
-            # Recheck the previous winner first on fresh depth. It is only a
-            # proposal cache; neither old geometry nor old safety is reused.
-            delta=self._release_retreat[:3,3]-pose[:3,3]-direction*.045
-            offsets.insert(0,pose[:3,:2].T@delta)
+            # Preserve the exact target pose, not just its position. Rebuilding
+            # it from tiny measured wrist jitter invalidates every FK sample.
+            # Fresh depth/world tests and the actual-q -> cached-path join are
+            # still checked; cached safety is never reused.
+            candidates.append((self._release_retreat.copy(),None))
         for offset in offsets:
             retreat = pose.copy()
             retreat[:3,3] += direction*.045 + pose[:3,:2]@offset
+            candidates.append((retreat,offset))
+        for retreat,offset in candidates:
             ok=self._safe(retreat,None,evidence,width_override=.075,contact_payload=held)
-            self.trace({'phase':'place_retreat_candidate','lateral_escape_m':float(np.linalg.norm(offset)),
-                        'tool_xy_escape_m':offset.tolist(),
+            self.trace({'phase':'place_retreat_candidate','lateral_escape_m':None if offset is None else float(np.linalg.norm(offset)),
+                        'tool_xy_escape_m':None if offset is None else offset.tolist(),
+                        'cached_pose_proposal':offset is None,
                         'safe':ok,'reason':self.last_failure})
             if ok:
                 self.release_contact=(held,pose.copy(),pose@held.T_ee_object)
@@ -290,13 +305,19 @@ class IsaacPlaceMotion:
         if self.refresh_destination is None:
             self.last_failure = "missing_fresh_observation_provider"
             return False
-        fresh = self.refresh_destination()
-        if np.linalg.norm(fresh.center_base_m-evidence.center_base_m)>.008:
-            self.last_failure = "destination_changed_during_plan"
-            return False
-        if not self._safe(goal,held,fresh,opening,contact_payload=contact_payload):
-            return False
-        if time.monotonic()-fresh.observation.timestamp_s > .35:
+        for attempt in range(3):
+            fresh = self.refresh_destination()
+            if np.linalg.norm(fresh.center_base_m-evidence.center_base_m)>.008:
+                self.last_failure = "destination_changed_during_plan"
+                return False
+            if not self._safe(goal,held,fresh,opening,contact_payload=contact_payload):
+                return False
+            if time.monotonic()-fresh.observation.timestamp_s <= .35:
+                break
+            # Timing failure alone permits bounded reobservation, never motion
+            # on stale depth or a retry of a rejected collision/changed target.
+            self.trace({'phase':'place_reobserve_after_slow_check','attempt':attempt+1})
+        else:
             self.last_failure = "scene_stale_after_plan"
             return False
         # A bounded step only. Scene/world/self collision checks remain active.

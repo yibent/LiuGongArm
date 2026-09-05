@@ -83,7 +83,8 @@ def _run_place_after_grasp(*, result, initial_observation, initial_mask, target,
     if initial_mask is None or initial_mask.sum()<80:
         raise PlaceError("initial_payload_geometry_unavailable")
     from mr_liu.grasp.backends.graspgenx import ZmqGraspGenXTransport
-    refiner=Sam2PayloadRefiner(ZmqGraspGenXTransport('127.0.0.1',graspgenx_port,60000),trace=event)
+    refiner=Sam2PayloadRefiner(ZmqGraspGenXTransport('127.0.0.1',graspgenx_port,60000),trace=event,
+                              track_between_inference=True)
     # Defer SAM2 until the first path preflight, after Florence has evicted its
     # weights. On a 16 GB host simultaneous loading can exhaust Windows commit.
     # A cold first check never authorizes motion: move_checked reacquires and

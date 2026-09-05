@@ -292,6 +292,8 @@ class IsaacCumotionExecutor:
         started=time.monotonic()
         profile={"plan_s":0.,"world_s":0.,"surface_s":0.,"samples":0}
         self.last_observation_path_profile=profile
+        # A cached path may be reused, never an old world collision snapshot.
+        self.controller.synchronize_world()
         plan = self._plan(target)
         profile["plan_s"]=time.monotonic()-started
         if plan is None:
