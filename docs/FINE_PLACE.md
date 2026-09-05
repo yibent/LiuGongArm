@@ -55,13 +55,13 @@ result = skill.execute(request, held_object)
 
 `verified_at_s` 使用与节点一致的单调时钟秒数，进入节点时年龄不得超过 3 秒；每个相机观测不得超过 350 ms 且序号必须递增。`uncertainty_m` 是米制几何误差余量，当前允许 (0,5 mm]。稳定底面由上游基于可观测支撑几何/已验证物体模型提供，初期 demo 的方块声明是测试夹具先验，不能推广到未观察到物体底面的真机输入。
 
-`PlaceRequest.relation` 支持 `on / inside / relative`。relative 要给 `offset_base_m=(dx,dy)`，单位米，采用已标定 base 坐标系、参照物观测中心到放置物中心的距离；不是腕部图像左右，也不是物体边缘间距。上游负责解释用户方向并处理歧义。relative 若指定点不满足支撑条件，不能偷偷换到旁边。
+`PlaceRequest.relation` 支持 `on / inside / relative`。relative 要给 `offset_base_m=(dx,dy)`，单位米，表示沿已标定 base X、Y 轴的带符号位移分量：`放置中心_xy = 参照物观测中心_xy + (dx,dy)`；不是腕部图像左右，也不是物体边缘间距。上游负责解释用户方向并处理歧义。relative 若指定点不满足支撑条件，不能偷偷换到旁边。
 
 `PlacePerception`：`destination(request)` 返回同帧几何/目的地区域；`payload(held, expected, released=...)` 必须返回实际视觉证据，而不是原样返回预测值。`PlaceMotion`：实现 `robot_state / move_checked / opening_safe / stop`，需要检查整条实际路径、持物几何、松爪和退出空间。纯 IK 成功不符合这个接口。协议见 `source/mr_liu/place/contracts.py`。
 
 失败前未开爪时保持夹持，不自动回家/重新抓取。`released=true` 表示开爪可能已开始，包括开爪执行失败；不能据此认定物体仍在手里。只有 `success=true, verified=true` 才表示本次视觉验收通过。`dry_run` 返回 phase=planned、success=false，不授予运动许可。cancel 是锁存状态；取消后重试创建新节点，重新确认持物与观测。
 
-释放后失败时，上游应将物体标记为状态未确认，重新观察物体、夹爪和环境；不能携带旧 HeldObject 直接重试。当前成功结果同时具有 released=true 和 verified=true，失败不返回 verified=true。视觉验收默认至少 5 帧、跨越至少 0.35 秒，平移漂移不超过 4 mm，物体中心 XY 距离目标不超过 10 mm，底面到支撑面的误差不超过 6 mm；这不等价于六维姿态精度验收。
+释放后失败时，上游应将物体标记为状态未确认，重新观察物体、夹爪和环境；不能携带旧 HeldObject 直接重试。当前成功结果同时具有 released=true 和 verified=true，失败不返回 verified=true。视觉验收默认至少 5 帧、跨越至少 0.35 秒，窗口中各帧物体中心相对最后一帧的三维距离最大值不超过 4 mm，物体中心 XY 距离目标不超过 10 mm，底面到支撑面的误差不超过 6 mm；这不等价于六维姿态精度验收。
 
 ## 当前限制，不能隐藏
 
@@ -81,6 +81,23 @@ result = skill.execute(request, held_object)
 
 新增测试覆盖：闭环状态转换、多帧验证、观测过期/重复、目的地移动、持物滑移、无支撑/深度缺失、开爪碰撞、开爪执行失败、松爪后位置错误、取消与参数校验。它们使用可控测试适配器，不是物理抓放成功率。
 
-2026-09-05 当前测试结果：新增 23 项、全套 265 项通过，日志在本地 `output/fine_place/unit_tests.log`。目前尚无成功放置验收记录；03 已能建立场景，但旧固定关节的抓取起点在合并后的机器人根位姿下未看到目标，未闭爪。启动器现改用已通过的标签粗接近进行前置抓取。
+2026-09-05：全套 273 项测试通过，其中放置专项 31 项。日志在本地 `output/fine_place/unit_tests.log`。尚无成功放置验收记录；不能把下面的逐轮修复统计成成功率。
 
-初始 Isaac 调试：01 因非均匀缩放碰撞盒被 cuMotion 拒绝；02 因网格缺少显式 scale 属性被 SDK 拒绝。均发生在建立规划器时，没有执行放置。修复使用尺寸已烘焙的网格与显式单位缩放；保留碰撞体及失败记录。
+| 实际运行目录 | 观察到的结果 | 修正 |
+|---|---|---|
+| `01_region` / `02_region` | cuMotion 建模失败，未抓放 | 网格烘焙尺寸、显式单位 scale，保留碰撞体 |
+| `03_region` | 旧固定抓取起点看不到目标，未闭爪 | 使用原标签粗接近流程准备真实持物 |
+| `04_region` | 抓取成功，放置持物交接失败 | 已转换到 EE 的抓取位姿不能再次套用夹爪偏移 |
+| `05_region` | Florence 识别/分割和支撑估计通过；等待时物体掉落 | 旧 `stop()` 把夹爪堵转位置重新设为目标，消除预紧力；现在只停止臂关节，保持独立夹爪目标 |
+| `06_hold_preload` | 物体保持悬空；首步支撑判定失败 | 选位置和执行检查统一使用旋转后的物体占地 |
+| `07_rotated_footprint` / `08_payload_mask` | 可达 IK 通过，观测碰撞拒绝，未释放 | 分析发现初始单视角参考云/单一色度会遗漏持物新可见面或背光面；正在验证空间与实例约束下的明暗稳健关联 |
+| `09_shading` | 色相关联仍留下混合边缘像素，未移动或释放 | 色度/色相联合关联；只允许 2 像素、5 mm 三维邻接的边缘关联，保护支撑面；这是需要真机标定的误差模型，不是任意邻近空间都可排除 |
+| `10_registered_edges` | 前置抓取 IK/路径筛选耗尽 102 s，未闭爪，未进入放置 | 保留为端到端失败；不计入放置成功或修改抓取安全条件 |
+
+Florence 在这些图像中确实找到了蓝色区域和多边形，但 detailed caption 曾把场景描述成“3D printer”。所以 caption 只进入调试报告，不用于推断容器可放性、稳定底面或开爪动作。几何与运动安全不能交给图片描述。
+
+RGB-D 支撑几何可以无 GPU 重放（不启动 Isaac 渲染或 Florence）：
+
+```powershell
+& 'D:\isaac\env_isaacsim60\python.exe' scripts/replay_fine_place_geometry.py output/fine_place/06_hold_preload
+```

@@ -479,8 +479,12 @@ class IsaacCumotionExecutor:
 
     def stop(self) -> None:
         self._stopped = True
-        positions = self.articulation.get_dof_positions()
-        self.articulation.set_dof_position_targets(positions)
+        # Stop the arm, not the independent force-limited gripper. Replacing a
+        # stalled jaw's commanded closing target by its measured position drops
+        # the grip preload and can release the object during the next observation.
+        # Gripper cancellation belongs to the gripper controller, not arm motion.
+        positions = self._arm_values(self.articulation.get_dof_positions)
+        self.articulation.set_dof_position_targets(positions,dof_indices=self.arm_dof_indices)
 
     def _plan(self, T_base_ee: np.ndarray):
         key = self._pose_key(T_base_ee)

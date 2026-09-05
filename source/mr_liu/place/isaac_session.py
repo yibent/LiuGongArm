@@ -66,6 +66,7 @@ def run_place_after_grasp(*, result, initial_observation, initial_mask, target, 
         cv2.imwrite(str(output/(tag+".png")),obs.rgb[:,:,::-1])
         np.savez_compressed(output/(tag+".npz"),rgb=obs.rgb,depth_m=obs.depth_m,
             K=obs.intrinsics.matrix,T_base_camera=obs.T_base_camera,
+            robot_self_mask=obs.metadata.get("robot_self_mask"),
             T_base_ee=obs.T_base_ee,T_ee_camera=obs.T_ee_camera,sequence=obs.sequence,timestamp_s=obs.timestamp_s)
     if not result.success or result.selected_grasp is None:
         raise PlaceError("grasp_handoff_unverified")
@@ -94,11 +95,16 @@ def run_place_after_grasp(*, result, initial_observation, initial_mask, target, 
     anchor=np.median(color,axis=0)
     ref=original-center
     pose=np.eye(4)
+    pose[:3,3]=center
     ee=executor.robot_state().T_base_ee
-    grasp_ee=executor.ee_pose_for_grasp(result.selected_grasp.T_base_grasp,result.selected_grasp.width_m)
-    pose[:3,3]=center+ee[:3,3]-grasp_ee[:3,3]
+    # SelectedGrasp has already been mapped to the calibrated physical EE by
+    # selection.py. Applying ee_pose_for_grasp again doubles the jaw offset.
+    grasp_ee=result.selected_grasp.T_base_grasp
+    pose=ee @ invert_transform(grasp_ee) @ pose
     held=HeldObject(target.object_id,invert_transform(ee)@pose,half,ref,anchor,time.monotonic(),stable_base_asserted)
     perception=RGBDPlacePerception(scene,camera,FlorencePlaceLocator(port),trace=event,recorder=capture)
+    event({"phase":"place_bootstrap","expected_pose":pose.tolist(),"half_extents_m":half.tolist(),
+           "source_center_m":center.tolist(),"support_z_m":support})
     measured=perception.payload(held,pose)
     held=replace(held,T_ee_object=invert_transform(executor.robot_state().T_base_ee)@measured.T_base_object,
                  verified_at_s=time.monotonic())

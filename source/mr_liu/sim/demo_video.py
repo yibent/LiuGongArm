@@ -21,6 +21,13 @@ PHASES = {
     "verify_close": "检查是否夹住", "lift": "抬升", "verify_lift": "视觉 + 夹爪验证",
     "recovery": "失败恢复：检查空手 / 退让 / 重定位",
     "succeeded": "抓取成功", "failed": "抓取失败 / 安全停止",
+    "place_bootstrap": "抓取 → 核对物体与夹爪的相对位置",
+    "place_handoff": "持物核验 / 交接精细放置", "place_find": "Florence 定位放置区域 + RGB-D",
+    "place_observe": "新 RGB-D 核对目的地与支撑面", "place_align": "持物小步对齐目标区域",
+    "place_descend": "闭环下降 / 检查物体底面高度", "place_release_check": "检查开爪与退出空间（尚未释放）",
+    "place_open": "缓慢松爪", "place_retreat": "退出 / 检查物体是否留在原位",
+    "place_verify": "多帧验证放置位置与稳定性", "place_succeeded": "放置视觉验证通过",
+    "place_failed": "放置未完成 / 安全停止", "place_path_rejected": "持物路径检查未通过",
 }
 
 

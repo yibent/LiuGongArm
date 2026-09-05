@@ -5,14 +5,16 @@ import unittest
 from dataclasses import replace
 from itertools import product
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock,patch
+import ast
 import numpy as np
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"source"))
 from mr_liu.place.contracts import *
 from mr_liu.place.geometry import footprint_supported, select_site, support_evidence, polygon_mask
 from mr_liu.place.node import GeneralPlaceNode
-from mr_liu.place.isaac_motion import HeldSweep
+from mr_liu.place.isaac_motion import HeldSweep,IsaacPlaceMotion
+from mr_liu.place.perception import RGBDPlacePerception
 from mr_liu.grasp.contracts import CameraIntrinsics, RGBDObservation, GripperState
 
 
@@ -52,6 +54,51 @@ class Rig:
 
 
 class FinePlaceTests(unittest.TestCase):
+    def test_payload_mask_keeps_support_and_depth_separated_obstacle(self):
+        rgb=np.zeros((16,16,3),np.uint8);rgb[:]=[20,40,200]
+        rgb[5:10,5:10]=[180,80,60]
+        rows,cols=np.indices((16,16));rows=rows.ravel();cols=cols.ravel()
+        points=np.c_[(cols-8)*.001,(rows-8)*.001,np.ones(256)]
+        own=(rows>=5)&(rows<10)&(cols>=5)&(cols<10)
+        points[own,2]=1.10
+        edge=(rows==8)&(cols==10);points[edge,2]=1.10
+        obstacle=(rows==8)&(cols==11);points[obstacle,2]=1.108
+        pose=np.eye(4);pose[2,3]=1.10
+        held=SimpleNamespace(T_ee_object=np.eye(4),half_extents_m=np.array([.02]*3),
+                             chromaticity=np.array([180,80,60])/320)
+        executor=SimpleNamespace(clear_grasp_plan=lambda:None,robot_state=lambda:SimpleNamespace(T_base_ee=pose))
+        motion=IsaacPlaceMotion(executor,None)
+        evidence=SimpleNamespace(observation=SimpleNamespace(rgb=rgb,depth_m=np.ones((16,16))),support_z_m=1.)
+        with patch('mr_liu.place.isaac_motion.scene_cloud',return_value=(points,rows,cols)):
+            result=motion._points(evidence,held)
+        self.assertFalse(np.any(np.all(result==points[edge][0],axis=1)))
+        self.assertTrue(np.any(np.all(result==points[obstacle][0],axis=1)))
+        self.assertEqual((result[:,2]==1.).sum(),229)
+
+    def test_two_held_appearance_instances_are_not_excluded_as_one(self):
+        rgb=np.zeros((16,16,3),np.uint8);rgb[:]=[20,40,200]
+        rgb[2:6,2:6]=[180,80,60];rgb[10:14,10:14]=[180,80,60]
+        rows,cols=np.indices((16,16));rows=rows.ravel();cols=cols.ravel()
+        points=np.c_[(cols-8)*.001,(rows-8)*.001,np.full(256,1.1)]
+        pose=np.eye(4);pose[2,3]=1.1
+        executor=SimpleNamespace(clear_grasp_plan=lambda:None,robot_state=lambda:SimpleNamespace(T_base_ee=pose))
+        held=SimpleNamespace(T_ee_object=np.eye(4),half_extents_m=np.array([.02]*3),chromaticity=np.array([180,80,60])/320)
+        evidence=SimpleNamespace(observation=SimpleNamespace(rgb=rgb,depth_m=np.ones((16,16))),support_z_m=1.)
+        with patch('mr_liu.place.isaac_motion.scene_cloud',return_value=(points,rows,cols)):
+            with self.assertRaisesRegex(PlaceError,'held_collision_mask_uncertain'):
+                IsaacPlaceMotion(executor,None)._points(evidence,held)
+
+    def test_appearance_handles_shading_without_accepting_other_hues(self):
+        from mr_liu.place.appearance import appearance_matches
+        rgb=np.array([[180,80,60],[90,24,10],[220,190,20],[20,50,220],[5,2,1],[240,240,240]])
+        self.assertEqual(appearance_matches(rgb,np.array([.55,.25,.20])).tolist(),
+                         [True,True,False,False,False,False])
+
+    def test_neutral_appearance_does_not_use_undefined_hue(self):
+        from mr_liu.place.appearance import appearance_matches
+        self.assertEqual(appearance_matches(np.array([[80,80,80],[200,30,10]]),
+                         np.array([1/3]*3)).tolist(),[True,False])
+
     def test_closed_loop_release_retreat_and_multiframe_verification(self):
         rig=Rig(); result=rig.node().execute(PlaceRequest("tray"),rig.held)
         self.assertTrue(result.success,result)
@@ -146,6 +193,46 @@ class FinePlaceTests(unittest.TestCase):
         f.segment_box(np.zeros((20,30,3),np.uint8),[0,0,30,20])
         self.assertEqual(f._run_task.call_args.args[1],"<REGION_TO_SEGMENTATION>")
         self.assertEqual(f._run_task.call_args.args[2],"<loc_0><loc_0><loc_999><loc_999>")
+    def test_slow_florence_result_requires_new_frame(self):
+        r=Rig();texture=np.random.default_rng(3).integers(0,255,(80,100,3),dtype=np.uint8)
+        camera=Mock()
+        camera.capture.side_effect=lambda t:replace(r.obs(),rgb=texture)
+        locator=Mock()
+        locator.locate.return_value={"boxes":[{"xyxy":[10,10,90,70],"segmentation":{
+            "<REGION_TO_SEGMENTATION>":{"polygons":[[[10,10,90,10,90,70,10,70]]]}}}]}
+        def slow(*a):r.t+=12;return locator.locate.return_value
+        locator.locate.side_effect=slow
+        p=RGBDPlacePerception(camera,None,locator,clock=lambda:r.t)
+        e=p.destination(PlaceRequest("region"))
+        self.assertEqual(camera.capture.call_count,2)
+        self.assertEqual(e.observation.sequence,2)
+        self.assertAlmostEqual(e.observation.timestamp_s,r.t)
+    def test_ambiguous_destinations_stop_before_tracking(self):
+        r=Rig();camera=Mock();camera.capture.side_effect=lambda t:r.obs()
+        locator=Mock();locator.locate.return_value={"boxes":[{},{}]}
+        p=RGBDPlacePerception(camera,None,locator,clock=lambda:r.t)
+        with self.assertRaisesRegex(PlaceError,"ambiguous_destination"):
+            p.destination(PlaceRequest("tray"))
+    def test_negative_bbox_does_not_slice_to_end_of_image(self):
+        item={"xyxy":[-100,-100,-1,-1],"segmentation":{"<REGION_TO_SEGMENTATION>":{
+            "polygons":[[[0,0,90,0,90,70,0,70]]]}}}
+        with self.assertRaisesRegex(PlaceError,"invalid_destination_box"):
+            polygon_mask(item,(80,100))
+    def test_arm_stop_preserves_force_limited_gripper_target(self):
+        # Exercise the actual adapter method without importing Isaac/Kit in a
+        # CPU unit test. C++ SDK construction is covered by the physical demo.
+        path=Path(__file__).resolve().parents[1]/"source/mr_liu/grasp/adapters/isaac_motion.py"
+        tree=ast.parse(path.read_text(encoding="utf-8"))
+        cls=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=="IsaacCumotionExecutor")
+        method=next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name=="stop")
+        module=ast.Module(body=[method],type_ignores=[])
+        namespace={};exec(compile(ast.fix_missing_locations(module),str(path),"exec"),namespace)
+        adapter=Mock();adapter.arm_dof_indices=[0,1,2,3,4]
+        adapter._arm_values.return_value=np.array([.1,.2,.3,.4,.5])
+        namespace["stop"](adapter)
+        call=adapter.articulation.set_dof_position_targets.call_args
+        self.assertEqual(call.kwargs["dof_indices"],[0,1,2,3,4])
+        self.assertEqual(len(call.args[0]),5)
 
 
 if __name__ == "__main__": unittest.main()

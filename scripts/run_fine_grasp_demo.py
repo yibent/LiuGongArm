@@ -681,6 +681,17 @@ def main() -> int:
         # Truth remains independent evaluation instrumentation, not control input.
         placement_report={"result":_jsonable(place_result),"actual_final_object_position_m":_pose(target_xform),
                           "actual_final_ee":arm.T_base_ee().tolist(),"gripper":_jsonable(gripper.state())}
+        from mr_liu.place.contracts import PlaceSettings
+        placement_report["provenance"]={
+            "git_commit":report["provenance"]["git_commit"],
+            "place_source_sha256":hashlib.sha256(b"".join(
+                p.relative_to(ROOT).as_posix().encode()+p.read_bytes()
+                for p in sorted((ROOT/"source/mr_liu/place").rglob("*.py")))).hexdigest(),
+            "grasp_source_sha256":report["provenance"]["source_sha256"],
+            "destination_label":ARGS.place_label,"relation":ARGS.place_relation,
+            "settings":_jsonable(PlaceSettings()),
+            "simulation_truth_is_control_input":False,
+        }
         (OUTPUT/"place_report.json").write_text(json.dumps(placement_report,indent=2),encoding="utf-8")
         print("[FinePlace] RESULT "+json.dumps(_jsonable(place_result)),flush=True)
     if VIDEO is not None:

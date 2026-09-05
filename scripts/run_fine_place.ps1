@@ -49,6 +49,7 @@ try {
         -WorkingDirectory $placeRoot -WindowStyle Hidden -PassThru `
         -RedirectStandardOutput (Join-Path $Output 'console.log') `
         -RedirectStandardError (Join-Path $Output 'console_stderr.log')
+    $null=$placeDemo.Handle
     Write-Host "[BusAgent] FinePlace logs: $Output"
     while (-not $placeDemo.WaitForExit(1000)) {
         $placeModelIds+=@(Get-CimInstance Win32_Process | Where-Object {
@@ -56,6 +57,15 @@ try {
         } | Select-Object -ExpandProperty ProcessId)
     }
     $placeExit=$placeDemo.ExitCode
+    # PowerShell/.NET may lose a reaped child's exit status. A successful grasp
+    # report alone is never a successful place command.
+    $placeReportPath=Join-Path $Output 'place_report.json'
+    if (-not (Test-Path -LiteralPath $placeReportPath)) { $placeExit=2 }
+    else {
+        $placeReport=Get-Content -LiteralPath $placeReportPath -Raw | ConvertFrom-Json
+        if (-not ($placeReport.result.success -and $placeReport.result.released -and $placeReport.result.verified)) { $placeExit=2 }
+        elseif ($null -eq $placeExit) { $placeExit=1 }
+    }
 } finally {
     foreach ($ownedId in ($placeModelIds | Select-Object -Unique)) {
         $owned=Get-CimInstance Win32_Process -Filter "ProcessId=$ownedId" -ErrorAction SilentlyContinue

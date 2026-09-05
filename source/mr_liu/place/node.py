@@ -60,7 +60,10 @@ class GeneralPlaceNode:
             event("place_find")
             destination = self.perception.destination(request)
             fresh(destination.observation)
-            xy = select_site(destination, held.half_extents_m, cfg.boundary_margin_m+held.uncertainty_m)
+            initial_corners=transform_points(held_pose,box_corners(held.half_extents_m))
+            initial_radius=np.max(np.abs(initial_corners[:,:2]-held_pose[:2,3]),axis=0)
+            xy = select_site(destination, np.r_[initial_radius,held.half_extents_m[2]],
+                             cfg.boundary_margin_m+held.uncertainty_m)
             if request.relation == "relative":
                 xy=destination.center_base_m[:2].copy()
                 if not footprint_supported(destination,xy,held.half_extents_m[:2],cfg.boundary_margin_m+held.uncertainty_m):
@@ -128,7 +131,7 @@ class GeneralPlaceNode:
                 if np.linalg.norm(goal[:3,3]-initial_ee[:3,3]) > cfg.max_fine_travel_m:
                     raise PlaceError("fine_workspace_exceeded")
                 if not self.motion.move_checked(goal,held,destination):
-                    raise PlaceError("held_path_infeasible")
+                    raise PlaceError("held_path_infeasible",getattr(self.motion,"last_failure","") or "")
             if final_payload is None:
                 raise PlaceError("place_servo_timeout")
             self.motion.stop()

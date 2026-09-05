@@ -4,11 +4,13 @@ V1 is restricted to compact payloads in the calibrated fingertip corridor.
 Long tools/full attached-body self-collision are deliberately not advertised.
 """
 import time
+import cv2
 import numpy as np
 from scipy.spatial import cKDTree
 from mr_liu.grasp.contact import FingerGeometry
 from mr_liu.grasp.transforms import invert_transform, transform_points
 from .geometry import box_corners, scene_cloud
+from .appearance import appearance_matches
 
 
 class HeldSweep:
@@ -46,14 +48,37 @@ class IsaacPlaceMotion:
 
     def _points(self, evidence, held):
         points, rows, cols = scene_cloud(evidence.observation)
+        # Full arm/world checks stay with cuMotion. The explicit payload/jaw
+        # volume only needs the local 18 cm neighbourhood of this <=6 mm step.
+        near=np.linalg.norm(points-self.robot_state().T_base_ee[:3,3],axis=1)<.18
+        points,rows,cols=points[near],rows[near],cols[near]
         if held is None:
             return points
         pose = self.robot_state().T_base_ee @ held.T_ee_object
-        reference = transform_points(pose,held.reference_points_object)
-        distance, _ = cKDTree(reference).query(points)
-        colors = evidence.observation.rgb[rows,cols].astype(float)
-        colors /= np.maximum(colors.sum(axis=1,keepdims=True),12)
-        own = (distance < .008) & (np.linalg.norm(colors-held.chromaticity,axis=1)<.13)
+        # A partial reference cloud cannot label newly visible object faces as
+        # obstacles. Associate a unique measured appearance component in the
+        # bounded held-object ROI; never exclude an entire geometric box.
+        local=transform_points(invert_transform(pose),points)
+        candidate=(np.all(np.abs(local)<held.half_extents_m+.012,axis=1)
+                   & appearance_matches(evidence.observation.rgb[rows,cols],held.chromaticity))
+        mask=np.zeros(evidence.observation.depth_m.shape,np.uint8)
+        mask[rows[candidate],cols[candidate]]=1
+        count,labels,stats,_=cv2.connectedComponentsWithStats(mask,8)
+        components=[i for i in range(1,count) if stats[i,cv2.CC_STAT_AREA]>=12]
+        if len(components)!=1:
+            from .contracts import PlaceError
+            raise PlaceError("held_collision_mask_uncertain")
+        own=labels[rows,cols]==components[0]
+        # Registered RGB/depth still has mixed-color edge pixels (anti-aliasing
+        # in Isaac, finite color/depth registration on hardware). Admit only a
+        # two-pixel ring with <=5 mm measured 3D continuity, never missing depth
+        # or the observed support plane. This is bounded association uncertainty.
+        ring=cv2.dilate((labels==components[0]).astype(np.uint8),np.ones((3,3),np.uint8),iterations=2).astype(bool)
+        nearby=cKDTree(points[own]).query(points,k=1)[0]<.005
+        edge=(ring[rows,cols]&nearby
+              & np.all(np.abs(local)<held.half_extents_m+.012,axis=1)
+              & (points[:,2]>evidence.support_z_m+.006))
+        own |= edge
         return points[~own]
 
     def _safe(self, goal, held, evidence, opening=False):
@@ -106,4 +131,7 @@ class IsaacPlaceMotion:
             self.last_failure = "scene_stale_after_plan"
             return False
         # A bounded step only. Scene/world/self collision checks remain active.
-        return self.executor.move_to(goal,speed_scale=.20)
+        ok=self.executor.move_to(goal,speed_scale=.20)
+        if not ok:
+            self.last_failure="checked_motion_endpoint_not_reached"
+        return ok

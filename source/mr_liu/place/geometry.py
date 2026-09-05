@@ -40,6 +40,10 @@ def polygon_mask(item, shape):
     if box.shape != (4,) or not np.isfinite(box).all():
         raise PlaceError("invalid_destination_box")
     x1, y1, x2, y2 = np.rint(box).astype(int)
+    x1,x2=np.clip([x1,x2],0,shape[1])
+    y1,y2=np.clip([y1,y2],0,shape[0])
+    if x2<=x1 or y2<=y1:
+        raise PlaceError("invalid_destination_box")
     roi = np.zeros(shape, np.uint8)
     roi[max(0,y1):min(shape[0],y2), max(0,x1):min(shape[1],x2)] = 1
     mask &= roi
@@ -111,7 +115,7 @@ def footprint_supported(evidence, xy, radius_xy, margin=.010):
 def select_site(evidence, half_extents, margin=.010):
     # A set of measured alternatives, not one hard-coded pixel/scene coordinate.
     center = evidence.center_base_m[:2]
-    offsets = [np.array([0.,0.])] + [np.array(v)*.012 for v in product(range(-2,3),repeat=2) if v != (0,0)]
+    offsets = [np.array([0.,0.])] + [np.array(v)*.004 for v in product(range(-8,9),repeat=2) if v != (0,0)]
     offsets.sort(key=np.linalg.norm)
     for offset in offsets:
         xy = center + offset

@@ -10,6 +10,7 @@ from mr_liu.grasp.transforms import transform_points
 from mr_liu.perception.optical_flow import OpticalFlowTracker
 from .contracts import PlaceError, PayloadEvidence
 from .geometry import polygon_mask, support_evidence, scene_cloud
+from .appearance import appearance_matches
 
 
 class FlorencePlaceLocator:
@@ -112,11 +113,9 @@ class RGBDPlacePerception:
             try:
                 obs = self.capture(camera)
                 points, rows, cols = scene_cloud(obs)
-                color = obs.rgb[rows,cols].astype(float)
-                color /= np.maximum(color.sum(axis=1,keepdims=True),12)
                 radius = np.linalg.norm(held.half_extents_m) + .025
                 chosen = ((np.linalg.norm(points-expected[:3,3],axis=1)<radius)
-                          & (np.linalg.norm(color-held.chromaticity,axis=1)<.13))
+                          & appearance_matches(obs.rgb[rows,cols],held.chromaticity))
                 cloud = points[chosen]
                 if len(cloud) < 32:
                     raise PlaceError("payload_not_visible")
