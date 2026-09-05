@@ -1,0 +1,9 @@
+diff --git a/anyplace/utils/torch_scatter_utils.py b/anyplace/utils/torch_scatter_utils.py
+--- a/anyplace/utils/torch_scatter_utils.py
++++ b/anyplace/utils/torch_scatter_utils.py
+@@ -5,1 +5,0 @@
+-from knn_cuda import KNN
+@@ -107,2 +106,3 @@
+ class Group(nn.Module):
+     def __init__(self, num_group, group_size):
++        from knn_cuda import KNN

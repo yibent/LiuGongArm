@@ -2,6 +2,9 @@
 
 ## BusAgent：精细抓取模块交接入口
 
+新实验线：[AnyPlace 放置 + 原 GraspGenX 抓取](docs/ANYPLACE_PLACEMENT.md)。
+已加入官方权重离线推理入口；尚未接入物理闭环，不能当成完整拿放已通过。
+
 新增开发中的 [Florence + RGB-D 非快环放置](docs/FINE_PLACE.md)：
 `scripts\run_fine_place.ps1 -Destination 'blue square'`。
 独立 FinePlace 状态机与安全测试已加入，实际仿真验收状态见文档；尚未接入 Web place 或真机。
