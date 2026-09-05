@@ -1,0 +1,30 @@
+{
+  "name": "metallic_part",
+  "shape": "cylinder",
+  "dimensions_m": [
+    0.03,
+    0.03,
+    0.04
+  ],
+  "position_m": [
+    0.3230067279966552,
+    -0.20044027745253526,
+    1.07
+  ],
+  "seed": 0,
+  "yaw_deg": -8.07658581699121,
+  "mass_kg": 0.06,
+  "color_rgb": [
+    0.48,
+    0.52,
+    0.56
+  ],
+  "material": "reflective",
+  "fragile": false,
+  "thin": false,
+  "reflective": true,
+  "expected_feasible": true,
+  "mesh_path": null,
+  "light_scale": 1.0,
+  "metadata": {}
+}

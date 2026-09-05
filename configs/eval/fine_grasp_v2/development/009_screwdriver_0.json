@@ -1,0 +1,33 @@
+{
+  "name": "screwdriver",
+  "shape": "screwdriver",
+  "dimensions_m": [
+    0.13,
+    0.022,
+    0.02
+  ],
+  "position_m": [
+    0.3236542090759392,
+    -0.19898867342476032,
+    1.06
+  ],
+  "seed": 0,
+  "yaw_deg": -13.064912201666388,
+  "mass_kg": 0.08,
+  "color_rgb": [
+    0.72,
+    0.12,
+    0.08
+  ],
+  "material": "matte",
+  "fragile": false,
+  "thin": false,
+  "reflective": false,
+  "expected_feasible": true,
+  "mesh_path": null,
+  "light_scale": 1.0,
+  "metadata": {
+    "scenario": "industrial_tool",
+    "preferred_region": "handle"
+  }
+}

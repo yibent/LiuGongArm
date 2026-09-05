@@ -1,0 +1,152 @@
+{
+  "version": 2,
+  "pretraining_holdout_proven": false,
+  "acceptance_gate": {
+    "minimum_feasible_success_rate": 0.8,
+    "maximum_false_successes": 0,
+    "maximum_family_zero_successes": 0,
+    "minimum_attempt_coverage": 0.8
+  },
+  "splits": {
+    "development": [
+      {
+        "path": "development/000_cube_0.json",
+        "sha256": "1ba358e4f48a99a4edb7f19ddd573a5ef46a6abaa0a35b95bdebc4d619c1eca6"
+      },
+      {
+        "path": "development/001_sphere_0.json",
+        "sha256": "b1d2ec5ab0ae05ad7cf12ccfdac7a3058327db34696435317082048d5e3ad697"
+      },
+      {
+        "path": "development/002_cylinder_0.json",
+        "sha256": "f9782f7540087bd5c9c9618eed5678abe94b9c2f7fdef8be9f29948ea8cddd76"
+      },
+      {
+        "path": "development/003_thin_0.json",
+        "sha256": "1d5ba833eae0888136487cdc0364f3e2d7d172b187b401350e1a697a2a759559"
+      },
+      {
+        "path": "development/004_metallic_part_0.json",
+        "sha256": "087b4d8e6755ef5da25e3d5d4d9ea7eda2141b4851623799f96c670ceba92b2f"
+      },
+      {
+        "path": "development/005_apple_0.json",
+        "sha256": "98825b8372b5fa1e66fefbf1b24ec06a2333cb477965c96aca7d76e546deebde"
+      },
+      {
+        "path": "development/006_bottle_0.json",
+        "sha256": "577c645659506f988153b07b1e75632af979574dbf3406e80871ceeab99af414"
+      },
+      {
+        "path": "development/007_hammer_0.json",
+        "sha256": "bb09aadb6bc638e357c591acf72bcb73c802a2155fc5ec526171483399a5607d"
+      },
+      {
+        "path": "development/008_wrench_0.json",
+        "sha256": "b62f5a60b15349ed7c9526f752bbf4c64bb73839a3ba511a195401c600cbce07"
+      },
+      {
+        "path": "development/009_screwdriver_0.json",
+        "sha256": "c34c7a87d3676f8bc94cc0bd90866904cc502c6b5db319614c1466da82f22f59"
+      },
+      {
+        "path": "development/010_key_0.json",
+        "sha256": "7ba200dfa9c50af1b1117deaccd42d72a3ef704d322c3b86bcfd731d30961784"
+      },
+      {
+        "path": "development/011_coffee_mug_0.json",
+        "sha256": "893df5d534773dbfebd0b47becf46d68ab6a8d46ee00952fd9f77284c168ac60"
+      },
+      {
+        "path": "development/012_wrench_12mm_0.json",
+        "sha256": "336bc6be42f366aa907b540ab10ec7a59dd216039f6a76d6831ea3081d577eaa"
+      }
+    ],
+    "acceptance": [
+      {
+        "path": "acceptance/000_heldout_lemon_poisson_000_visual_101.json",
+        "sha256": "6ab36c57c2dae146e18930f77e184a3c1199aad22be101eeefe28d11281a9a59"
+      },
+      {
+        "path": "acceptance/001_heldout_lemon_poisson_000_visual_202.json",
+        "sha256": "54c7f36c309f1e1745e77f9c50142b84e998839e77b17d81f7e47075babba7f6"
+      },
+      {
+        "path": "acceptance/002_heldout_lemon_poisson_000_visual_303.json",
+        "sha256": "70e8da7f4fd3f4877bed63fe81d4899f1d4a63e53184f8096a541180f2260254"
+      },
+      {
+        "path": "acceptance/003_heldout_mushroom_poisson_005_visual_101.json",
+        "sha256": "7327745b46c851508f6c273cd5e6511062821908e1328abbb9b70a16c7d97bf3"
+      },
+      {
+        "path": "acceptance/004_heldout_mushroom_poisson_005_visual_202.json",
+        "sha256": "ba559c27919a6c92a9bdc7c2c8e51bfe419c6537fac038bd7a17a76bc4f41b29"
+      },
+      {
+        "path": "acceptance/005_heldout_mushroom_poisson_005_visual_303.json",
+        "sha256": "8a88b501be88e91a268efbf623524661efe4d9a99397d948d286c8558386661d"
+      },
+      {
+        "path": "acceptance/006_heldout_pliers_poisson_014_visual_101.json",
+        "sha256": "fe12e09a34d8a738ce04f1342872e6c2a8742ff0fc29fb21334fa143c737d4b8"
+      },
+      {
+        "path": "acceptance/007_heldout_pliers_poisson_014_visual_202.json",
+        "sha256": "f0277bf0db92072c1ed5261a4217b51a9927fb10335acb82b97602c1d17eb346"
+      },
+      {
+        "path": "acceptance/008_heldout_pliers_poisson_014_visual_303.json",
+        "sha256": "dcb4cec536901e565af6b33f32e38323ad701dd1f2340a011f85f61ec166861c"
+      },
+      {
+        "path": "acceptance/009_heldout_hammer_poisson_012_visual_101.json",
+        "sha256": "34c4a091260884292a7645b42f828238b712055b13be98715f68aa8ac809f10e"
+      },
+      {
+        "path": "acceptance/010_heldout_hammer_poisson_012_visual_202.json",
+        "sha256": "56577cb8c6c4a5bdb69ce3b1c2f4dc43a990e2f803ed3b3c8e0f9896e45e8a54"
+      },
+      {
+        "path": "acceptance/011_heldout_hammer_poisson_012_visual_303.json",
+        "sha256": "e3fdcff55a282ac58c1d33fe6c07695e44440db02d069b49e461f64386aa33a4"
+      },
+      {
+        "path": "acceptance/012_heldout_spray_can_poisson_001_visual_101.json",
+        "sha256": "442893536850ac79d98060737aecae951e77e608bedf4314f25a6657289b528c"
+      },
+      {
+        "path": "acceptance/013_heldout_spray_can_poisson_001_visual_202.json",
+        "sha256": "15ee42f43f7ed9aa23fbc962bac4c7e07a2270a924384e17bdb7d9c92dce1ef7"
+      },
+      {
+        "path": "acceptance/014_heldout_spray_can_poisson_001_visual_303.json",
+        "sha256": "1544a5c3ee530b118fa7f45a4c0db47344a61b1cdb40690e7139df63ba46d971"
+      },
+      {
+        "path": "acceptance/015_heldout_bottle_new_poisson_000_visual_101.json",
+        "sha256": "5de5dc6ab6e6b70802bc369248518d9ec312a00371fc212c5e5eb91c1a81b178"
+      },
+      {
+        "path": "acceptance/016_heldout_bottle_new_poisson_000_visual_202.json",
+        "sha256": "02a9a845e210b7934afb2948f63490c05db6a01201a668a7a2ff89bcb129d3ac"
+      },
+      {
+        "path": "acceptance/017_heldout_bottle_new_poisson_000_visual_303.json",
+        "sha256": "3e861b1c92fbc413e4891a9e58c261ad774079835ab36d094087626fe559d3c7"
+      },
+      {
+        "path": "acceptance/018_heldout_mug_proxy_101.json",
+        "sha256": "6788ca33ae26a66b4f491b3b12b1d565a74468131bfc4ad649d2828905e9e774"
+      },
+      {
+        "path": "acceptance/019_heldout_mug_proxy_202.json",
+        "sha256": "204bc525b9c80b11e1c5766e128feaa916273de6acea7b7beda84b612d661569"
+      },
+      {
+        "path": "acceptance/020_heldout_mug_proxy_303.json",
+        "sha256": "e3a79eecb4c51fb6bdb092bc98ac6531955c98e18a9edc62e1990739f9152533"
+      }
+    ]
+  }
+}

@@ -22,6 +22,7 @@ class CameraConfigTests(unittest.TestCase):
     def test_tabletop_camera_provides_rgbd_semantics_and_is_above_table(self) -> None:
         scene = self.cfg["scene"]
         self.assertEqual(set(scene["annotators"]), {"rgb", "distance_to_image_plane", "semantic_segmentation"})
+        self.assertEqual(scene["prim_path"], "/World/Cameras/TableTopRGB")
         self.assertGreater(float(scene["position"][2]), float(scene["target"][2]))
         self.assertEqual(scene["position"][:2], scene["target"][:2])
 

@@ -1,0 +1,33 @@
+{
+  "name": "key",
+  "shape": "key",
+  "dimensions_m": [
+    0.075,
+    0.028,
+    0.003
+  ],
+  "position_m": [
+    0.3244150559710179,
+    -0.20078717217391093,
+    1.0515
+  ],
+  "seed": 0,
+  "yaw_deg": 11.160027326828821,
+  "mass_kg": 0.01,
+  "color_rgb": [
+    0.56,
+    0.59,
+    0.62
+  ],
+  "material": "reflective",
+  "fragile": false,
+  "thin": true,
+  "reflective": true,
+  "expected_feasible": false,
+  "mesh_path": null,
+  "light_scale": 1.0,
+  "metadata": {
+    "scenario": "industrial_tool",
+    "reason": "tabletop_clearance"
+  }
+}

@@ -39,3 +39,8 @@ def motion_config() -> dict[str, Any]:
 
 def cameras_config() -> dict[str, Any]:
     return load_yaml("configs/cameras.yaml")
+
+
+def fine_grasp_config() -> dict[str, Any]:
+    """Configuration for the pluggable eye-in-hand fine-grasp node."""
+    return load_yaml("configs/fine_grasp.yaml")

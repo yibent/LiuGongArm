@@ -1,6 +1,7 @@
 # Camera rig used by the simulation and the vision pipeline.
 enabled: true
 scene:
+  # Keep the existing prim path for consumers; this camera now outputs RGB-D.
   prim_path: /World/Cameras/TableTopRGB
   resolution: [640, 480]
   frequency: 30

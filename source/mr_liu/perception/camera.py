@@ -2,11 +2,35 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 
 from mr_liu.config import cameras_config
+
+
+@dataclass(frozen=True)
+class CameraRGBDFrame:
+    """One simulator acquisition, with metric optical-Z depth and render pose.
+
+    T_world_camera maps OpenCV optical coordinates into the simulator world,
+    not necessarily the physical robot base. Independent cameras may have
+    different rendering times; callers must check freshness before fusion.
+    """
+
+    rgba: np.ndarray
+    depth_m: np.ndarray
+    intrinsics: np.ndarray
+    T_world_camera: np.ndarray
+    rendering_time_s: float
+    rendering_frame: int | None
+    # Isaac 6 returns a rational ReferenceTime instead of an integer frame ID.
+    render_reference: tuple[int, int] | None = None
+
+    @property
+    def acquisition_id(self) -> int | tuple[int, int] | None:
+        return self.render_reference if self.render_reference is not None else self.rendering_frame
 
 
 class SceneCamera:
@@ -64,6 +88,7 @@ class SceneCamera:
         self._cam.initialize(attach_rgb_annotator="rgb" in self.annotators)
         if self.has_depth:
             self._cam.add_distance_to_image_plane_to_frame()
+            self._cam.attach_annotator("camera_params")
         if 'semantic_segmentation' in self.annotators:
             self._cam.add_semantic_segmentation_to_frame({'colorize': False})
 
@@ -106,10 +131,90 @@ class SceneCamera:
             return None
         return frame
 
-    def world_pose(self) -> tuple[np.ndarray, np.ndarray]:
+    def rgbd_frame(self) -> CameraRGBDFrame | None:
+        """Copy RGB, depth and pose from a single acquisition callback.
+
+        Does not advance simulation or promise a newer frame on each call.
+        Never pairs a buffered image with a separately queried live pose.
+        """
+        if self._cam is None or not self.has_depth:
+            return None
+        frame = self._cam.get_current_frame()
+        rgb, depth = frame.get("rgb"), frame.get("distance_to_image_plane")
+        params = frame.get("camera_params")
+        stamp, number = frame.get("rendering_time"), frame.get("rendering_frame")
+        if rgb is None or depth is None or not isinstance(params, dict):
+            return None
+        if stamp is None or number is None or "cameraViewTransform" not in params:
+            return None
+        reference = None
+        if isinstance(number, dict):
+            numerator = number.get("referenceTimeNumerator")
+            denominator = number.get("referenceTimeDenominator")
+            if numerator is None or denominator is None or int(denominator) <= 0:
+                return None
+            reference = (int(numerator), int(denominator))
+            number = None
+        rgb, depth = np.asarray(rgb), np.asarray(depth, dtype=np.float32)
+        width, height = self.resolution
+        if (rgb.ndim != 3 or rgb.shape[:2] != (height, width) or rgb.shape[2] < 3
+                or depth.shape != (height, width)):
+            return None
+        if not np.isfinite(float(stamp)):
+            return None
+        view = np.asarray(params["cameraViewTransform"], dtype=np.float64).reshape(4, 4)
+        # USD view transforms use row vectors, +Y up and -Z forward.
+        pose = np.linalg.inv(view.T) @ np.diag([1., -1., -1., 1.])
+        intrinsics = self.intrinsics_matrix()
+        if not np.isfinite(pose).all() or not np.isfinite(intrinsics).all():
+            return None
+        return CameraRGBDFrame(
+            rgba=rgb.copy(), depth_m=depth.copy(), intrinsics=intrinsics.copy(),
+            T_world_camera=pose, rendering_time_s=float(stamp),
+            rendering_frame=None if number is None else int(number), render_reference=reference,
+        )
+
+    def world_pose(self, camera_axes: str = "world") -> tuple[np.ndarray, np.ndarray]:
         if self._cam is None:
             raise RuntimeError(f"Camera {self.which!r} has not been spawned")
-        return self._cam.get_world_pose(camera_axes="world")
+        return self._cam.get_world_pose(camera_axes=camera_axes)
+
+    def intrinsics_matrix(self) -> np.ndarray:
+        if self._cam is None:
+            raise RuntimeError(f"Camera {self.which!r} has not been spawned")
+        return np.asarray(self._cam.get_intrinsics_matrix(device="cpu"), dtype=np.float64)
+
+    def enable_instance_segmentation(self) -> None:
+        """Attach a non-colorized ground-truth instance annotator for sim tests."""
+        if self._cam is None:
+            raise RuntimeError(f"Camera {self.which!r} has not been spawned")
+        self._cam.add_instance_segmentation_to_frame({"colorize": False})
+
+    def instance_mask(self, object_id: str) -> np.ndarray | None:
+        """Return the synchronized simulator mask whose label/path matches ``object_id``."""
+        if self._cam is None:
+            return None
+        payload = self._cam.get_current_frame().get("instance_segmentation_fast")
+        if not isinstance(payload, dict):
+            return None
+        data = np.asarray(payload.get("data"))
+        if data.ndim == 3 and data.shape[2] == 1:
+            data = data[:, :, 0]
+        if data.ndim != 2:
+            return None
+        labels = (payload.get("info") or {}).get("idToLabels") or {}
+        matching: list[int] = []
+        needle = str(object_id).casefold()
+        for raw_id, value in labels.items():
+            text = str(value).casefold()
+            if needle in text:
+                try:
+                    matching.append(int(raw_id))
+                except (TypeError, ValueError):
+                    continue
+        if not matching:
+            return None
+        return np.isin(data, matching)
 
     def unproject(self, pixels: np.ndarray, depth: np.ndarray) -> np.ndarray:
         if self._cam is None:

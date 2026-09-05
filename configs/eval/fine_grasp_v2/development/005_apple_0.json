@@ -1,0 +1,33 @@
+{
+  "name": "apple",
+  "shape": "sphere",
+  "dimensions_m": [
+    0.045,
+    0.045,
+    0.045
+  ],
+  "position_m": [
+    0.3220371253128541,
+    -0.19792604030534963,
+    1.0725
+  ],
+  "seed": 0,
+  "yaw_deg": -4.857263692960409,
+  "mass_kg": 0.105,
+  "color_rgb": [
+    0.72,
+    0.08,
+    0.06
+  ],
+  "material": "matte",
+  "fragile": true,
+  "thin": false,
+  "reflective": false,
+  "expected_feasible": true,
+  "mesh_path": null,
+  "light_scale": 1.0,
+  "metadata": {
+    "scenario": "fruit",
+    "force_sensitive": true
+  }
+}

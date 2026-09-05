@@ -8,10 +8,17 @@ from isaacsim.robot_motion.cumotion import CumotionWorldInterface
 from mr_liu.config import motion_config, robot_config
 
 
-def bind_world(articulation: Articulation, root_poses=None) -> mg.WorldBinding:
+def bind_world(
+    articulation: Articulation,
+    root_poses=None,
+    *,
+    extra_exclude_prim_paths: list[str] | None = None,
+) -> mg.WorldBinding:
     motion = motion_config()
     robot_prim = robot_config()["usd_prim_path"]
     exclude = list(motion.get("exclude_from_obstacles") or [])
+    exclude.extend(extra_exclude_prim_paths or [])
+    exclude = list(dict.fromkeys(exclude))
     if robot_prim not in exclude:
         exclude.append(robot_prim)
 

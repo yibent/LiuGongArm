@@ -3,6 +3,11 @@ usd_prim_path: /World/SO101
 articulation_prim_path: /World/SO101/root_joint
 usd_asset_rel: /Isaac/Robots/RobotStudio/so101_new_calib/so101_new_calib.usd
 tool_frame: gripper_frame_link
+# Isaac USD does not author the URDF dummy tool link as a separate prim.
+# Recover T_base_ee from the moving gripper prim plus this fixed URDF joint.
+tool_parent_prim_path: /World/SO101/gripper
+tool_from_parent_translation: [-0.0079, -0.000218121, -0.0981274]
+tool_from_parent_rpy: [0.0, 3.141592653589793, 0.0]
 gripper_joint: gripper
 
 # Runtime tensor API units: Nm/rad and Nm*s/rad (NOT USD's per-degree values).

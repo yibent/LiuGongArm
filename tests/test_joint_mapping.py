@@ -44,6 +44,14 @@ class JointMappingTests(unittest.TestCase):
         self.assertIn('link name="gripper_frame_link"', text)
         self.assertIn('joint name="gripper_frame_joint"', text)
 
+    def test_tool_offset_matches_urdf_fixed_joint(self) -> None:
+        from mr_liu.config import robot_config
+
+        cfg = robot_config()
+        self.assertEqual(cfg["tool_parent_prim_path"], "/World/SO101/gripper")
+        self.assertEqual(len(cfg["tool_from_parent_translation"]), 3)
+        self.assertAlmostEqual(float(cfg["tool_from_parent_translation"][2]), -0.0981274)
+
 
 if __name__ == "__main__":
     unittest.main()
