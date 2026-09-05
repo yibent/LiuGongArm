@@ -143,13 +143,14 @@ class GeneralGraspNode:
                 metrics["model_total_ms"] = float(metrics["model_total_ms"]) + float(metrics["model_latency_ms"])
                 # A slow model consumes time: validate a NEW observation before
                 # permitting even the pregrasp move, not only after arrival.
-                if self.settings.fusion.enabled and not request.dry_run:
+                if not request.dry_run:
                     confirmation = self._observe(request, metrics, allow_same_sequence=False,
                                                  allow_depth_hole_recovery=policy.allow_depth_hole_recovery)
                     if isinstance(confirmation, FineGraspResult):
                         return self._with_elapsed(confirmation, started, metrics)
                     fresh, fresh_geometry = confirmation
-                    if metrics.get("fusion_reset") == "motion_or_identity_inconsistent":
+                    if (metrics.get("fusion_reset") == "motion_or_identity_inconsistent"
+                            or (not self.settings.fusion.enabled and self._geometry_changed(geometry, fresh_geometry))):
                         self._emit(FineGraspPhase.GENERATE, event="discard_stale_model_result")
                         continue
                     from mr_liu.grasp.transforms import invert_transform
@@ -209,16 +210,20 @@ class GeneralGraspNode:
                         metrics=metrics,
                     )
 
-                if self.settings.fusion.enabled:
+                if not request.dry_run:
                     # Selection/IK can itself be slow. Validate again just before
                     # authorizing pregrasp; never let a map reset retain a pose.
                     confirmed = self._observe(request, metrics, allow_same_sequence=False)
                     if isinstance(confirmed, FineGraspResult):
                         return self._with_elapsed(confirmed, started, metrics)
-                    if metrics.get("fusion_reset") == "motion_or_identity_inconsistent":
+                    if (metrics.get("fusion_reset") == "motion_or_identity_inconsistent"
+                            or (not self.settings.fusion.enabled and self._geometry_changed(geometry, confirmed[1]))):
                         self._emit(FineGraspPhase.GENERATE, event="target_changed_before_pregrasp")
                         continue
 
+                terminal = self._terminal_check(request, deadline, metrics, selected)
+                if terminal is not None:
+                    return terminal
                 prepare_grasp = getattr(self.motion, "prepare_grasp", None)
                 if callable(prepare_grasp) and not prepare_grasp(selected):
                     return self._failure(
@@ -735,6 +740,23 @@ class GeneralGraspNode:
             return self._failure(request, FailureCode.GEOMETRY_UNCERTAIN,
                                  "Insufficient consistent independent wrist views", metrics, self.clock())
         return observation, geometry
+
+    def _geometry_changed(self, previous: ObjectGeometry, latest: ObjectGeometry) -> bool:
+        """Same-view freshness check around slow inference/IK, not a pose oracle.
+
+        Partial views during motion are handled by servo/fusion; while stopped
+        for planning, a significant translation or observable principal-axis
+        change invalidates the candidate instead of silently reusing it.
+        """
+        threshold = min(self.settings.loop.model_replan_translation_m, self.settings.fusion.motion_tolerance_m)
+        if np.linalg.norm(previous.T_base_object[:3, 3] - latest.T_base_object[:3, 3]) > threshold:
+            return True
+        # Avoid treating arbitrary PCA axes of a sphere/cube as orientation.
+        if (previous.extents_m[0] > 1.5 * max(previous.extents_m[1], 1e-6)
+                and latest.extents_m[0] > 1.5 * max(latest.extents_m[1], 1e-6)):
+            cosine = abs(float(np.dot(previous.T_base_object[:3, 0], latest.T_base_object[:3, 0])))
+            return cosine < np.cos(self.settings.loop.model_replan_rotation_rad)
+        return False
 
     def _tracking_center(
         self, geometry: ObjectGeometry, selected: SelectedGrasp

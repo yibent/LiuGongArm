@@ -59,6 +59,9 @@ demo 根据已知对象高度调整交接姿态；规划器按已知目标路径
 # 完整主动恢复 demo（正常成功时不会额外扫视）
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run_fine_grasp_demo.ps1 -Backend graspgenx -Recovery active -Output output/recovery_demo
 
+# 固定斜上方相机，减少手指遮挡；不改变腕部闭环控制职责
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run_fine_grasp_demo.ps1 -Backend graspgenx -Recovery active -SceneView oblique -Output output/recovery_oblique_demo
+
 # 显式故障注入：初始 5 次腕部获取返回空，验证恢复路径；不是自然失败成功率
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run_fine_grasp_demo.ps1 -Backend graspgenx -Recovery active -DropInitialWristFrames 5 -Output output/recovery_fault_demo
 
@@ -138,6 +141,28 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run_fine_grasp_demo.
 上游粗位置、候选和验证结果均不修改；默认 0 关闭。只有报告中的
 `test_target_shift_applied=true` 才表示实际执行过该扰动，未到闭爪不能算注入成功。
 比较脚本对应参数为 `--test-target-shift-m`，必须与自然场景得分分开报告。
+
+### 第二阶段：真正空抓恢复与相机遮挡
+
+`2f954ca` 的同场景 4 cm 移位对比：基础版夹空失败；主动版实际两次闭爪、
+两次侧向观察，第二次将目标抬升 77.7 mm，但视觉验证仍不确定，严格得分为 0/1。
+头顶在闭爪前只看见 21 个目标像素，抬升后看见另一小块侧面；不能将这种不完整几何
+直接当作完整点云对应，也没有放宽原来的成功阈值。
+
+增加显式 `-SceneView oblique`：固定安装位置 `[0.65, -0.65, 1.75]`，
+看向工作区 `[0.35, -0.15, 1.08]`；参数在 `configs/cameras.yaml`，
+不根据测试对象名称/尺寸改变视点。仍使用标定后的固定相机变换。
+默认保持 `overhead`，实际硬件的安装/手眼标定需要单独完成。
+
+该开发工作区的默认方块 smoke 测试完成了完整恢复：首次夹空、重新观察、第二次闭爪，
+实际抬升 81.8 mm，斜上方视觉确认抬升 72.3 mm，跟随误差 9.2 mm，总耗时 39.0 s。
+第二次闭爪前/抬升后可见目标像素为 409/558；模型调用两次，主动侧向移动两次。
+**这个 smoke 不是原来的冻结 cube 摆放，不能直接作为相机改动的配对增益。**
+详见 [受控故障证据](benchmarks/active_recovery_fault_20260905.json)。
+
+新增慢模型/慢 IK 后的腕部新观测复核，即使单视图模式也不能在模型计算期间丢失目标、
+目标显著移动或预算耗尽后启动旧 pre-grasp。可观测长轴改变也触发重新推理；
+对称形状的 PCA 轴不作为可靠朝向。当前 124 项单测通过。
 
 每次尝试保存到 `attempt_N/debug/`：RGB、深度、掩码、自遮罩、相机变换、候选与事件。
 头顶观测在 `overhead/`；总 `report.json` 包含 `attempt_results`、`attempt_physics`、

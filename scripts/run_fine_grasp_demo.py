@@ -25,6 +25,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--planner", choices=("graspmoe", "diffusion"), default="graspmoe")
     parser.add_argument("--segmenter", choices=("depth", "sam2"), default="depth")
     parser.add_argument("--recovery", choices=("off", "assisted", "active"), default="off")
+    parser.add_argument("--scene-view", choices=("overhead", "oblique"), default="overhead")
     parser.add_argument("--drop-initial-wrist-frames", type=int, default=0,
                         help="Explicit test-only transient camera fault after the initial diagnostic capture")
     parser.add_argument("--test-target-shift-m", type=float, default=0.,
@@ -80,7 +81,7 @@ from mr_liu.grasp.recovery import RecoveringGraspNode, RecoveryConfig
 from mr_liu.grasp.scene_observer import SceneTargetObserver, SceneAssistedVerifier
 from mr_liu.grasp.backends.graspgenx import ZmqGraspGenXTransport
 from mr_liu.grasp.settings import FineGraspSettings
-from mr_liu.grasp.transforms import invert_transform, transform_points
+from mr_liu.grasp.transforms import invert_transform, transform_points, look_at_opencv, matrix_to_quaternion_wxyz
 from mr_liu.grasp.verification import VisionGripperVerifier
 from mr_liu.perception.camera import spawn_configured_cameras
 from mr_liu.robot.so101 import So101Arm
@@ -194,6 +195,11 @@ def main() -> int:
     # are restored only after the wrist reaches the fine-loop handoff pose.
     target_rigid.set_world_poses(positions=[[0.0, 0.0, 2.0]])
     cameras = spawn_configured_cameras()
+    if ARGS.scene_view == "oblique":
+        mount = cameras["scene"].config["recovery_oblique"]
+        pose = look_at_opencv(mount["position"], mount["target"])
+        cameras["scene"]._cam.set_world_pose(position=pose[:3, 3],
+            orientation=matrix_to_quaternion_wxyz(pose[:3, :3]), camera_axes="ros")
     wrist_scene_camera = cameras["wrist"]
     if ARGS.recovery != "off":
         for scene_camera in cameras.values():
@@ -455,6 +461,7 @@ def main() -> int:
         },
         "perception_mode": ARGS.perception,
         "recovery_mode": ARGS.recovery,
+        "scene_view": ARGS.scene_view,
         "fault_initial_wrist_frames": ARGS.drop_initial_wrist_frames,
         "test_target_shift_m": ARGS.test_target_shift_m,
         "test_target_shift_applied": fault.applied,

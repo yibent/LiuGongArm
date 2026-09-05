@@ -233,6 +233,53 @@ class FineGraspNodeTests(unittest.TestCase):
         self.assertTrue(result.selected_grasp.metadata["support_height_constrained"])
         self.assertAlmostEqual(result.selected_grasp.T_base_grasp[2, 3], 1.125, places=3)
 
+    def test_camera_loss_during_model_does_not_start_pregrasp(self):
+        from unittest.mock import Mock
+        node = self.node()
+        original = node.backend.generate
+        def infer_then_lose_camera(*args):
+            result = original(*args)
+            node.camera.capture = Mock(return_value=None)
+            return result
+        node.backend.generate = infer_then_lose_camera
+        node.motion.move_to = Mock()
+        result = node.execute(FineGraspRequest(TargetSpec('lost_after_model')))
+        self.assertFalse(result.success)
+        node.motion.move_to.assert_not_called()
+
+    def test_object_moves_during_each_model_call_and_no_old_pose_is_executed(self):
+        from unittest.mock import Mock
+        node = self.node()
+        original_capture, original_generate = node.camera.capture, node.backend.generate
+        offset = 0.
+        def capture(target):
+            frame = original_capture(target)
+            depth = frame.depth_m.copy()
+            depth[frame.target_mask] += offset
+            return replace(frame, depth_m=depth)
+        def generate(*args):
+            nonlocal offset
+            result = original_generate(*args)
+            offset += .025
+            return result
+        node.camera.capture, node.backend.generate = capture, generate
+        node.motion.move_to = Mock()
+        result = node.execute(FineGraspRequest(TargetSpec('moving_during_model')))
+        self.assertEqual(result.failure, FailureCode.TARGET_MOVED)
+        node.motion.move_to.assert_not_called()
+
+    def test_slow_ik_cannot_consume_deadline_then_start_motion(self):
+        from unittest.mock import Mock
+        node = self.node()
+        def expensive_ik(pose):
+            self.clock.value += 100.
+            return True
+        node.motion.is_reachable = expensive_ik
+        node.motion.move_to = Mock()
+        result = node.execute(FineGraspRequest(TargetSpec('slow_ik')))
+        self.assertEqual(result.failure, FailureCode.SERVO_TIMEOUT)
+        node.motion.move_to.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

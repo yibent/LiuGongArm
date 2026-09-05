@@ -28,6 +28,7 @@ def main():
     parser.add_argument("--segmenter", choices=("depth", "sam2"), default="depth")
     parser.add_argument("--drop-initial-wrist-frames", type=int, default=0)
     parser.add_argument("--test-target-shift-m", type=float, default=0.)
+    parser.add_argument("--scene-view", choices=("overhead", "oblique"), default="overhead")
     args = parser.parse_args()
     output = args.output or ROOT / "output/recovery_comparison" / datetime.now().strftime("%Y%m%d_%H%M%S")
     output = output.resolve()
@@ -57,6 +58,7 @@ def main():
                   "profiles": profiles, "backend": args.backend, "segmenter": args.segmenter,
                   "fault_initial_wrist_frames": args.drop_initial_wrist_frames,
                   "test_target_shift_m": args.test_target_shift_m,
+                  "scene_view": args.scene_view,
                   "manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest()}
     (output / "provenance.json").write_text(json.dumps(provenance, indent=2), encoding="utf-8")
     results = {}
@@ -66,6 +68,7 @@ def main():
                    "-Recovery", profile, "-Perception", "single", "-Segmenter", args.segmenter,
                    "-DropInitialWristFrames", str(args.drop_initial_wrist_frames),
                    "-TestTargetShiftM", str(args.test_target_shift_m),
+                   "-SceneView", args.scene_view,
                    "-Manifest", str(manifest), "-Split", "development", "-Output", str(output / profile)]
         print(f"PROFILE_START {profile} {len(entries)} cases", flush=True)
         with (output / f"{profile}.log").open("w", encoding="utf-8") as log:

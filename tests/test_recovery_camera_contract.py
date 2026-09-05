@@ -10,9 +10,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'source'))
 from mr_liu.grasp.adapters.isaac_camera import IsaacSceneCamera, IsaacWristCamera
 from mr_liu.grasp.contracts import TargetSpec
 from mr_liu.perception.camera import CameraRGBDFrame
+from mr_liu.grasp.transforms import look_at_opencv, invert_transform, transform_points
 
 
 class RecoveryCameraTests(unittest.TestCase):
+    def test_oblique_camera_projects_workspace_center_on_optical_axis(self):
+        position, target = np.array([.65, -.65, 1.75]), np.array([.35, -.15, 1.08])
+        pose = look_at_opencv(position, target)
+        point = transform_points(invert_transform(pose), target[None])[0]
+        np.testing.assert_allclose(point[:2], 0., atol=1e-10)
+        self.assertGreater(point[2], 0.)
+        with self.assertRaises(ValueError):
+            look_at_opencv(target, target)
+
     def setUp(self):
         self.scene = Mock(which='scene', has_depth=True, resolution=(3, 2))
         self.pose = np.eye(4)

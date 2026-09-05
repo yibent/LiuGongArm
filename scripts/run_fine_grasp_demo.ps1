@@ -13,6 +13,8 @@ param(
     [string]$Recovery = "off",
     [int]$DropInitialWristFrames = 0,
     [double]$TestTargetShiftM = 0,
+    [ValidateSet("overhead", "oblique")]
+    [string]$SceneView = "overhead",
     [string]$Manifest = "",
     [ValidateSet("development", "acceptance")]
     [string]$Split = "development",
@@ -155,7 +157,7 @@ try {
     $DemoArgs += @("--perception", $Perception)
     $DemoArgs += @("--segmenter", $Segmenter)
     $DemoArgs += @("--recovery", $Recovery, "--drop-initial-wrist-frames", "$DropInitialWristFrames",
-                   "--test-target-shift-m", "$TestTargetShiftM")
+                   "--test-target-shift-m", "$TestTargetShiftM", "--scene-view", $SceneView)
     if (-not [string]::IsNullOrWhiteSpace($Manifest)) {
         if (-not $Benchmark) { throw "-Manifest requires -Benchmark" }
         $DemoArgs += @("--manifest", $Manifest, "--split", $Split)

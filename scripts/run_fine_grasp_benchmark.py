@@ -73,6 +73,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--recovery", choices=("off", "assisted", "active"), default="off")
     parser.add_argument("--drop-initial-wrist-frames", type=int, default=0)
     parser.add_argument("--test-target-shift-m", type=float, default=0.)
+    parser.add_argument("--scene-view", choices=("overhead", "oblique"), default="overhead")
     parser.add_argument("--manifest", type=Path)
     parser.add_argument("--split", choices=("development", "acceptance"), default="development")
     parser.add_argument("--dry-run", action="store_true", help="Exercise planning only (not scored as physical success)")
@@ -147,6 +148,7 @@ def _run_case(args: argparse.Namespace, case: BenchmarkCase, run_dir: Path) -> d
         "--recovery", args.recovery,
         "--drop-initial-wrist-frames", str(args.drop_initial_wrist_frames),
         "--test-target-shift-m", str(args.test_target_shift_m),
+        "--scene-view", args.scene_view,
         "--headless" if args.headless else "--no-headless",
     ]
     if args.dry_run:
