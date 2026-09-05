@@ -43,6 +43,18 @@ class CameraRGBDFrameTests(unittest.TestCase):
         self.camera._cam.get_rgba.assert_not_called()
         self.camera._cam.get_depth.assert_not_called()
 
+    def test_instance_frame_accepts_isaac6_normalized_and_legacy_keys(self):
+        from mr_liu.vision.grounding import instance_object_path
+        for key in ("instance_segmentation", "instance_segmentation_fast"):
+            payload = {"data": np.full((2, 3), 5, dtype=np.uint32),
+                       "info": {"idToLabels": {"5": "/World/TabletopProps/NutM20/mesh"}}}
+            self.camera._cam.get_current_frame.return_value = {key: payload}
+            self.assertIs(self.camera.instance_frame(), payload)
+            mask = self.camera.instance_mask("/World/TabletopProps/NutM20")
+            self.assertTrue(mask.all())
+            self.assertEqual(instance_object_path(self.camera.instance_frame(), mask),
+                             "/World/TabletopProps/NutM20")
+
     def test_samples_do_not_alias_mutable_sdk_buffers(self):
         sample = self.camera.rgbd_frame()
         self.frame["rgb"][:] = 0

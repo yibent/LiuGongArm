@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 from isaacsim.core.experimental.prims import Articulation
 from isaacsim.core.experimental.prims import XformPrim
+from isaacsim.core.experimental.utils.backend import use_backend
 
 from mr_liu.config import robot_config
 from mr_liu.robot.joints import assert_joint_mapping
@@ -78,8 +79,14 @@ class So101Arm:
         from mr_liu.grasp.transforms import make_transform, quaternion_wxyz_to_matrix, rpy_to_matrix
 
         cfg = robot_config()
-        parent = XformPrim(str(cfg["tool_parent_prim_path"]))
-        positions, orientations = parent.get_world_poses()
+        parent = getattr(self, "_tool_parent", None)
+        if parent is None:
+            parent = XformPrim(str(cfg["tool_parent_prim_path"]), reset_xform_op_properties=False)
+            self._tool_parent = parent
+        # GPU/Fabric simulation does not write moving link poses back to USD.
+        # Never use the authored startup transform for online grasp feedback.
+        with use_backend("fabric", raise_on_fallback=True):
+            positions, orientations = parent.get_world_poses()
         position = _first_numpy(positions)
         orientation = _first_numpy(orientations)
         T_base_parent = make_transform(quaternion_wxyz_to_matrix(orientation), position)

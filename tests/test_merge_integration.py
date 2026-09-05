@@ -1,6 +1,7 @@
 """SDK-boundary regressions for merging grasp support with motion stability."""
 
 import importlib.util
+from contextlib import nullcontext
 from pathlib import Path
 import sys
 from types import ModuleType
@@ -20,11 +21,13 @@ def load_arm_module():
     sdk = ModuleType("isaacsim.core.experimental.prims")
     sdk.Articulation = Mock()
     sdk.XformPrim = Mock()
+    backend = ModuleType("isaacsim.core.experimental.utils.backend")
+    backend.use_backend = Mock(side_effect=lambda *args, **kwargs: nullcontext())
     spec = importlib.util.spec_from_file_location(
         "merge_test_so101", ROOT / "source/mr_liu/robot/so101.py"
     )
     module = importlib.util.module_from_spec(spec)
-    with patch.dict(sys.modules, {sdk.__name__: sdk}):
+    with patch.dict(sys.modules, {sdk.__name__: sdk, backend.__name__: backend}):
         spec.loader.exec_module(module)
     return module
 
@@ -83,7 +86,8 @@ class MergeIntegrationTests(unittest.TestCase):
             result[:3, 3], [1., 2., 3.] + rotation @ np.array(cfg["tool_from_parent_translation"])
         )
         np.testing.assert_allclose(result[:3, :3], rotation @ np.diag([-1., 1., -1.]), atol=1e-12)
-        module.XformPrim.assert_called_once_with(cfg["tool_parent_prim_path"])
+        module.XformPrim.assert_called_once_with(cfg["tool_parent_prim_path"], reset_xform_op_properties=False)
+        module.use_backend.assert_called_once_with("fabric", raise_on_fallback=True)
 
     def test_mount_reuses_root_instead_of_adding_second_constraint(self):
         # Mock only SDK boundaries; exercise the production mount function.

@@ -39,6 +39,7 @@ class VisionRuntimeControl:
         self._error: str | None = None
         self.motion = None
         self.grounding = None
+        self.grasp = None
 
     def snapshot(self) -> RuntimeConfig:
         with self._lock:
@@ -99,6 +100,7 @@ class VisionRuntimeControl:
 
     def status(self) -> dict[str, Any]:
         motion = self.motion.status() if self.motion is not None else None
+        grounding = self.grounding.snapshot() if self.grounding else None
         with self._lock:
             return {
                 "prompt": self._config.prompt,
@@ -111,7 +113,7 @@ class VisionRuntimeControl:
                 "views": dict(self._views),
                 "error": self._error,
                 "motion": motion,
-                "grounding": self.grounding.snapshot() if self.grounding else None,
+                "grounding": grounding,
                 "capabilities": self.capabilities(),
             }
 
@@ -119,11 +121,14 @@ class VisionRuntimeControl:
         from mr_liu.motion.commands import MOTION_SKILLS
         return {
             "skills": ["select_target", "perceive", "follow", "hold", "stop", "status", "capabilities"]
-                      + (sorted(MOTION_SKILLS - {"hold", "stop"}) if self.motion is not None else []),
-            "unsupported": ["plan_grasp", "grasp", "transport", "place", "verify_placement"],
+                      + (sorted(MOTION_SKILLS - {"hold", "stop"}) if self.motion is not None else [])
+                      + (["grasp"] if self.grasp is not None else []),
+            "unsupported": ["plan_grasp", "transport", "place", "verify_placement"] + ([] if self.grasp else ["grasp"]),
             "message": "当前支持识别、跟随、暂停和停止" + (
-                "，以及关节转动、底座和腕部转动、末端平移、坐标移动、可达位姿旋转、归位或复位、夹爪开合、调速、继续暂停动作。支持自然表达与上下文指代；可用顶部RGB-D定位物体并移动到其相对偏移位置，例如物体上方10厘米。检测不确定、深度缺失或五轴机械臂姿态无解时不会执行。抓取和放置尚未实现，夹爪闭合不代表抓取成功。"
-                if self.motion is not None else "。基础运动控制尚未接入。抓取和放置尚未实现。"),
+                "，以及关节转动、末端移动、归位、夹爪开合、调速和物体相对定位。"
+                if self.motion is not None else "。基础运动控制尚未接入。") + (
+                "支持单物体抓取：顶部RGB-D定位、接近、腕部闭环抓取及抬升验证；未通过泛化验收。放置未实现，夹爪闭合不代表抓取成功。"
+                if self.grasp else "抓取和放置尚未实现，夹爪闭合不代表抓取成功。"),
         }
 
 
@@ -138,6 +143,10 @@ def execute_control_command(
     from mr_liu.motion.commands import MOTION_SKILLS
     if skill in {"hold", "stop"} and control.grounding:
         control.grounding.cancel()
+    if skill in {"hold", "stop"} and control.grasp:
+        control.grasp.cancel()
+    if skill == "grasp" and control.grasp:
+        return control.grasp.submit(values, command_id)
     if skill == "capabilities":
         return {"ok": True, **control.capabilities()}
     if skill in MOTION_SKILLS and control.motion is not None:

@@ -11,6 +11,33 @@ from mr_liu.motion.commands import MotionCommands
 
 
 class MotionTests(unittest.TestCase):
+    def test_threefold_time_scaling_and_velocity_feedforward(self):
+        from mr_liu.config import motion_config
+        cfg = motion_config()['commands']
+        duration = []
+        for config in ({}, cfg):
+            motion = MotionCommands(ROOT/'assets/robots/so101/robot.urdf', self.joints, config=config)
+            motion.submit('move_joint', {'joint': 'shoulder_pan', 'degrees': 90}, 'scale')
+            speeds = []
+            motion.tick(self.joints, self.base, lambda _: None, sim_time=0.,
+                        apply_velocity=lambda q: speeds.append(q))
+            duration.append(motion.result('scale')['duration'])
+            motion.tick(self.joints, self.base, lambda _: None, sim_time=duration[-1]/2,
+                        apply_velocity=lambda q: speeds.append(q))
+            self.assertAlmostEqual(speeds[-1]['shoulder_pan'], 1.875*np.pi/2/duration[-1])
+            motion.submit('stop', {}, 'stop')
+            motion.tick(self.joints, self.base, lambda _: None, sim_time=duration[-1]/2+.01,
+                        apply_velocity=lambda q: speeds.append(q))
+            self.assertTrue(all(v == 0 for v in speeds[-1].values()))
+        self.assertAlmostEqual(duration[0]/duration[1], 3.)
+
+    def test_speed_accepts_new_nominal_and_rejects_drive_limit_excess(self):
+        self.motion.submit('set_speed', {'degrees_per_second':85.95}, 'speed')
+        self.assertEqual(self.complete('speed')['state'], 'completed')
+        self.assertAlmostEqual(np.rad2deg(self.motion.speed), 85.95)
+        self.motion.submit('set_speed', {'degrees_per_second':121}, 'too_fast')
+        self.assertEqual(self.complete('too_fast')['state'], 'failed')
+
     def setUp(self):
         self.now = 0.0
         self.joints = dict(shoulder_pan=0., shoulder_lift=-1.2, elbow_flex=1.3, wrist_flex=1.2, wrist_roll=0., gripper=0.)

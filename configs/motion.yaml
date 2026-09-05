@@ -1,11 +1,20 @@
 backend: rmpflow
 device: cuda
 physics_dt: 0.008333333333333333
+# Eight 120 Hz physics steps per 15 Hz rendered frame; avoid 120 expensive
+# desktop/camera renders per simulated second.
+render_hz: 15
 
 # Finite commands use simulation time, independently of rendering/inference.
 commands:
-  speed_deg_s: 28.65
-  acceleration_deg_s2: 60
+  speed_deg_s: 85.95
+  # Time-scaling a trajectory by 3 multiplies acceleration by 3 squared.
+  acceleration_deg_s2: 540
+  min_duration_s: 0.1666666667
+  # Free-space open/close command only; contact grasp uses its force-limited
+  # controller and is not sped up by this setting.
+  gripper_speed_deg_s: 160
+  gripper_acceleration_deg_s2: 900
   position_tolerance_deg: 1.0
   velocity_tolerance_deg_s: 1.0
   # Frame-to-frame measured velocity, not TGS's final internal substep velocity.

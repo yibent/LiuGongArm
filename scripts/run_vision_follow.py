@@ -17,6 +17,7 @@ parser.add_argument("--fast", choices=["yoloe", "cv"], default="yoloe")
 parser.add_argument("--slow-interval", type=int, default=45)
 parser.add_argument("--control-host", default="127.0.0.1")
 parser.add_argument("--control-port", type=int, default=7861)
+parser.add_argument("--grasp-backend", choices=["graspgenx", "geometric", "disabled"], default="graspgenx")
 parser.add_argument(
     "--no-follow",
     action="store_true",
@@ -50,6 +51,7 @@ try:
         control_host=args.control_host,
         control_port=args.control_port,
         follow_target=not args.no_follow,
+        grasp_backend=args.grasp_backend,
     )
 except KeyboardInterrupt:
     print("\nExiting...")

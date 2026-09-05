@@ -194,7 +194,7 @@ class SceneCamera:
         """Return the synchronized simulator mask whose label/path matches ``object_id``."""
         if self._cam is None:
             return None
-        payload = self._cam.get_current_frame().get("instance_segmentation_fast")
+        payload = self.instance_frame()
         if not isinstance(payload, dict):
             return None
         data = np.asarray(payload.get("data"))
@@ -215,6 +215,14 @@ class SceneCamera:
         if not matching:
             return None
         return np.isin(data, matching)
+
+    def instance_frame(self):
+        if self._cam is None:
+            return None
+        frame = self._cam.get_current_frame()
+        # Isaac 6 normalizes annotator names by removing the _fast suffix.
+        payload = frame.get("instance_segmentation")
+        return payload if payload is not None else frame.get("instance_segmentation_fast")
 
     def unproject(self, pixels: np.ndarray, depth: np.ndarray) -> np.ndarray:
         if self._cam is None:

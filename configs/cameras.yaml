@@ -4,7 +4,7 @@ scene:
   # Keep the existing prim path for consumers; this camera now outputs RGB-D.
   prim_path: /World/Cameras/TableTopRGB
   resolution: [640, 480]
-  frequency: 30
+  frequency: 15
   position: [0.50, 0.0, 2.30]
   # Camera convention is +X forward. A +90 degree Y rotation looks down -Z.
   orientation_wxyz: [0.70710678, 0.0, 0.70710678, 0.0]
@@ -16,7 +16,7 @@ wrist:
   parent_prim_path: /World/SO101/gripper
   prim_path: /World/SO101/gripper/WristRGBD
   resolution: [640, 480]
-  frequency: 30
+  frequency: 15
   # Side-mounted to keep the gripper body out of the optical centre.
   translation: [0.150, 0.0, -0.100]
   # With the configured home pose this composes to a world-down view. The wide

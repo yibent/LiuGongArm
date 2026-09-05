@@ -46,6 +46,8 @@ def setup(
     # A physics scene must be created after the new USD stage. Creating it
     # before create_new_stage leaves SimulationManager holding a stale scene.
     SimulationManager.setup_simulation(dt=physics_dt, device=device)
+    from mr_liu.sim.timing import configure_render_timing
+    configure_render_timing(physics_dt, float(motion_config().get("render_hz", 30)))
     GroundPlane("/World/GroundPlane", positions=[0, 0, 0])
     DistantLight("/World/DistantLight").set_intensities(float(scene["distant_intensity"]))
     spawn_table_and_so101()
@@ -113,6 +115,7 @@ def main(
     control_host: str = "127.0.0.1",
     control_port: int = 7861,
     follow_target: bool = True,
+    grasp_backend: str = "graspgenx",
 ) -> None:
     motion = motion_config()
     physics_dt = float(motion["physics_dt"])
@@ -138,7 +141,7 @@ def main(
         slow_interval=max(0, int(slow_interval)),
     )
     control = VisionRuntimeControl(vis_cfg, follow_enabled=follow_target)
-    from mr_liu.vision.grounding import SceneGrounding, surface_point, confirmed_mask
+    from mr_liu.vision.grounding import SceneGrounding, surface_point, confirmed_mask, instance_object_path
     control.grounding = SceneGrounding()
     from mr_liu.config import robot_config
     from mr_liu.motion.commands import MotionCommands
@@ -147,6 +150,14 @@ def main(
     control.motion = MotionCommands(repo_root() / robot_cfg["robot_dir"] / robot_cfg["urdf"], robot_cfg["default_joint_positions"], config=motion.get("commands"))
     control.motion.drive_info = drive_info
     robot_base = XformPrim(robot_cfg["usd_prim_path"])
+    if grasp_backend != "disabled":
+        from mr_liu.grasp.runtime import GraspRuntime
+        from mr_liu.grasp.isaac_session import IsaacGraspSession
+        cameras["scene"].enable_instance_segmentation()
+        control.grasp = GraspRuntime(control, lambda grounded, selected, guard, progress: IsaacGraspSession(
+            arm, cameras["wrist"], app, 1/float(motion.get("render_hz", 30)), grounded, selected, guard, progress,
+            backend=grasp_backend, output_root=repo_root() / "output/busagent_grasp",
+        ))
 
     def update_motion():
         q = arm.articulation.get_dof_positions().numpy().reshape(-1)
@@ -158,10 +169,12 @@ def main(
         base[:3, :3] = Rotation.from_quat([quat[1], quat[2], quat[3], quat[0]]).as_matrix()
         def apply(values):
             arm.articulation.set_dof_position_targets([[values[name] for name in arm.dof_names]])
-            arm.articulation.set_dof_velocity_targets([[0.] * len(arm.dof_names)])
+        def apply_velocity(values):
+            arm.articulation.set_dof_velocity_targets([[values[name] for name in arm.dof_names]])
         return control.motion.tick(dict(zip(arm.dof_names, q.tolist())), base, apply, app_utils.is_playing(),
                                    sim_time=SimulationManager.get_simulation_time(),
-                                   velocities=dict(zip(arm.dof_names, qd.tolist())))
+                                   velocities=dict(zip(arm.dof_names, qd.tolist())),
+                                   apply_velocity=apply_velocity)
     server = VisionControlServer(control, host=control_host, port=control_port)
     host, port = server.start()
     print(f"[mr_liu] Runtime vision control: http://{host}:{port}")
@@ -213,6 +226,8 @@ def main(
     try:
         while app.is_running():
             app.update()
+            if control.grasp is not None:
+                control.grasp.poll()
             if app_utils.is_playing() and SimulationManager.is_simulating():
                 if worker is not None:
                     ready = worker.poll()
@@ -238,7 +253,8 @@ def main(
                                     continue
                                 point = surface_point(det.xyxy, scene_depth, packet["unproject"], mask)
                                 grounded_detections.append(dict(xyxy=det.xyxy.tolist(), label=det.label,
-                                    score=float(det.score), world_position_m=point))
+                                    score=float(det.score), world_position_m=point,
+                                    object_id=instance_object_path(packet.get("instances"), mask)))
                             control.grounding.publish(current_cfg.prompt_version, current_cfg.prompt,
                                                       grounded_detections, observed_at, rejections)
                             if control.follow_enabled() and not motion_owns_arm and detections and time.monotonic()-observed_at < 1:
@@ -259,6 +275,7 @@ def main(
                             worker.submit(dict(frames=camera_frames, observed_at=observed_at,
                                 config=control.snapshot(), depth=scene_depth.copy() if scene_depth is not None else None,
                                 semantics=copy.deepcopy(cameras["scene"].semantic_frame()),
+                                instances=copy.deepcopy(cameras["scene"].instance_frame()),
                                 unproject=frozen_unprojector(cameras["scene"].unproject)))
                 frames += 1
                 if test_frames is not None and frames >= test_frames:
@@ -270,6 +287,8 @@ def main(
         control.set_error(str(exc))
         raise
     finally:
+        if control.grasp is not None:
+            control.grasp.close()
         SimulationManager.deregister_callback(callback)
         if worker is not None:
             worker.close()

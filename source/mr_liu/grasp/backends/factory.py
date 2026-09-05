@@ -20,7 +20,7 @@ def create_grasp_backend(
 ):
     """Build the selected backend while leaving the BusAgent node API stable."""
 
-    name = str(config.get("backend", "geometric")).strip().lower()
+    name = str(config.get("backend", "graspgenx")).strip().lower()
     if name == "geometric":
         return GeometricAntipodalBackend()
     if name != "graspgenx":
@@ -33,7 +33,7 @@ def create_grasp_backend(
         GraspGenXConfig.from_mapping(section),
         transport=graspgenx_transport,
     )
-    fallback_name = section.get("fallback_backend", "geometric")
+    fallback_name = section.get("fallback_backend", "none")
     if fallback_name in (None, False, "none", "disabled"):
         return primary
     if str(fallback_name).lower() != "geometric":

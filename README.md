@@ -2,6 +2,9 @@
 
 ## BusAgent：精细抓取模块交接入口
 
+现有 Web/语音控制链路的抓取接入见 [运行说明](docs/BUSAGENT_GRASP_RUNTIME.md)：
+单物体定位、接近、腕部抓取、抬升验证与中断已接入代码；待服务器 GPU 联调，放置尚未接入。
+
 新增 `GeneralGraspNode` / `FineGraspSkill`：机械臂靠近目标后，以腕部 RGB-D 持续观测，
 通过 GraspGenX 候选、IK/碰撞筛选和小步伺服完成接近、闭爪、抬升与验证。
 仿真头顶相机也已升级 RGB-D，但尚未参与抓取决策。
@@ -88,7 +91,7 @@ FineGrasp 的架构、Isaac 闭环 demo、失败排查和真机前置条件见
 
 | 做什么 | 命令 |
 |---|---|
-| 腕部 RGB-D 精细抓取闭环（默认 GraspGenX + geometric fallback） | `scripts\run_fine_grasp_demo.bat` |
+| 腕部 RGB-D 精细抓取闭环（默认 GraspGenX，不自动几何回退） | `scripts\run_fine_grasp_demo.bat` |
 | 拖绿立方体，臂跟随（一期） | `scripts\run_follow_target.bat` |
 | 场景相机 → FIND/TRACK → 立方体 → 臂 | `scripts\run_vision_follow.bat` |
 | 只加载桌 + SO-101 | `run_hello_world.bat` |

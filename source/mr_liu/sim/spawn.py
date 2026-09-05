@@ -83,7 +83,8 @@ def mount_so101_to_table() -> None:
     articulation.CreateSolverVelocityIterationCountAttr().Set(int(cfg.get("solver_velocity_iterations", 1)))
     for prim in stage.Traverse():
         if str(prim.GetPath()).startswith(cfg["usd_prim_path"]+"/") and prim.IsA(UsdPhysics.RevoluteJoint):
-            PhysxSchema.PhysxJointAPI.Apply(prim).CreateMaxJointVelocityAttr().Set(float(cfg.get("drive_max_velocity_deg_s", 60)))
+            cap = cfg.get("gripper_max_velocity_deg_s", 120) if prim.GetName() == cfg["gripper_joint"] else cfg.get("drive_max_velocity_deg_s", 60)
+            PhysxSchema.PhysxJointAPI.Apply(prim).CreateMaxJointVelocityAttr().Set(float(cap))
     print(f"[mr_liu] Mounted {base.GetPath()} using single fixed joint {joint.GetPath()}")
 
 

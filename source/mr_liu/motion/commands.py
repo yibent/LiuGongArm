@@ -27,6 +27,7 @@ class MotionCommands:
         self.pending = None
         self.interruption = None
         self.active = None
+        self.external_owner = None
         self.saved = None
         self.snapshot = {}
         self.speed = 0.5  # rad/s
@@ -35,6 +36,9 @@ class MotionCommands:
         cfg = config or {}
         self.speed = np.deg2rad(float(cfg.get("speed_deg_s", 28.65)))
         self.acceleration = np.deg2rad(float(cfg.get("acceleration_deg_s2", 60)))
+        self.min_duration = float(cfg.get("min_duration_s", .5))
+        self.gripper_speed = np.deg2rad(float(cfg.get("gripper_speed_deg_s", np.rad2deg(self.speed))))
+        self.gripper_acceleration = np.deg2rad(float(cfg.get("gripper_acceleration_deg_s2", np.rad2deg(self.acceleration))))
         self.position_tolerance = np.deg2rad(float(cfg.get("position_tolerance_deg", 1.0)))
         self.velocity_tolerance = np.deg2rad(float(cfg.get("velocity_tolerance_deg_s", 1.0)))
         self.settle_seconds = float(cfg.get("settle_seconds", .35))
@@ -51,7 +55,7 @@ class MotionCommands:
                 return copy.deepcopy(self.records[cid])
             if skill not in MOTION_SKILLS:
                 raise NotImplementedError(skill)
-            if self.interruption or ((self.pending or self.active) and skill not in {"hold", "stop"}):
+            if self.interruption or ((self.pending or self.active or self.external_owner) and skill not in {"hold", "stop"}):
                 return {"ok": False, "state": "failed", "message": "BUSY：机械臂正在执行，请先暂停或等待完成", "command_id": cid}
             record = {"ok": True, "state": "accepted", "command_id": cid, "skill": skill,
                       "params": copy.deepcopy(params), "message": "控制器已接收，等待仿真线程执行", "accepted_at": self.clock()}
@@ -74,8 +78,8 @@ class MotionCommands:
 
     def status(self):
         with self.lock:
-            return copy.deepcopy({**self.snapshot, "active_command_id": self.active or self.pending,
-                                  "mode": "moving" if self.active else "hold" if self.holding else "idle",
+            return copy.deepcopy({**self.snapshot, "active_command_id": self.external_owner or self.active or self.pending,
+                                  "mode": "moving" if self.active or self.external_owner else "hold" if self.holding else "idle",
                                   "can_resume": self.saved is not None, "speed_deg_s": np.rad2deg(self.speed),
                                   "drives": getattr(self, "drive_info", {}),
                                   "last_command": next(reversed(self.records.values()), None)})
@@ -87,12 +91,12 @@ class MotionCommands:
 
     def release(self):
         with self.lock:
-            if self.active or self.pending or self.interruption:
+            if self.active or self.pending or self.interruption or self.external_owner:
                 raise ValueError("BUSY：请先停止当前动作再启用跟随")
             self.holding = False
             self.saved = None
 
-    def tick(self, joints, base, apply, playing=True, *, sim_time=None, velocities=None):
+    def tick(self, joints, base, apply, playing=True, *, sim_time=None, velocities=None, apply_velocity=None):
         """Return True when this lane owns the drives (including HOLD)."""
         with self.lock:
             now = self.clock()
@@ -112,6 +116,13 @@ class MotionCommands:
                              "tool_position_world_m": pose[:3, 3].tolist(),
                              "tool_orientation_xyzw": Rotation.from_matrix(pose[:3, :3]).as_quat().tolist(),
                              "sampled_at": now, "simulation_time": sim_time, "simulation_playing": playing}
+            # A composite skill owns the drives until its main-thread cleanup.
+            # Keep telemetry fresh, but never overwrite grasp/servo targets with
+            # an old HOLD pose. Interrupt remains pending for its guard to see.
+            if self.external_owner:
+                return True
+            if apply_velocity is not None and (self.holding or self.pending or self.interruption):
+                apply_velocity({k: 0. for k in joints})
             if self.interruption:
                 cid, self.interruption = self.interruption, None
                 self.saved = copy.deepcopy(self.records[self.active].get("goal")) if self.active else self.saved
@@ -141,8 +152,10 @@ class MotionCommands:
                                 raise ValueError(f"JOINT_LIMIT：{name} 目标超出 [{np.rad2deg(lo):.1f}, {np.rad2deg(hi):.1f}] 度；未执行")
                         distance = max(abs(goal[k]-v) for k, v in joints.items())
                         # Quintic smoothstep peak derivatives: 1.875 and 10/sqrt(3).
-                        duration = max(.5, 1.875*distance/self.speed,
-                                       np.sqrt((10/np.sqrt(3))*distance/self.acceleration))
+                        speed = self.gripper_speed if record["skill"] == "gripper" else self.speed
+                        acceleration = self.gripper_acceleration if record["skill"] == "gripper" else self.acceleration
+                        duration = max(self.min_duration, 1.875*distance/speed,
+                                       np.sqrt((10/np.sqrt(3))*distance/acceleration))
                         record.update(state="started", message="轨迹已开始，等待实测到位", goal=goal,
                                       start=joints.copy(), started_at=now, started_sim_time=sim_time,
                                       duration=duration, settled=0, settled_sim_s=0.)
@@ -159,6 +172,10 @@ class MotionCommands:
                 u = min(1., elapsed/record["duration"])
                 fraction = u*u*u*(10 + u*(-15 + 6*u))
                 target = {k: v+(record["goal"][k]-v)*fraction for k, v in record["start"].items()}
+                if apply_velocity is not None:
+                    derivative = 30*u*u*(1-u)*(1-u)/record["duration"]
+                    apply_velocity({k: (record["goal"][k]-v)*derivative
+                                    for k, v in record["start"].items()})
                 apply(target)
                 error = max(abs(joints[k]-v) for k, v in record["goal"].items())
                 record["max_joint_error_deg"] = float(np.rad2deg(error))
@@ -181,8 +198,12 @@ class MotionCommands:
                       or now-record["started_at"] > self.wall_timeout):
                     self._finish(cid, "failed", "仿真暂停或运动超时，未确认到位，已保持当前位置")
                     self.hold_target, self.active = joints.copy(), None
+                    if apply_velocity is not None:
+                        apply_velocity({k: 0. for k in joints})
                     apply(joints)
-            elif self.holding and self.hold_target:
+            elif self.holding:
+                if self.hold_target is None:
+                    self.hold_target = joints.copy()
                 apply(self.hold_target)
             return self.holding or self.active is not None
 
@@ -196,9 +217,10 @@ class MotionCommands:
             return self.saved.copy()
         if skill == "set_speed":
             value = float(params["degrees_per_second"])
-            if not np.isfinite(value) or not 1 <= value <= 60:
-                raise ValueError("速度需在 1 到 60 度每秒之间")
+            if not np.isfinite(value) or not 1 <= value <= 120:
+                raise ValueError("速度需在 1 到 120 度每秒之间")
             self.speed = np.deg2rad(value)
+            self.gripper_speed = self.speed
             return None
         if skill == "move_joint":
             name = params["joint"]
