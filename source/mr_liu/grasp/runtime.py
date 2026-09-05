@@ -201,6 +201,7 @@ class GraspRuntime:
             return
         session = job.get("retry_session") or job.get("preparation_session")
         waiting = False
+        hold_targets = None
         state, message, result = "failed", "抓取未完成。", None
         try:
             self.guard()
@@ -221,6 +222,9 @@ class GraspRuntime:
                 self.motion.records[job["cid"]].update(state="started", started_at=self.clock())
             self.running = True
             self.guard()
+            # The composite skill now owns the jaw, including its explicit
+            # opening phase. A previous payload hold must not overwrite it.
+            self.motion.gripper_hold_target = None
             result = (session.prepare(job["cid"]) if "preparation_session" in job else
                       session.retry(job["cid"]) if "retry_session" in job else session.execute(job["cid"]))
             self.guard()  # A cancelled request cannot be reported successful.
@@ -250,6 +254,9 @@ class GraspRuntime:
                     elif state == "failed" and result and result.get("retry_available") is True and not job["cancelled"].is_set() and not self.motion.interruption:
                         session.hold_for_retry()
                         self.pending_retry = dict(session=session, cid=job["cid"], target=job["target"], expires=self.clock()+120)
+                    elif state == "completed" and result and not result.get("preparation_only"):
+                        hold_targets = session.hold_after_grasp()
+                        session.close(stop_motion=False)
                     else:
                         session.close()
             except Exception as exc:
@@ -261,7 +268,10 @@ class GraspRuntime:
                 # A stop/hold request is consumed by the ordinary motion loop
                 # on its next tick; it is not marked done before drive cleanup.
                 self.motion.holding = True
-                self.motion.hold_target = None  # next tick captures measured pose
+                self.motion.hold_target = hold_targets
+                if hold_targets is not None:
+                    self.motion.gripper_hold_target = hold_targets.get("gripper")
+                    self.motion.records[job["cid"]]["grasp"]["holding_after_success"] = True
                 self.motion.external_owner = None
                 self.motion.saved = None
                 self.motion._finish(job["cid"], state, message)

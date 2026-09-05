@@ -16,6 +16,27 @@ from find_and_track import RuntimeConfig, ObjectMemoryStore, Detection
 
 
 class LiveIntegrationTests(unittest.TestCase):
+    def test_grasp_cleanup_retains_commanded_targets_and_force_cap(self):
+        session = object.__new__(IsaacGraspSession)
+        measured = np.array([[.70, .76, -.48, .69, -1.56, .52]])
+        commanded = measured.copy()
+        commanded[0, 1] -= .006  # existing gravity compensation must survive
+        commanded[0, -1] = -.05
+        names = ['shoulder_pan', 'shoulder_lift', 'elbow_flex', 'wrist_flex', 'wrist_roll', 'gripper']
+        session.arm = Mock(dof_names=names)
+        session.arm.articulation.get_dof_position_targets.return_value = commanded
+        session.arm.articulation.get_dof_positions.return_value = measured
+        session.executor = Mock()
+        session.backend_instance = Mock()
+        session.old_efforts = np.ones((1, 6))
+        targets = session.hold_after_grasp()
+        session.close(stop_motion=False)
+        self.assertEqual(targets['gripper'], -.05)
+        self.assertEqual(targets['shoulder_lift'], commanded[0, 1])
+        session.executor.stop.assert_not_called()
+        session.arm.articulation.set_dof_max_efforts.assert_not_called()
+        session.arm.articulation.set_dof_position_targets.assert_not_called()
+
     def test_motion_failure_keeps_its_reason_and_confirmation(self):
         session = object.__new__(IsaacGraspSession)
         session.executor = Mock()

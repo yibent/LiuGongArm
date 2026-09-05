@@ -315,6 +315,28 @@ class IsaacGraspSession:
         if self.old_efforts is not None:
             self.arm.articulation.set_dof_max_efforts(self.old_efforts)
 
+    def hold_after_grasp(self):
+        """Transfer loaded drive targets, not the measured contact opening.
+
+        A stalled jaw has a nonzero position error that supplies clamping
+        torque. Replacing its target with the measured angle unloads the jaw.
+        Keep the force-limited close target and arm gravity compensation.
+        """
+        articulation = self.arm.articulation
+        values = articulation.get_dof_position_targets()
+        if hasattr(values, "numpy"):
+            values = values.numpy()
+        values = np.asarray(values, dtype=float).reshape(-1)
+        names = self.arm.dof_names
+        if len(values) != len(names) or not np.isfinite(values).all():
+            raise ValueError("抓取保持目标无效，未自动松爪。")
+        targets = dict(zip(names, values.tolist()))
+        articulation.set_dof_velocity_targets([[0.] * len(names)])
+        # Do not restore old max efforts: retain the close policy's force cap.
+        print("GRASP_HOLD_HANDOFF " + json.dumps({
+            "joint_targets_rad": targets, "preserve_clamping_force": True}), flush=True)
+        return targets
+
     def close(self, *, stop_motion=True):
         # Main thread only; no automatic opening or retry after a failed grasp.
         if stop_motion and self.executor:

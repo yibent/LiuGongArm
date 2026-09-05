@@ -42,6 +42,7 @@ class GraspRuntimeTests(unittest.TestCase):
         self.control.grounding.valid.return_value = True
         self.session = Mock()
         self.session.execute.return_value = {"success": True, "phase": "succeeded"}
+        self.session.hold_after_grasp.return_value = {**self.q, "gripper": -.05}
         self.factory = Mock(return_value=self.session)
         self.runtime = GraspRuntime(self.control, self.factory, clock=lambda: self.now)
         self.runtime.pool.shutdown()
@@ -76,6 +77,21 @@ class GraspRuntimeTests(unittest.TestCase):
         self.assertIsNone(self.control.motion.external_owner)
         self.assertEqual(self.submit()["state"], "completed")
         self.factory.assert_called_once()
+
+    def test_success_hands_off_loaded_targets_without_unloading_the_jaw(self):
+        self.submit()
+        self.ready()
+        self.runtime.poll()
+        self.session.hold_after_grasp.assert_called_once()
+        self.session.close.assert_called_once_with(stop_motion=False)
+        self.assertEqual(self.control.motion.gripper_hold_target, -.05)
+        self.assertTrue(self.control.motion.result("pick")["grasp"]["holding_after_success"])
+        measured = {**self.q, "gripper": .52}
+        writes = []
+        for i in range(100):
+            self.control.motion.tick(measured, np.eye(4), lambda q: writes.append(q.copy()), sim_time=i*.1)
+        self.assertTrue(all(q["gripper"] == -.05 for q in writes))
+        self.assertEqual(self.control.motion.hold_target["gripper"], -.05)
 
     def offer_preparation(self):
         self.submit()
