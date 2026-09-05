@@ -16,6 +16,7 @@ from mr_liu.grasp.geometry import (  # noqa: E402
     ObjectGeometry,
     deproject_depth,
     estimate_object_frame,
+    register_object_translation,
     recover_small_depth_holes,
     support_completed_center,
 )
@@ -27,6 +28,23 @@ from mr_liu.grasp.transforms import make_transform  # noqa: E402
 
 
 class GraspGeometryTests(unittest.TestCase):
+    def test_translation_registration_ignores_partial_view_centroid_shift(self) -> None:
+        rng = np.random.default_rng(7)
+        reference = rng.uniform(
+            [-0.03, -0.02, 0.0], [0.03, 0.02, 0.05], size=(4000, 3)
+        )
+        moved = np.asarray([0.004, -0.003, 0.002])
+        # The next wrist view retains an asymmetric subset, so its raw centroid
+        # moves much farther than the object's true physical translation.
+        partial = reference[reference[:, 0] > -0.005][::2] + moved
+        # The servo supplies the preceding frame's estimate as the ICP seed.
+        result = register_object_translation(
+            reference, partial, initial_translation_m=np.asarray([0.003, -0.002, 0.001])
+        )
+        self.assertTrue(result.reliable)
+        np.testing.assert_allclose(result.translation_base_m, moved, atol=8e-4)
+        self.assertLess(result.residual_m, 8e-4)
+
     def test_deprojection_uses_metric_depth_and_intrinsics(self) -> None:
         intrinsics = CameraIntrinsics(width=3, height=3, fx=100, fy=100, cx=1, cy=1)
         depth = np.full((3, 3), 0.2, dtype=np.float32)
@@ -122,6 +140,28 @@ class GraspGeometryTests(unittest.TestCase):
             T_base_camera=np.eye(4),
         )
         self.assertIsNone(tracker.segment(takeover, target))
+
+    def test_appearance_tracker_prefers_fresh_depth_seed_over_colour_merge(self) -> None:
+        intrinsics = CameraIntrinsics(width=40, height=30, fx=100, fy=100, cx=20, cy=15)
+        depth = np.full((30, 40), 0.5, dtype=np.float32)
+        depth[10:21, 15:26] = 0.2
+        first_rgb = np.full((30, 40, 3), [80, 80, 80], dtype=np.uint8)
+        first_rgb[10:21, 15:26] = [160, 120, 100]
+        target = TargetSpec("pastel", coarse_position_base_m=(0.0, 0.0, 0.2))
+        tracker = AppearanceDepthTrackerSegmenter(
+            SeededDepthSegmenter(depth_tolerance_m=0.01, max_radius_px=20),
+            morphology_kernel_px=1,
+        )
+        first = RGBDObservation(1, 0.0, first_rgb, depth, intrinsics, np.eye(4))
+        self.assertEqual(int(tracker.segment(first, target).sum()), 121)
+
+        # All pixels now have the target's chromaticity, so appearance alone is
+        # one giant invalid component. Current-frame depth still isolates it.
+        merged_rgb = np.full_like(first_rgb, [160, 120, 100])
+        second = RGBDObservation(2, 0.1, merged_rgb, depth, intrinsics, np.eye(4))
+        recovered = tracker.segment(second, target)
+        self.assertIsNotNone(recovered)
+        self.assertEqual(int(recovered.sum()), 121)
 
 
 if __name__ == "__main__":

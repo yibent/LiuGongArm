@@ -127,13 +127,26 @@ class AppearanceDepthTrackerSegmenter:
             self._object_id = target.object_id
         rgb = np.asarray(observation.rgb[:, :, :3], dtype=np.float32)
         chromaticity = rgb / np.maximum(rgb.sum(axis=2, keepdims=True), 12.0)
+        seeded = self.seed_segmenter.segment(observation, target)
         if self._reference_chromaticity is None:
-            initial = self.seed_segmenter.segment(observation, target)
-            if initial is None or int(np.asarray(initial, dtype=bool).sum()) < self.min_component_pixels:
+            if seeded is None or int(np.asarray(seeded, dtype=bool).sum()) < self.min_component_pixels:
                 return None
-            mask = np.asarray(initial, dtype=bool)
+            mask = np.asarray(seeded, dtype=bool)
             self._update_reference(chromaticity, observation.depth_m, mask, replace=True)
             return mask
+
+        # Reprojection is not an open-loop mask: it uses the current wrist pose
+        # only to find a seed, then regrows the component from the latest depth
+        # and RGB.  Prefer it while the upstream point still falls on a region
+        # consistent with the preceding observation.  This prevents pastel or
+        # reflective objects from merging with a similarly coloured table.
+        if seeded is not None:
+            seeded_mask = np.asarray(seeded, dtype=bool)
+            if self._is_consistent(seeded_mask, observation.depth_m):
+                self._update_reference(
+                    chromaticity, observation.depth_m, seeded_mask, replace=False
+                )
+                return seeded_mask
 
         distance = np.linalg.norm(chromaticity - self._reference_chromaticity.reshape(1, 1, 3), axis=2)
         valid_depth = np.isfinite(observation.depth_m) & (observation.depth_m > 0)
@@ -177,6 +190,22 @@ class AppearanceDepthTrackerSegmenter:
         mask = labels == selected_label
         self._update_reference(chromaticity, observation.depth_m, mask, replace=False)
         return mask
+
+    def _is_consistent(self, mask: np.ndarray, depth_m: np.ndarray) -> bool:
+        area = int(mask.sum())
+        if area < self.min_component_pixels:
+            return False
+        area_ratio = 1.0 if self._last_area_px is None else area / max(self._last_area_px, 1)
+        if not 1.0 / self.max_area_growth_per_frame <= area_ratio <= self.max_area_growth_per_frame:
+            return False
+        depths = np.asarray(depth_m[mask], dtype=np.float64)
+        depths = depths[np.isfinite(depths) & (depths > 0)]
+        if depths.size == 0:
+            return False
+        median_depth = float(np.median(depths))
+        return self._last_depth_m is None or (
+            abs(median_depth - self._last_depth_m) <= self.max_depth_change_m
+        )
 
     def _update_reference(
         self,

@@ -27,6 +27,7 @@ from mr_liu.grasp.contracts import (
 from mr_liu.grasp.geometry import (
     ObjectGeometry,
     extract_object_geometry,
+    register_object_translation,
     recover_small_depth_holes,
     support_completed_center,
 )
@@ -206,6 +207,7 @@ class GeneralGraspNode:
                 planned_center = self._tracking_center(geometry, selected)
                 tracked_center = planned_center.copy()
                 previous_raw_center = planned_center.copy()
+                reference_points_base = geometry.points_base.copy()
                 replan_required = False
                 before_close: RGBDObservation | None = None
                 final_desired = selected.T_base_grasp
@@ -236,7 +238,33 @@ class GeneralGraspNode:
                             observed_extents_m=current_geometry.extents_m.tolist(),
                         )
                         continue
-                    raw_center = self._tracking_center(current_geometry, selected)
+                    registration = register_object_translation(
+                        reference_points_base,
+                        current_geometry.points_base,
+                        initial_translation_m=tracked_center - planned_center,
+                    )
+                    if registration.reliable:
+                        raw_center = planned_center + registration.translation_base_m
+                        metrics["registration_residual_m"] = registration.residual_m
+                        metrics["registration_inlier_ratio"] = registration.inlier_ratio
+                        self._emit(
+                            FineGraspPhase.OBSERVE,
+                            event="pointcloud_registration",
+                            translation_m=registration.translation_base_m.tolist(),
+                            residual_m=registration.residual_m,
+                            inlier_ratio=registration.inlier_ratio,
+                        )
+                    else:
+                        raw_center = self._tracking_center(current_geometry, selected)
+                        metrics["registration_fallbacks"] = int(
+                            metrics.get("registration_fallbacks", 0)
+                        ) + 1
+                        self._emit(
+                            FineGraspPhase.OBSERVE,
+                            event="pointcloud_registration_fallback",
+                            residual_m=registration.residual_m,
+                            inlier_ratio=registration.inlier_ratio,
+                        )
                     jump = float(np.linalg.norm(raw_center - previous_raw_center))
                     metrics["max_observed_centroid_jump_m"] = max(
                         float(metrics.get("max_observed_centroid_jump_m", 0.0)), jump
@@ -397,9 +425,17 @@ class GeneralGraspNode:
                     state.T_base_ee[:3, 3]
                     + np.asarray([0.0, 0.0, self.settings.loop.lift_distance_m]),
                 )
-                lift_motion_completed = self.motion.move_to(
-                    lift_pose, speed_scale=min(policy.motion_speed_scale, 0.4)
-                )
+                lift_from_grasp = getattr(self.motion, "lift_from_grasp", None)
+                if callable(lift_from_grasp):
+                    lift_motion_completed = bool(
+                        lift_from_grasp(
+                            lift_pose, speed_scale=min(policy.motion_speed_scale, 0.4)
+                        )
+                    )
+                else:
+                    lift_motion_completed = self.motion.move_to(
+                        lift_pose, speed_scale=min(policy.motion_speed_scale, 0.4)
+                    )
                 metrics["lift_motion_completed"] = int(lift_motion_completed)
                 after_lift_result = self._capture_for_verification(request, metrics)
                 if isinstance(after_lift_result, FineGraspResult):

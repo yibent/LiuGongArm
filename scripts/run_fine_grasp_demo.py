@@ -170,6 +170,9 @@ def main() -> int:
     spawn_table_and_so101()
     target_rigid = _spawn_target()
     simulation_app.update()
+    # Keep large/tall benchmark objects out of the arm's startup sweep.  They
+    # are restored only after the wrist reaches the fine-loop handoff pose.
+    target_rigid.set_world_poses(positions=[[0.0, 0.0, 2.0]])
     cameras = spawn_configured_cameras()
     wrist_scene_camera = cameras["wrist"]
     SimulationManager.setup_simulation(
@@ -195,6 +198,51 @@ def main() -> int:
     for _ in range(45):
         simulation_app.update()
 
+    physics_dt = float(motion_cfg["physics_dt"])
+    # Motion/gripper control does not need to re-render both RTX cameras for
+    # every 60 Hz physics tick.  Fresh images are rendered by camera.capture()
+    # at the closed-loop boundary; using physics-only ticks here preserves the
+    # eye-in-hand semantics while avoiding hundreds of redundant renders.
+    def advance_control_physics() -> None:
+        SimulationManager.step(steps=1)
+
+    executor = IsaacCumotionExecutor(
+        arm,
+        advance_frame=advance_control_physics,
+        physics_dt_s=physics_dt,
+        target_object_paths=[TARGET_PATH],
+        track_orientation=True,
+    )
+    # The upstream fast loop is expected to hand off 5--8 cm above the target,
+    # not at one fixed world Z.  Raise the observation pose for tall objects so
+    # an upright bottle or mug is not struck before the first wrist frame.
+    extra_entry_height_m = max(0.0, float(CASE.dimensions_m[2]) - 0.040)
+    if extra_entry_height_m > 0.0:
+        safe_entry = arm.T_base_ee().copy()
+        safe_entry[2, 3] += extra_entry_height_m
+        if not executor.move_to(safe_entry, speed_scale=0.4):
+            raise RuntimeError(
+                f"Failed to establish height-adaptive fine-loop entry pose: "
+                f"extra_z={extra_entry_height_m:.3f} m"
+            )
+
+    yaw_rad = float(np.deg2rad(CASE.yaw_deg))
+    target_rigid.set_world_poses(
+        positions=[list(CASE.position_m)],
+        orientations=[[
+            float(np.cos(yaw_rad * 0.5)),
+            0.0,
+            0.0,
+            float(np.sin(yaw_rad * 0.5)),
+        ]],
+    )
+    target_rigid.set_velocities(
+        linear_velocities=[[0.0, 0.0, 0.0]],
+        angular_velocities=[[0.0, 0.0, 0.0]],
+    )
+    for _ in range(30):
+        simulation_app.update()
+
     preopen_rgb = wrist_scene_camera.rgb_rgba()
     if preopen_rgb is not None:
         cv2.imwrite(str(OUTPUT / "preopen_wrist.png"), preopen_rgb[:, :, :3][:, :, ::-1])
@@ -203,10 +251,9 @@ def main() -> int:
         np.asarray(preopen_position), np.asarray(preopen_orientation)
     )
 
-    physics_dt = float(motion_cfg["physics_dt"])
     gripper = IsaacGripperController(
         arm.articulation,
-        advance_frame=simulation_app.update,
+        advance_frame=advance_control_physics,
         physics_dt_s=physics_dt,
     )
     if not gripper.open(0.075, speed_mps=0.04):
@@ -265,13 +312,6 @@ def main() -> int:
     segmenter = AppearanceDepthTrackerSegmenter(seed_segmenter)
     recorder = FineGraspDebugRecorder(OUTPUT / "debug")
     segmenter = DebugSegmenter(segmenter, recorder)
-    executor = IsaacCumotionExecutor(
-        arm,
-        advance_frame=simulation_app.update,
-        physics_dt_s=physics_dt,
-        target_object_paths=[TARGET_PATH],
-        track_orientation=True,
-    )
     grasp_cfg["backends"]["graspgenx"]["port"] = ARGS.graspgenx_port
     node = GeneralGraspNode(
         camera=camera,

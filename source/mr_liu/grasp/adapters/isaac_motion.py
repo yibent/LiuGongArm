@@ -71,6 +71,7 @@ class IsaacCumotionExecutor:
         planner_max_iterations: int = 300,
         planner_max_sampling: int = 300,
         pinch_center_x_per_width: float = -0.5,
+        fixed_finger_center_offset_m: float = 0.0045,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.arm = arm
@@ -91,6 +92,10 @@ class IsaacCumotionExecutor:
         self.waypoint_settle_steps = int(waypoint_settle_steps)
         self.clock = clock
         self.pinch_center_x_per_width = float(pinch_center_x_per_width)
+        # ``gripper_frame_link`` lies on the fixed finger centreline, not its
+        # inner contact face.  Half the 9 mm finger thickness must remain
+        # outside the target silhouette during a top-down insertion.
+        self.fixed_finger_center_offset_m = float(fixed_finger_center_offset_m)
         self._stopped = False
         self._time_s = 0.0
         # Candidate filtering asks about both pregrasp and contact poses.  Keep
@@ -194,7 +199,10 @@ class IsaacCumotionExecutor:
         """
         center = np.asarray(T_base_grasp_center, dtype=np.float64)
         T_ee_center = np.eye(4, dtype=np.float64)
-        T_ee_center[0, 3] = self.pinch_center_x_per_width * float(width_m)
+        T_ee_center[0, 3] = (
+            self.pinch_center_x_per_width * float(width_m)
+            - self.fixed_finger_center_offset_m
+        )
         T_base_ee = center @ invert_transform(T_ee_center)
         self._grasp_center_specs[self._pose_key(T_base_ee)] = (
             center.copy(),
@@ -244,7 +252,11 @@ class IsaacCumotionExecutor:
             goal_pose = kinematics.pose(q_grasp, tool_frame)
             goal_rotation = np.asarray(goal_pose.rotation.matrix(), dtype=np.float64)
             actual_center_base = np.asarray(goal_pose.translation, dtype=np.float64) + (
-                goal_rotation[:, 0] * self.pinch_center_x_per_width * width_m
+                goal_rotation[:, 0]
+                * (
+                    self.pinch_center_x_per_width * width_m
+                    - self.fixed_finger_center_offset_m
+                )
             )
             base_position, base_orientation = (
                 self.controller.world_binding.get_world_interface().get_world_to_robot_base_transform()
@@ -317,6 +329,38 @@ class IsaacCumotionExecutor:
         # success here means the bounded, prevalidated joint segment executed.
         return follows_validated_branch or self._target_reached(T_base_ee)
 
+    def lift_from_grasp(self, T_base_ee: np.ndarray, *, speed_scale: float) -> bool:
+        """Retrace the validated insertion branch before extending the lift.
+
+        A grasped object changes the local collision/dynamics state and compact
+        five-axis arms are often near a singularity at contact.  The reverse of
+        the already checked pregrasp-to-grasp path is the safest deterministic
+        escape.  Only the remaining lift distance is handed back to IK.
+        """
+        self._stopped = False
+        self.controller.set_track_orientation(self.plan_orientation)
+        if self._active_waypoints:
+            q_current = self._arm_values(self.articulation.get_dof_positions)
+            q_pregrasp = self._active_waypoints[0]
+            reverse_path = self._linear_cspace_path(q_current, q_pregrasp)
+            if reverse_path is None or not self._execute_plan(
+                reverse_path,
+                speed_scale=speed_scale,
+                max_steps=self.max_move_steps,
+            ):
+                return False
+            self._plan_cache.clear()
+        if self._target_reached(T_base_ee):
+            return True
+        path = self._plan(T_base_ee)
+        if path is None:
+            return False
+        completed = self._execute_plan(
+            path, speed_scale=speed_scale, max_steps=self.max_move_steps
+        )
+        self._plan_cache.clear()
+        return completed and self._target_reached(T_base_ee)
+
     def stop(self) -> None:
         self._stopped = True
         positions = self.articulation.get_dof_positions()
@@ -375,7 +419,11 @@ class IsaacCumotionExecutor:
         joint_delta = self._active_grasp_q - q
         if float(np.max(np.abs(joint_delta))) < 1e-4:
             return _JointStepPlan(self._active_grasp_q.copy())
-        alpha = min(1.0, 0.10 / max(float(np.max(np.abs(joint_delta))), 1e-9))
+        # Keep each five-axis branch command small enough that the physical
+        # joint drives can demonstrate progress before gravity sag consumes
+        # the entire Cartesian step.  The outer loop deliberately trades a few
+        # more camera frames for a fresher and more stable eye-in-hand path.
+        alpha = min(1.0, 0.05 / max(float(np.max(np.abs(joint_delta))), 1e-9))
         kinematics = self.controller.cumotion_robot.kinematics
         tool_frame = str(robot_config()["tool_frame"])
         current_position_base = np.asarray(
@@ -578,7 +626,14 @@ class IsaacCumotionExecutor:
                 max_steps=max_steps,
                 velocity_tolerance_rad_s=0.5,
                 cartesian_tolerance_m=0.005,
-                minimum_cartesian_progress_m=0.0008,
+                # A wrist-camera servo segment may be only 3--5 mm in FK.
+                # Requiring 0.5 mm from every such segment deadlocks a loaded
+                # five-axis arm near a singularity even while consecutive
+                # observations show useful motion.  A 0.1 mm lower bound still
+                # guarantees that the command was physically acted upon; the
+                # outer loop owns the strict 5 mm / three-frame final test.
+                minimum_cartesian_progress_m=0.0001,
+                accept_partial_cartesian_progress=True,
             )
         if isinstance(plan, _JointWaypointPath):
             # This path was produced by dense collision checks of a straight
@@ -661,6 +716,7 @@ class IsaacCumotionExecutor:
         velocity_tolerance_rad_s: float = 0.2,
         cartesian_tolerance_m: float | None = 0.0035,
         minimum_cartesian_progress_m: float = 0.0,
+        accept_partial_cartesian_progress: bool = False,
     ) -> bool:
         target = np.asarray(waypoint, dtype=np.float64).reshape(-1)
         tolerance = self.joint_tolerance_rad if tolerance_rad is None else float(tolerance_rad)
@@ -730,9 +786,32 @@ class IsaacCumotionExecutor:
             f"target={target.round(5).tolist()} current={q.round(5).tolist()} "
             f"target_xyz={target_xyz.round(5).tolist()} "
             f"current_xyz={current_xyz.round(5).tolist()} "
+            f"initial_cartesian_error_m={initial_cartesian_error:.6f} "
+            f"cartesian_progress_m={cartesian_progress:.6f} "
             f"effort={self._arm_values(self.articulation.get_dof_efforts).round(4).tolist()} "
             f"velocity={self._arm_values(self.articulation.get_dof_velocities).round(4).tolist()}"
         )
+        # Servo segments are deliberately bounded.  On a loaded compact arm,
+        # gravity sag can leave the FK endpoint outside this segment's virtual
+        # Cartesian tolerance even though the collision-checked command made
+        # useful physical progress.  The caller will consume a *fresh* wrist
+        # frame immediately, so accepting that progress is safer and more
+        # faithful to visual servoing than discarding the observation and
+        # replanning from stale geometry.  Global moves and lift never enable
+        # this path and therefore still require endpoint convergence.
+        if accept_partial_cartesian_progress:
+            final_error = float(np.linalg.norm(target_xyz - current_xyz))
+            final_progress = initial_cartesian_error - final_error
+            if (
+                np.isfinite(final_progress)
+                and final_progress + 1e-6 >= progress_required
+                and final_error < initial_cartesian_error
+            ):
+                print(
+                    "[mr_liu] accepting bounded servo progress for fresh re-observation: "
+                    f"progress_m={final_progress:.6f} residual_m={final_error:.6f}"
+                )
+                return True
         return False
 
     def _arm_values(self, getter: Callable[..., object]) -> np.ndarray:

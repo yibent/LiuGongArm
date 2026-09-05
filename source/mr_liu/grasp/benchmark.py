@@ -47,7 +47,7 @@ class BenchmarkCase:
     def __post_init__(self) -> None:
         if not self.name.strip():
             raise ValueError("Benchmark case name is required")
-        if self.shape not in {"cube", "sphere", "cylinder", "thin"}:
+        if self.shape not in {"cube", "sphere", "cylinder", "thin", "hammer", "mug"}:
             raise ValueError(f"Unsupported benchmark shape: {self.shape}")
         if len(self.dimensions_m) != 3 or any(value <= 0 for value in self.dimensions_m):
             raise ValueError("dimensions_m must contain three positive values")
@@ -149,6 +149,40 @@ def default_unseen_cases(seed: int) -> list[BenchmarkCase]:
             reflective=True,
             mass_kg=0.060,
         ),
+        varied(
+            name="apple",
+            shape="sphere",
+            dimensions=(0.045, 0.045, 0.045),
+            color_rgb=(0.72, 0.08, 0.06),
+            mass_kg=0.105,
+            fragile=True,
+            metadata={"scenario": "fruit", "force_sensitive": True},
+        ),
+        varied(
+            name="bottle",
+            shape="cylinder",
+            dimensions=(0.044, 0.044, 0.090),
+            color_rgb=(0.12, 0.48, 0.62),
+            mass_kg=0.120,
+            metadata={"scenario": "container"},
+        ),
+        varied(
+            name="hammer",
+            shape="hammer",
+            dimensions=(0.110, 0.050, 0.028),
+            color_rgb=(0.18, 0.22, 0.25),
+            mass_kg=0.150,
+            metadata={"scenario": "industrial_tool", "preferred_region": "handle"},
+        ),
+        varied(
+            name="coffee_mug",
+            shape="mug",
+            dimensions=(0.082, 0.056, 0.062),
+            color_rgb=(0.82, 0.74, 0.60),
+            mass_kg=0.125,
+            fragile=True,
+            metadata={"scenario": "service_container", "has_handle": True},
+        ),
     ]
 
 
@@ -169,7 +203,7 @@ def spawn_benchmark_target(case: BenchmarkCase, path: str):
     import omni.usd
     from isaacsim.core.experimental.objects import Cube, Cylinder, Sphere
     from isaacsim.core.experimental.prims import GeomPrim, RigidPrim
-    from pxr import Gf, Sdf, UsdShade
+    from pxr import Gf, Sdf, UsdGeom, UsdPhysics, UsdShade
 
     position = [list(case.position_m)]
     color = tuple(case.color_rgb)
@@ -177,7 +211,56 @@ def spawn_benchmark_target(case: BenchmarkCase, path: str):
     orientation = [[math.cos(yaw_rad * 0.5), 0.0, 0.0, math.sin(yaw_rad * 0.5)]]
     orientation_kwargs = {} if abs(yaw_rad) < 1e-12 else {"orientations": orientation}
     x_size, y_size, z_size = case.dimensions_m
-    if case.shape == "sphere":
+    compound = case.shape in {"hammer", "mug"}
+    if compound:
+        stage = omni.usd.get_context().get_stage()
+        root = UsdGeom.Xform.Define(stage, path)
+        root_xform = UsdGeom.Xformable(root)
+        root_xform.AddTranslateOp().Set(Gf.Vec3d(*case.position_m))
+        if abs(case.yaw_deg) > 1e-12:
+            root_xform.AddRotateZOp().Set(case.yaw_deg)
+
+        def box(
+            name: str,
+            center: tuple[float, float, float],
+            size: tuple[float, float, float],
+        ) -> None:
+            cube = UsdGeom.Cube.Define(stage, f"{path}/{name}")
+            cube.CreateSizeAttr(1.0)
+            cube.CreateDisplayColorAttr([Gf.Vec3f(*color)])
+            xform = UsdGeom.Xformable(cube)
+            xform.AddTranslateOp().Set(Gf.Vec3d(*center))
+            xform.AddScaleOp().Set(Gf.Vec3d(*size))
+            UsdPhysics.CollisionAPI.Apply(cube.GetPrim())
+
+        def cylinder(
+            name: str,
+            center: tuple[float, float, float],
+            radius: float,
+            height: float,
+        ) -> None:
+            geom = UsdGeom.Cylinder.Define(stage, f"{path}/{name}")
+            geom.CreateAxisAttr("Z")
+            geom.CreateRadiusAttr(radius)
+            geom.CreateHeightAttr(height)
+            geom.CreateDisplayColorAttr([Gf.Vec3f(*color)])
+            UsdGeom.Xformable(geom).AddTranslateOp().Set(Gf.Vec3d(*center))
+            UsdPhysics.CollisionAPI.Apply(geom.GetPrim())
+
+        if case.shape == "hammer":
+            # Horizontal handle plus transverse head.  The handle is thin
+            # enough for SO-101 while the head tests region-aware proposals.
+            box("Handle", (-0.010, 0.0, -0.006), (0.090, 0.014, 0.014))
+            box("Head", (0.035, 0.0, 0.0), (0.026, 0.050, 0.028))
+        else:
+            # External mug body plus a collision-bearing C handle.  This proxy
+            # exercises handle occlusion and fragile-object policy without a
+            # category-specific grasp network.
+            cylinder("Body", (-0.012, 0.0, 0.0), 0.026, 0.062)
+            box("HandleTop", (0.023, 0.0, 0.020), (0.030, 0.012, 0.010))
+            box("HandleBottom", (0.023, 0.0, -0.020), (0.030, 0.012, 0.010))
+            box("HandleOuter", (0.038, 0.0, 0.0), (0.010, 0.012, 0.050))
+    elif case.shape == "sphere":
         Sphere(path, positions=position, radii=x_size * 0.5, colors=color)
     elif case.shape == "cylinder":
         Cylinder(
@@ -203,8 +286,13 @@ def spawn_benchmark_target(case: BenchmarkCase, path: str):
             colors=color,
         )
 
-    GeomPrim(path, apply_collision_apis=True)
-    rigid = RigidPrim(path, masses=[case.mass_kg])
+    if not compound:
+        GeomPrim(path, apply_collision_apis=True)
+    rigid = RigidPrim(
+        path,
+        masses=[case.mass_kg],
+        reset_xform_op_properties=compound,
+    )
 
     if case.material != "matte":
         stage = omni.usd.get_context().get_stage()

@@ -355,6 +355,7 @@ class PlannedLeRobotMotionExecutor:
         default_collision_margin_m: float = 0.006,
         max_steps: int = 400,
         pinch_center_x_per_width: float = -0.5,
+        fixed_finger_center_offset_m: float = 0.0045,
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
@@ -369,6 +370,7 @@ class PlannedLeRobotMotionExecutor:
         self.default_collision_margin_m = float(default_collision_margin_m)
         self.max_steps = int(max_steps)
         self.pinch_center_x_per_width = float(pinch_center_x_per_width)
+        self.fixed_finger_center_offset_m = float(fixed_finger_center_offset_m)
         self.clock = clock
         self.sleep = sleep
         self._stopped = False
@@ -387,7 +389,10 @@ class PlannedLeRobotMotionExecutor:
     def ee_pose_for_grasp(self, T_base_grasp_center: np.ndarray, width_m: float) -> np.ndarray:
         center = _validated_transform(T_base_grasp_center, "T_base_grasp_center")
         T_ee_center = np.eye(4, dtype=np.float64)
-        T_ee_center[0, 3] = self.pinch_center_x_per_width * float(width_m)
+        T_ee_center[0, 3] = (
+            self.pinch_center_x_per_width * float(width_m)
+            - self.fixed_finger_center_offset_m
+        )
         return center @ np.linalg.inv(T_ee_center)
 
     def is_reachable(self, T_base_ee: np.ndarray) -> bool:

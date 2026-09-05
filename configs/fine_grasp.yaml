@@ -30,7 +30,11 @@ backends:
     # geometry and close-range partial views.  Safety comes from the explicit
     # width/clearance/collision/IK filters, so retain the full ranked set.
     min_confidence: 0.0
-    width_margin_m: 0.006
+    # A close wrist view sees only the upper silhouette of rounded/reflective
+    # objects.  Reserve 10 mm for that single-view width underestimate and for
+    # the fixed-finger SO-101 jaw; otherwise an apparently feasible top-down
+    # approach can place the fixed finger inside a bottle/cup rim.
+    width_margin_m: 0.010
     fallback_backend: geometric
     fallback_on_empty: true
     stability:

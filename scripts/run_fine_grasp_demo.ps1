@@ -119,13 +119,14 @@ try {
     $env:OMNI_KIT_ACCEPT_EULA = "YES"
     Write-Host "[BusAgent] FineGrasp output: $Output"
     if ($Benchmark) {
+        $NormalizedCases = $Cases -replace "\s+", ","
         $DemoArgs = @(
             (Join-Path $PSScriptRoot "run_fine_grasp_benchmark.py"),
             "--isaac-python", $IsaacPython,
             "--backend", $Backend,
             "--graspgenx-port", "$Port",
             "--seeds", $Seeds,
-            "--cases", $Cases,
+            "--cases", $NormalizedCases,
             "--output", $Output
         )
     }

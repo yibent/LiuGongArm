@@ -33,10 +33,16 @@ class BenchmarkCaseTests(unittest.TestCase):
         second = default_unseen_cases(17)
         self.assertEqual(first, second)
         self.assertEqual(
-            {case.shape for case in first}, {"cube", "sphere", "cylinder", "thin"}
+            {case.shape for case in first},
+            {"cube", "sphere", "cylinder", "thin", "hammer", "mug"},
         )
         self.assertTrue(any(case.reflective for case in first))
         self.assertTrue(any(case.thin for case in first))
+        self.assertTrue(any(case.fragile for case in first))
+        self.assertTrue(
+            any(case.metadata.get("scenario") == "industrial_tool" for case in first)
+        )
+        self.assertTrue(any(case.metadata.get("has_handle") for case in first))
         self.assertNotEqual(default_unseen_cases(18), first)
 
     def test_case_json_round_trip(self):

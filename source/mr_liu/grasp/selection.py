@@ -83,6 +83,12 @@ def select_grasp(
                 geometry, table_height_m=config.table_height_m
             )
             if completed_center[2] != geometry.T_base_object[2, 3]:
+                safe_contact_z = (
+                    config.table_height_m + policy.required_table_clearance_m + 0.00025
+                )
+                observed_top_z = float(np.percentile(geometry.points_base[:, 2], 95.0))
+                if safe_contact_z <= observed_top_z - 0.001:
+                    completed_center[2] = max(completed_center[2], safe_contact_z)
                 T_base_grasp_center = T_base_grasp_center.copy()
                 T_base_grasp_center[2, 3] = completed_center[2]
                 support_height_constrained = True

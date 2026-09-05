@@ -179,6 +179,13 @@ class LeRobotAdapterTests(unittest.TestCase):
         self.assertTrue(motion.move_to(target, speed_scale=0.5))
         np.testing.assert_allclose(motion.robot_state().T_base_ee[:3, 3], target[:3, 3], atol=0.004)
 
+    def test_fixed_finger_pose_reserves_half_finger_thickness(self) -> None:
+        motion = PlannedLeRobotMotionExecutor(
+            _ArmRobot(), _Planner(), sleep=lambda _seconds: None
+        )
+        pose = motion.ee_pose_for_grasp(np.eye(4), 0.040)
+        self.assertAlmostEqual(float(pose[0, 3]), 0.0245, places=6)
+
 
 if __name__ == "__main__":
     unittest.main()
