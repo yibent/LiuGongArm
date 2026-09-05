@@ -28,6 +28,13 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--graspgenx-port", type=int, default=5556)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--label", help="Opt-in label -> external RGB-D/LK coarse approach -> wrist FineGrasp")
+    parser.add_argument("--locator-port", type=int, default=5570)
+    parser.add_argument("--localization-mode", choices=("florence", "florence_yoloe"), default="florence_yoloe")
+    parser.add_argument("--coarse-only", action="store_true", help="Test label approach and wrist handoff without closing")
+    parser.add_argument("--wrist-camera-profile", choices=("fine_grasp", "tabletop_wide"), default="fine_grasp")
+    parser.add_argument("--test-coarse-shift-m", type=float, default=0.,
+                        help="Simulation-only world-X perturbation during label coarse transit (<=5 cm)")
     parser.add_argument("--perception", choices=("single", "multiview"), default="single")
     parser.add_argument("--planner", choices=("graspmoe", "diffusion"), default="graspmoe")
     parser.add_argument("--segmenter", choices=("depth", "sam2"), default="depth")
@@ -48,6 +55,10 @@ def _parse_args() -> argparse.Namespace:
         help="Per-run output directory (default: output/fine_grasp_demo)",
     )
     args = parser.parse_args()
+    if args.coarse_only and not args.label:
+        parser.error("--coarse-only requires --label")
+    if args.test_coarse_shift_m and (not args.label or not abs(args.test_coarse_shift_m) <= .05):
+        parser.error("--test-coarse-shift-m requires --label and magnitude <=5 cm")
     if (args.keep_open or args.start_delay_s) and args.headless:
         parser.error("--keep-open and --start-delay-s require --no-headless")
     if not 0. <= args.start_delay_s <= 120.:
@@ -98,7 +109,7 @@ from mr_liu.grasp.verification import VisionGripperVerifier
 from mr_liu.perception.camera import spawn_configured_cameras
 from mr_liu.robot.so101 import So101Arm
 from mr_liu.sim.spawn import spawn_table_and_so101
-from mr_liu.sim.grasp_faults import OneShotPreCloseShift
+from mr_liu.sim.grasp_faults import OneShotPreCloseShift, OneShotCoarseShift
 
 
 TARGET_PATH = "/World/FineGraspTarget"
@@ -202,13 +213,14 @@ def main() -> int:
     stage_utils.create_new_stage()
     GroundPlane("/World/GroundPlane", positions=[0, 0, 0])
     DistantLight("/World/DistantLight").set_intensities(float(scene["distant_intensity"]) * CASE.light_scale)
-    spawn_table_and_so101()
+    # Isolated development fixture, not the live app's multi-object workspace.
+    spawn_table_and_so101(include_tabletop_props=False)
     target_rigid = _spawn_target()
     simulation_app.update()
     # Keep large/tall benchmark objects out of the arm's startup sweep.  They
     # are restored only after the wrist reaches the fine-loop handoff pose.
     target_rigid.set_world_poses(positions=[[0.0, 0.0, 2.0]])
-    cameras = spawn_configured_cameras()
+    cameras = spawn_configured_cameras(profiles={"wrist": ARGS.wrist_camera_profile})
     if ARGS.scene_view == "oblique":
         mount = cameras["scene"].config["recovery_oblique"]
         pose = look_at_opencv(mount["position"], mount["target"])
@@ -229,19 +241,28 @@ def main() -> int:
         overview_pose = look_at_opencv([0.65, -0.90, 1.50], [0.22, -0.10, 1.18])
         overview_camera.set_world_pose(position=overview_pose[:3, 3],
             orientation=matrix_to_quaternion_wxyz(overview_pose[:3, :3]), camera_axes="ros")
-        VIDEO = DemoVideoRecorder(OUTPUT / "demo.mp4", CASE.name, ARGS.test_target_shift_m)
+        VIDEO = DemoVideoRecorder(OUTPUT / "demo.mp4", CASE.name, ARGS.test_target_shift_m,
+                                  coarse_fault_m=ARGS.test_coarse_shift_m)
     recording_active = False
     control_ticks = 0
+    semantic_tracker = None
+    coarse_report = None
 
     def capture_video():
         if VIDEO is not None and recording_active:
+            scene_rgb = cameras["scene"].rgb_rgba()
+            if semantic_tracker is not None and semantic_tracker.latest is not None and scene_rgb is not None:
+                scene_rgb = scene_rgb.copy()
+                ys, xs = np.nonzero(semantic_tracker.latest.mask)
+                if len(xs):
+                    cv2.rectangle(scene_rgb, (int(xs.min()), int(ys.min())), (int(xs.max()), int(ys.max())), (0, 255, 100, 255), 2)
             VIDEO.capture(overview_camera.get_rgba(), wrist_scene_camera.rgb_rgba(),
-                          cameras["scene"].rgb_rgba())
+                          scene_rgb)
 
     def advance_observation_frame():
         simulation_app.update()
         capture_video()
-    if ARGS.recovery != "off":
+    if ARGS.recovery != "off" or ARGS.label:
         for scene_camera in cameras.values():
             scene_camera.enable_instance_segmentation(leaf_paths=True)
     SimulationManager.setup_simulation(
@@ -262,8 +283,13 @@ def main() -> int:
     arm_drive = _arm_drive_report(arm)
     print(f"[mr_liu] Imported SO-101 drive configuration: {json.dumps(imported_arm_drive)}")
     print(f"[mr_liu] Tuned SO-101 drive configuration: {json.dumps(arm_drive)}")
-    arm.articulation.set_dof_positions(list(FINE_ENTRY_JOINTS))
-    arm.articulation.set_dof_position_targets(list(FINE_ENTRY_JOINTS))
+    if ARGS.label:
+        # Scene initialization only: a generic parked pose, independent of
+        # target pose/shape. All subsequent transit uses measured RGB-D + IK.
+        arm.apply_configured_pose()
+    else:
+        arm.articulation.set_dof_positions(list(FINE_ENTRY_JOINTS))
+        arm.articulation.set_dof_position_targets(list(FINE_ENTRY_JOINTS))
     for _ in range(45):
         simulation_app.update()
 
@@ -293,7 +319,7 @@ def main() -> int:
     # not at one fixed world Z.  Raise the observation pose for tall objects so
     # an upright bottle or mug is not struck before the first wrist frame.
     extra_entry_height_m = max(0.0, float(CASE.dimensions_m[2]) - 0.040)
-    if extra_entry_height_m > 0.0:
+    if extra_entry_height_m > 0.0 and not ARGS.label:
         safe_entry = arm.T_base_ee().copy()
         safe_entry[2, 3] += extra_entry_height_m
         if not executor.move_to(safe_entry, speed_scale=0.4):
@@ -339,8 +365,8 @@ def main() -> int:
 
     target = TargetSpec(
         object_id="fine_grasp_target",
-        semantic_label=CASE.semantic_label if ARGS.case_json else "unseen red cube",
-        coarse_position_base_m=TARGET_POSITION,
+        semantic_label=ARGS.label or (CASE.semantic_label if ARGS.case_json else "unseen red cube"),
+        coarse_position_base_m=None if ARGS.label else TARGET_POSITION,
         properties=ObjectProperties(
             fragile=CASE.fragile,
             thin=CASE.thin,
@@ -348,13 +374,61 @@ def main() -> int:
             metadata={"benchmark_case": CASE.name, **dict(CASE.metadata)},
         ),
     )
+    if ARGS.label:
+        from mr_liu.control.coarse_approach import CoarseApproach
+        from mr_liu.perception.semantic_target import LocalSemanticLocator, SemanticFlowTarget
+        coarse_recorder = FineGraspDebugRecorder(OUTPUT / "coarse" / "debug")
+        def coarse_physical_shift(delta):
+            # Test instrument only. No truth/hint updates to the controller.
+            position = np.asarray(_pose(XformPrim(TARGET_PATH)), float) + np.asarray(delta)
+            target_rigid.set_world_poses(positions=[position])
+            target_rigid.set_velocities(linear_velocities=[[0., 0., 0.]], angular_velocities=[[0., 0., 0.]])
+        coarse_fault = OneShotCoarseShift(ARGS.test_coarse_shift_m, coarse_physical_shift)
+        def coarse_trace(event):
+            coarse_recorder.trace(event)
+            print(f"[LabelGrasp] {json.dumps(_jsonable(event))}", flush=True)
+            if VIDEO is not None:
+                VIDEO.trace(event)
+            injected = coarse_fault.on_event(event)
+            if injected is not None:
+                coarse_recorder.trace(injected)
+        external = IsaacSceneCamera(cameras["scene"], T_base_world=np.eye(4),
+            advance_frame=advance_observation_frame,
+            robot_mask_provider=lambda: cameras["scene"].instance_mask("/World/SO101", leaf_paths=True))
+        semantic_tracker = SemanticFlowTarget(external,
+            LocalSemanticLocator(ARGS.locator_port, ARGS.localization_mode), target,
+            grasp_cfg["selection"]["table_height_m"], trace=coarse_trace, recorder=coarse_recorder)
+        coarse = CoarseApproach(semantic_tracker, executor, trace=coarse_trace)
+        recording_active = ARGS.record_video
+        capture_video()
+        coarse_report = {"label": ARGS.label, "localization_mode": ARGS.localization_mode,
+            "wrist_camera_profile": ARGS.wrist_camera_profile,
+            "camera_configs": {name: _jsonable(cam.config) for name, cam in cameras.items()},
+            "target_pose_source": "RGB-D pixels only; no benchmark target pose supplied to controller",
+            "tracker": "pyramidal LK with forward/backward check; no MIL fallback",
+            "passed": False}
+        try:
+            target = coarse.run()
+            coarse_report.update(motion_passed=True, target=_jsonable(target))
+        except Exception as exc:
+            coarse_report["failure"] = str(exc)
+            coarse_trace({"phase": "failed", "event": "coarse_failed", "reason": str(exc)})
+            raise
+        finally:
+            executor.clear_grasp_plan()
+            coarse_report.update(find_count=semantic_tracker.find_count, flow_count=semantic_tracker.flow_count,
+                                 moves=coarse.move_count, guard_checks=coarse.guard_count,
+                                 test_coarse_shift_m=ARGS.test_coarse_shift_m,
+                                 test_coarse_shift_applied=coarse_fault.applied,
+                                 trace=_jsonable(coarse_recorder.events))
+            (OUTPUT / "coarse_report.json").write_text(json.dumps(coarse_report, indent=2), encoding="utf-8")
     camera = IsaacWristCamera(
         wrist_scene_camera,
         ee_pose_provider=arm.T_base_ee,
         advance_frame=advance_observation_frame,
         model_seed=CASE.seed,
         robot_mask_provider=(lambda: wrist_scene_camera.instance_mask("/World/SO101", leaf_paths=True))
-                            if ARGS.recovery != "off" else None,
+                            if ARGS.recovery != "off" or ARGS.label else None,
     )
     initial_observation = camera.capture(target)
     if initial_observation is None:
@@ -368,6 +442,8 @@ def main() -> int:
         rgb=initial_observation.rgb,
         intrinsics=initial_observation.intrinsics.matrix,
         T_base_camera=initial_observation.T_base_camera,
+        T_base_ee=initial_observation.T_base_ee,
+        T_ee_camera=initial_observation.T_ee_camera,
     )
     seed_segmenter = SeededDepthSegmenter(depth_tolerance_m=0.010, max_radius_px=180)
     initial_mask = seed_segmenter.segment(initial_observation, target)
@@ -393,6 +469,25 @@ def main() -> int:
         str(OUTPUT / "initial_mask.png"), (np.zeros_like(initial_observation.depth_m, np.uint8)
                                          if initial_mask is None else initial_mask.astype(np.uint8) * 255)
     )
+    if ARGS.label:
+        coarse_report["wrist_handoff_mask_pixels"] = 0 if initial_mask is None else int(initial_mask.sum())
+        coarse_report["wrist_handoff_sequence"] = initial_observation.sequence
+        coarse_report["wrist_optical_axis_base"] = initial_observation.T_base_camera[:3, 2].tolist()
+        coarse_report["wrist_angle_from_base_down_deg"] = float(np.degrees(np.arccos(
+            np.clip(-initial_observation.T_base_camera[2, 2], -1., 1.))))
+        try:
+            coarse_report["wrist_handoff"] = semantic_tracker.validate_wrist_handoff(initial_observation, initial_mask)
+            coarse_report["passed"] = True
+        except Exception as exc:
+            coarse_report.update(passed=False, failure=str(exc))
+            raise
+        finally:
+            (OUTPUT / "coarse_report.json").write_text(json.dumps(coarse_report, indent=2), encoding="utf-8")
+        if ARGS.coarse_only:
+            if VIDEO is not None:
+                VIDEO.finish(overview_camera.get_rgba(), wrist_scene_camera.rgb_rgba(),
+                             cameras["scene"].rgb_rgba(), "标签接近与腕部交接通过（未执行抓取）")
+            return 0
 
     target_xform = XformPrim(TARGET_PATH)
     initial_target_position = _pose(target_xform)
@@ -529,6 +624,10 @@ def main() -> int:
             "segmenter": ARGS.segmenter,
         },
         "perception_mode": ARGS.perception,
+        "wrist_camera_profile": ARGS.wrist_camera_profile,
+        "camera_configs": {name: _jsonable(cam.config) for name, cam in cameras.items()},
+        "motion_config": motion_cfg,
+        "coarse_approach": coarse_report,
         "recovery_mode": ARGS.recovery,
         "scene_view": ARGS.scene_view,
         "fault_initial_wrist_frames": ARGS.drop_initial_wrist_frames,

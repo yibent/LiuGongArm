@@ -13,6 +13,8 @@ from PIL import Image, ImageDraw, ImageFont
 
 
 PHASES = {
+    "find": "标签 → Florence / YOLOE 定位", "track": "CV 光流跟踪 + RGB-D 更新目标",
+    "coarse": "快速粗接近：IK / 碰撞 / 移动中视觉检查", "handoff": "停止粗环 → 交接腕部精细抓取",
     "observe": "腕部观察 / 更新局部几何", "generate": "生成抓取候选",
     "select": "碰撞 / IK / 夹爪约束筛选", "pregrasp": "移动到预抓取位姿",
     "servo": "最新腕部观测 → 小步闭环对齐", "close": "夹爪闭合",
@@ -30,12 +32,14 @@ class DemoVideoRecorder:
     must not be used as the non-recording performance benchmark.
     """
 
-    def __init__(self, output: Path, title: str, fault_m: float = 0., fps: int = 15):
+    def __init__(self, output: Path, title: str, fault_m: float = 0., fps: int = 15,
+                 *, coarse_fault_m: float = 0.):
         import imageio_ffmpeg
 
         self.output, self.fps = Path(output), fps
         self.output.parent.mkdir(parents=True, exist_ok=True)
         self.title, self.fault_m = title, fault_m
+        self.coarse_fault_m = coarse_fault_m
         self.phase, self.attempt, self.detail = "observe", 1, ""
         self.font = ImageFont.truetype("C:/Windows/Fonts/msyh.ttc", 21)
         self.small = ImageFont.truetype("C:/Windows/Fonts/msyh.ttc", 17)
@@ -70,6 +74,14 @@ class DemoVideoRecorder:
         if rgb is not None and getattr(rgb, "size", 0):
             canvas.paste(Image.fromarray(cv2.resize(np.asarray(rgb)[:, :, :3], size)), xy)
 
+    def _fault_note(self):
+        notes = []
+        if self.coarse_fault_m:
+            notes.append(f"粗接近目标移位 {self.coarse_fault_m*100:g} cm")
+        if self.fault_m:
+            notes.append(f"闭爪前目标移位 {self.fault_m*100:g} cm")
+        return " / ".join(notes) or "无故障注入"
+
     def compose(self, overview, wrist, scene, *, outcome=None):
         canvas = Image.new("RGB", (1280, 720), (18, 24, 33))
         self._panel(canvas, overview, (16, 68), (832, 624))
@@ -84,7 +96,7 @@ class DemoVideoRecorder:
         draw.text((868, 388), "② 固定斜上方 RGB-D：辅助观察", font=self.small, fill="white")
         draw.rectangle((16, 630, 848, 692), fill=(18, 24, 33))
         elapsed = 0. if self.started is None else time.monotonic()-self.started
-        note = f"人为目标移位 {self.fault_m*100:.0f} cm" if self.fault_m else "无故障注入"
+        note = self._fault_note()
         draw.text((26, 635), f"仿真几何代理 · {note} · 录制运行 {elapsed:.1f} s", font=self.small, fill="white")
         draw.text((26, 663), "大画面仅用于展示；右侧为最新 RGB 缓冲，非严格同步帧", font=self.small, fill=(180, 190, 205))
         return np.asarray(canvas)
@@ -132,6 +144,7 @@ class DemoVideoRecorder:
             "frames": self.frames, "fps": self.fps, "duration_s": self.frames/self.fps,
             "timing": "wall-clock gaps held; rendering adds overhead; 3 second outcome hold",
             "sensor_panels": "latest buffers, independently timed", "events": self.events,
+            "test_coarse_shift_m": self.coarse_fault_m, "test_preclose_shift_m": self.fault_m,
         }, ensure_ascii=False, indent=2), encoding="utf-8")
         if code:
             raise RuntimeError(f"Video encoder exited {code}; see {self.output.with_suffix('.ffmpeg.log')}")

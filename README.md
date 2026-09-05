@@ -2,6 +2,11 @@
 
 ## BusAgent：精细抓取模块交接入口
 
+新增可选 [标签到完整抓取入口](docs/LABEL_TO_GRASP.md)：
+`scripts\run_label_grasp.ps1 -Label 'red cube' -RecordVideo`。
+Florence/YOLOE 定位 → 真正的 LK 光流 → 经安全检查的粗接近 → 原腕部 FineGrasp；
+实测结果与尚未解决的泛化边界见该文档。
+
 **当前开发线请先读 [当前成果与工程交接](docs/FINE_GRASP_CURRENT_HANDOFF.md)**：
 包含双 RGB-D 分工、主动恢复逻辑、一键 GUI/无头视频、BusAgent 装配与失败处理，
 以及最新 4/5 cm 扰动、杯子/水果/锤子结果。下文保留旧基线背景，不作为最新状态。
@@ -69,13 +74,16 @@ D:\isaac\env_isaacsim60\python.exe -m pip install isaacsim[all,extscache]==6.0.1
 
 体积很大（`extscache-kit` 约 5.9 GB + kit-sdk 约 0.7 GB + 其它）。换机器时编辑 `isaac_env.bat` 里的 `ISAAC_ENV`。启动脚本会设置 `OMNI_KIT_ACCEPT_EULA=YES`。
 
-### 2. 视觉依赖（WebUI / vision follow）
+### 2. 独立视觉依赖（CLI / WebUI）
 
 ```bat
-D:\isaac\env_isaacsim60\python.exe -m pip install -r requirements-vision.txt
+powershell -ExecutionPolicy Bypass -File scripts\setup_vision.ps1
 ```
 
-Windows 本地也可以使用仓库内的独立视觉环境（不修改 Isaac Sim 的 Python）：
+安装到本地 `_envs/vision` overlay，复用 Isaac 的 CUDA torch，不修改原环境。
+固定版本权重下载到 `_models/florence2/large` 与 `_models/yoloe`，不进 Git。
+命令、接口、离线测试与能力边界见 [本地视觉支持](docs/LOCAL_VISION_SETUP.md)。
+也兼容主分支的仓库内 `.venv` 环境（不修改 Isaac Sim 的 Python）：
 
 ```bat
 conda create -y -p E:\LiuGongArm\.venv python=3.12
@@ -87,7 +95,8 @@ Florence 权重放在 `.cache\huggingface\Florence-2-large`、YOLOE 权重放在
 可运行 `scripts\run_florence_local.bat` 启动离线 WebUI；该入口默认使用 Florence + YOLOE，
 缺少 YOLOE 权重时自动回退到 CV 跟踪。
 
-视觉权重不进 Git。把 `yoloe-26x-seg.pt` 放到仓库根目录。没有权重时，仿真仍可手动拖绿立方体。
+启动时优先选择 `_envs/vision`，缺失时才查找 `.venv`，也可显式设置 `VISION_PYTHON`。
+视觉权重不进 Git。默认优先 `_models`，同时兼容上述旧权重目录；没有权重时，仿真仍可手动拖绿立方体。
 
 Linux/服务器建议把视觉依赖放在仓库自己的 venv 中：
 
@@ -239,8 +248,8 @@ curl -X POST http://127.0.0.1:7861/api/command \
 独立视觉 CLI：
 
 ```bat
-D:\isaac\env_isaacsim60\python.exe vision_main.py --source samples\bus.jpg --prompt "bus"
-D:\isaac\env_isaacsim60\python.exe vision_main.py --webui --host 127.0.0.1 --port 7860
+scripts\run_vision.bat --source samples\bus.jpg --prompt "bus"
+scripts\run_vision.bat --webui --host 127.0.0.1 --port 7860
 ```
 
 `--prompt` 多个目标用分号分隔；`--fast yoloe|cv`。

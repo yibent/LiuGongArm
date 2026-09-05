@@ -5,6 +5,13 @@ param(
     [switch]$KeepOpen,
     [switch]$RecordVideo,
     [string]$CaseJson = "",
+    [string]$Label = "",
+    [int]$LocatorPort = 5570,
+    [ValidateSet("florence", "florence_yoloe")]
+    [string]$LocalizationMode = "florence_yoloe",
+    [switch]$CoarseOnly,
+    [ValidateSet('fine_grasp', 'tabletop_wide')][string]$WristCameraProfile = 'fine_grasp',
+    [double]$TestCoarseShiftM = 0,
     [ValidateRange(0, 120)]
     [double]$StartDelayS = 0,
     [int]$Port = 5556,
@@ -166,6 +173,13 @@ try {
     if ($KeepOpen) { $DemoArgs += "--keep-open" }
     if ($RecordVideo) { $DemoArgs += "--record-video" }
     if (-not [string]::IsNullOrWhiteSpace($CaseJson)) { $DemoArgs += @("--case-json", $CaseJson) }
+    if (-not [string]::IsNullOrWhiteSpace($Label)) {
+        if ($Benchmark) { throw "-Label is a single-scene entry, not the old fine-only benchmark" }
+        $DemoArgs += @("--label", $Label, "--locator-port", "$LocatorPort", "--localization-mode", $LocalizationMode)
+    }
+    if ($CoarseOnly) { $DemoArgs += "--coarse-only" }
+    if (-not $Benchmark) { $DemoArgs += @("--wrist-camera-profile", $WristCameraProfile) }
+    if ($TestCoarseShiftM -ne 0) { $DemoArgs += @("--test-coarse-shift-m", "$TestCoarseShiftM") }
     if ($StartDelayS -gt 0) { $DemoArgs += @("--start-delay-s", "$StartDelayS") }
     $DemoArgs += @("--perception", $Perception)
     $DemoArgs += @("--segmenter", $Segmenter)

@@ -46,9 +46,14 @@ class SceneCamera:
     is authored below the gripper prim, so its pose follows the articulation.
     """
 
-    def __init__(self, which: str = "scene") -> None:
+    def __init__(self, which: str = "scene", *, profile: str | None = None) -> None:
         cfg = cameras_config()
-        block = cfg.get(which) or cfg["scene"]
+        block = copy.deepcopy(cfg.get(which) or cfg["scene"])
+        if profile is not None:
+            if profile not in block.get("profiles", {}):
+                raise ValueError(f"Unknown {which} camera profile: {profile}")
+            block.update(block["profiles"][profile])
+        self.profile = profile
         self.which = which
         self.config = block
         self.prim_path = str(block["prim_path"])
@@ -276,7 +281,7 @@ class SceneCamera:
         return bgr
 
 
-def spawn_configured_cameras() -> dict[str, SceneCamera]:
+def spawn_configured_cameras(*, profiles: dict[str, str] | None = None) -> dict[str, SceneCamera]:
     """Spawn every enabled camera after the table and robot are on stage."""
     cfg = cameras_config()
     if not bool(cfg.get("enabled", True)):
@@ -285,7 +290,7 @@ def spawn_configured_cameras() -> dict[str, SceneCamera]:
     for which in ("scene", "wrist"):
         if which not in cfg:
             continue
-        camera = SceneCamera(which)
+        camera = SceneCamera(which, profile=(profiles or {}).get(which))
         camera.spawn()
         cameras[which] = camera
     return cameras

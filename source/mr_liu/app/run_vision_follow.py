@@ -87,8 +87,9 @@ def _try_load_pipelines(
     device: str | None,
     memory_store: ObjectMemoryStore | None = None,
 ) -> MultiViewFindTrackPipeline | None:
-    weights = repo_root() / "yoloe-26x-seg.pt"
-    if not weights.is_file():
+    from find_and_track.settings import default_yoloe
+    weights = default_yoloe()
+    if cfg.fast_backend == "yoloe" and not weights.is_file():
         print(f"[mr_liu] YOLOE weights missing ({weights}); vision loop disabled, cube is still draggable.")
         return None
     pipe = MultiViewFindTrackPipeline(

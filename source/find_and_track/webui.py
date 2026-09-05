@@ -37,11 +37,12 @@ class ConfigIn(BaseModel):
 
 
 class AppState:
-    def __init__(self, weights: Path, *, florence_id: str | None = None, config: RuntimeConfig | None = None):
+    def __init__(self, weights: Path, *, florence_id: str | None = None,
+                 device: str | None = None, config: RuntimeConfig | None = None):
         self.memory_store = ObjectMemoryStore(RUNS / "memories")
         self.pipeline = FindTrackPipeline(yoloe_weights=weights, florence_id=florence_id,
-                                          memory_store=self.memory_store)
-        self.cfg = config or RuntimeConfig()
+                                          device=device, memory_store=self.memory_store)
+        self.cfg = config if config is not None else RuntimeConfig()
         self.lock = threading.Lock()
         self.worker: threading.Thread | None = None
         self.running = False
@@ -139,11 +140,12 @@ def _worker() -> None:
         STATE.running = False
 
 
-def create_app(weights: str | Path, *, florence_id: str | None = None, config: RuntimeConfig | None = None) -> FastAPI:
+def create_app(weights: str | Path, *, florence_id: str | None = None,
+               device: str | None = None, config: RuntimeConfig | None = None) -> FastAPI:
     global STATE
     UPLOADS.mkdir(parents=True, exist_ok=True)
     OUTPUTS.mkdir(parents=True, exist_ok=True)
-    STATE = AppState(Path(weights), florence_id=florence_id, config=config)
+    STATE = AppState(Path(weights), florence_id=florence_id, device=device, config=config)
     try:
         import torch
 
@@ -177,6 +179,7 @@ def create_app(weights: str | Path, *, florence_id: str | None = None, config: R
             "stats": STATE.stats,
             "detections": STATE.detections,
             "prompt": STATE.cfg.prompt,
+            "config": {key: getattr(STATE.cfg, key) for key in ("prompt", "fast_backend", "slow_interval", "conf", "imgsz")},
             "output": STATE.output_path,
             "has_frame": STATE.latest_jpeg is not None,
             "memories": STATE.memory_store.list(),
@@ -308,10 +311,11 @@ def create_app(weights: str | Path, *, florence_id: str | None = None, config: R
     return app
 
 
-def serve(host: str, port: int, weights: str | Path, *, florence_id: str | None = None, config: RuntimeConfig | None = None) -> None:
+def serve(host: str, port: int, weights: str | Path, *, florence_id: str | None = None,
+          device: str | None = None, config: RuntimeConfig | None = None) -> None:
     import uvicorn
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    app = create_app(weights, florence_id=florence_id, config=config)
+    app = create_app(weights, florence_id=florence_id, device=device, config=config)
     LOGGER.info("WebUI http://%s:%s", host, port)
     uvicorn.run(app, host=host, port=port, log_level="info")

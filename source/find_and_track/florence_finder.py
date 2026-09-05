@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import Iterable
 
 import cv2
@@ -10,14 +9,10 @@ import torch
 from PIL import Image
 
 from .types import Detection
+from .settings import default_florence
 
 LOGGER = logging.getLogger("find_and_track.florence")
 
-FLORENCE_IDS = (
-    "florence-community/Florence-2-large",
-    "microsoft/Florence-2-large",
-)
-LOCAL_FLORENCE = Path(__file__).resolve().parents[2] / ".cache" / "huggingface" / "Florence-2-large"
 OVD = "<OPEN_VOCABULARY_DETECTION>"
 GROUNDING = "<CAPTION_TO_PHRASE_GROUNDING>"
 
@@ -67,7 +62,7 @@ class FlorenceFinder:
     """Slow-path open-vocabulary finder (Florence-2-large)."""
 
     def __init__(self, model_id: str | None = None, device: str | None = None):
-        self.model_id = model_id
+        self.model_id = model_id or default_florence()
         self.device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
         self.dtype = torch.float16 if self.device.type == "cuda" else torch.float32
         self.model = None
@@ -83,16 +78,12 @@ class FlorenceFinder:
             return
         from transformers import AutoProcessor, Florence2ForConditionalGeneration
 
-        if self.model_id:
-            ids = (self.model_id,)
-        elif (LOCAL_FLORENCE / "model.safetensors").is_file():
-            ids = (str(LOCAL_FLORENCE),)
-        else:
-            ids = FLORENCE_IDS
+        ids = (self.model_id,)
         last_err: Exception | None = None
         for model_id in ids:
             for extra in ({"attn_implementation": "sdpa"}, {}):
-                for local_only in (True, False):
+                # Installation is explicit. Runtime must work without the network.
+                for local_only in (True,):
                     try:
                         LOGGER.info(
                             "Loading Florence-2 from %s on %s extra=%s local_files_only=%s",
@@ -108,7 +99,7 @@ class FlorenceFinder:
                         if "device_map" not in kwargs:
                             self.model = self.model.to(self.device)
                         self.model.eval()
-                        self.processor = AutoProcessor.from_pretrained(model_id, local_files_only=local_only)
+                        self.processor = AutoProcessor.from_pretrained(model_id, local_files_only=local_only, use_fast=False)
                         self.loaded_id = model_id
                         LOGGER.info("Florence-2 ready: %s", model_id)
                         return
@@ -150,7 +141,11 @@ class FlorenceFinder:
                 num_beams=1,
                 do_sample=False,
             )
-        generated_text = self.processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
+        # Native checkpoints can select a slow BART tokenizer. Its default adds
+        # spaces between <loc_*> tokens, which Florence's bbox parser cannot read.
+        generated_text = self.processor.batch_decode(
+            generated_ids, skip_special_tokens=False, spaces_between_special_tokens=False,
+        )[0]
         return self.processor.post_process_generation(
             generated_text,
             task=task,
