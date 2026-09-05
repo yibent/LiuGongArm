@@ -15,6 +15,7 @@ from mr_liu.grasp.contracts import CameraIntrinsics, RGBDObservation, TargetSpec
 from mr_liu.perception.optical_flow import OpticalFlowTracker
 from mr_liu.perception.semantic_target import MetricTarget, SemanticFlowTarget, TargetObservationError, metric_component
 from mr_liu.sim.grasp_faults import OneShotCoarseShift
+from mr_liu.perception.camera import SceneCamera
 
 
 def sample(sequence=1, timestamp=10., second=False):
@@ -31,6 +32,17 @@ def sample(sequence=1, timestamp=10., second=False):
 
 
 class LabelPerceptionTests(unittest.TestCase):
+    def test_camera_profiles_do_not_mutate_the_selected_default(self):
+        live = SceneCamera("wrist")
+        wide = SceneCamera("wrist", profile="tabletop_wide")
+        close = SceneCamera("wrist", profile="fine_grasp")
+        self.assertEqual(wide.config["translation"], [.150, 0., -.100])
+        self.assertEqual(live.config["translation"], [.060, 0., -.030])
+        self.assertEqual(close.config["translation"], [.060, 0., -.030])
+        self.assertEqual(SceneCamera("wrist").config, live.config)
+        with self.assertRaises(ValueError):
+            SceneCamera("wrist", profile="missing")
+
     def test_lk_tracks_real_translation(self):
         obs = sample()
         mask = obs.depth_m < 1
@@ -205,6 +217,30 @@ class CoarseHandoffTests(unittest.TestCase):
         self.assertTrue(event["simulation_only"])
         fault.on_event({"event": "coarse_move", "iteration": 1})
         apply.assert_called_once_with((.025, 0., 0.))
+
+    def test_ik_view_proposal_requires_a_second_complete_safety_check(self):
+        motion, events, checks = FakeMotion(), [], []
+        def safety(pose, points, finger):
+            checks.append(pose.copy())
+            return len(checks) > 1
+        def propose(pose):
+            from scipy.spatial.transform import Rotation
+            result = pose.copy()
+            result[:3, :3] = Rotation.from_euler("y", 10, degrees=True).as_matrix() @ pose[:3, :3]
+            return result
+        motion.is_observation_path_safe = safety
+        motion.propose_observation_pose = propose
+        CoarseApproach(self.tracker(), motion, trace=events.append).run()
+        self.assertTrue(any(e["event"] == "coarse_ik_view_adjustment" for e in events))
+        self.assertGreater(len(checks), motion.moves)
+        np.testing.assert_allclose(motion.pose[:3, :3], checks[1][:3, :3], atol=1e-6)
+
+    def test_unsafe_ik_view_suggestion_cannot_bypass_path_checks(self):
+        motion = FakeMotion(reachable=False)
+        motion.propose_observation_pose = lambda pose: pose.copy()
+        with self.assertRaisesRegex(TargetObservationError, "coarse_path_infeasible"):
+            CoarseApproach(self.tracker(), motion).run()
+        self.assertEqual(motion.moves, 0)
 
 
 if __name__ == "__main__":

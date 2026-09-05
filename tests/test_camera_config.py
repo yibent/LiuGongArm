@@ -6,10 +6,13 @@ import sys
 import unittest
 from pathlib import Path
 
+import numpy as np
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "source"))
 
 from mr_liu.config import cameras_config  # noqa: E402
+from mr_liu.grasp.transforms import quaternion_wxyz_to_matrix  # noqa: E402
 
 
 class CameraConfigTests(unittest.TestCase):
@@ -19,10 +22,16 @@ class CameraConfigTests(unittest.TestCase):
     def test_rig_is_enabled(self) -> None:
         self.assertTrue(self.cfg["enabled"])
 
-    def test_merge_keeps_live_camera_timing_and_optional_recovery_mount(self) -> None:
+    def test_successful_wrist_mount_is_default_with_explicit_wide_comparison(self) -> None:
         for name in ("scene", "wrist"):
             self.assertEqual(self.cfg[name]["frequency"], 15)
-        self.assertEqual(self.cfg["wrist"]["translation"], [0.150, 0.0, -0.100])
+        wrist = self.cfg["wrist"]
+        self.assertEqual(wrist["translation"], [0.060, 0.0, -0.030])
+        self.assertEqual(wrist["orientation_wxyz"], [0.53895, 0.0, 0.84234, 0.0])
+        self.assertEqual(wrist["focal_length"], 1.8)
+        for key, value in wrist["profiles"]["fine_grasp"].items():
+            self.assertEqual(wrist[key], value)
+        self.assertEqual(wrist["profiles"]["tabletop_wide"]["translation"], [0.150, 0.0, -0.100])
         oblique = self.cfg["scene"]["recovery_oblique"]
         self.assertEqual(oblique["position"], [0.65, -0.65, 1.75])
         self.assertEqual(oblique["target"], [0.35, -0.15, 1.08])
@@ -39,6 +48,15 @@ class CameraConfigTests(unittest.TestCase):
         self.assertEqual(wrist["parent_prim_path"], "/World/SO101/gripper")
         self.assertEqual(wrist["prim_path"].rsplit("/", 1)[0], wrist["parent_prim_path"])
         self.assertEqual(set(wrist["annotators"]), {"rgb", "distance_to_image_plane"})
+
+    def test_default_mount_aims_at_the_tool_region_in_gripper_frame(self) -> None:
+        wrist = self.cfg["wrist"]
+        # Isaac's authored camera pose uses +X forward. Runtime RGB-D poses
+        # instead use OpenCV +Z forward; do not mix these two conventions.
+        forward = quaternion_wxyz_to_matrix(wrist["orientation_wxyz"])[:, 0]
+        toward_tool = np.array([0., 0., -.16]) - np.asarray(wrist["translation"])
+        toward_tool /= np.linalg.norm(toward_tool)
+        self.assertGreater(float(forward @ toward_tool), .9999)
 
     def test_resolutions_are_width_height_pairs(self) -> None:
         for name in ("scene", "wrist"):

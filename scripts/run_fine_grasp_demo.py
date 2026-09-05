@@ -32,6 +32,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--locator-port", type=int, default=5570)
     parser.add_argument("--localization-mode", choices=("florence", "florence_yoloe"), default="florence_yoloe")
     parser.add_argument("--coarse-only", action="store_true", help="Test label approach and wrist handoff without closing")
+    parser.add_argument("--wrist-camera-profile", choices=("fine_grasp", "tabletop_wide"), default="fine_grasp")
     parser.add_argument("--test-coarse-shift-m", type=float, default=0.,
                         help="Simulation-only world-X perturbation during label coarse transit (<=5 cm)")
     parser.add_argument("--perception", choices=("single", "multiview"), default="single")
@@ -212,13 +213,14 @@ def main() -> int:
     stage_utils.create_new_stage()
     GroundPlane("/World/GroundPlane", positions=[0, 0, 0])
     DistantLight("/World/DistantLight").set_intensities(float(scene["distant_intensity"]) * CASE.light_scale)
-    spawn_table_and_so101()
+    # Isolated development fixture, not the live app's multi-object workspace.
+    spawn_table_and_so101(include_tabletop_props=False)
     target_rigid = _spawn_target()
     simulation_app.update()
     # Keep large/tall benchmark objects out of the arm's startup sweep.  They
     # are restored only after the wrist reaches the fine-loop handoff pose.
     target_rigid.set_world_poses(positions=[[0.0, 0.0, 2.0]])
-    cameras = spawn_configured_cameras()
+    cameras = spawn_configured_cameras(profiles={"wrist": ARGS.wrist_camera_profile})
     if ARGS.scene_view == "oblique":
         mount = cameras["scene"].config["recovery_oblique"]
         pose = look_at_opencv(mount["position"], mount["target"])
@@ -239,7 +241,8 @@ def main() -> int:
         overview_pose = look_at_opencv([0.65, -0.90, 1.50], [0.22, -0.10, 1.18])
         overview_camera.set_world_pose(position=overview_pose[:3, 3],
             orientation=matrix_to_quaternion_wxyz(overview_pose[:3, :3]), camera_axes="ros")
-        VIDEO = DemoVideoRecorder(OUTPUT / "demo.mp4", CASE.name, ARGS.test_target_shift_m)
+        VIDEO = DemoVideoRecorder(OUTPUT / "demo.mp4", CASE.name, ARGS.test_target_shift_m,
+                                  coarse_fault_m=ARGS.test_coarse_shift_m)
     recording_active = False
     control_ticks = 0
     semantic_tracker = None
@@ -399,6 +402,8 @@ def main() -> int:
         recording_active = ARGS.record_video
         capture_video()
         coarse_report = {"label": ARGS.label, "localization_mode": ARGS.localization_mode,
+            "wrist_camera_profile": ARGS.wrist_camera_profile,
+            "camera_configs": {name: _jsonable(cam.config) for name, cam in cameras.items()},
             "target_pose_source": "RGB-D pixels only; no benchmark target pose supplied to controller",
             "tracker": "pyramidal LK with forward/backward check; no MIL fallback",
             "passed": False}
@@ -437,6 +442,8 @@ def main() -> int:
         rgb=initial_observation.rgb,
         intrinsics=initial_observation.intrinsics.matrix,
         T_base_camera=initial_observation.T_base_camera,
+        T_base_ee=initial_observation.T_base_ee,
+        T_ee_camera=initial_observation.T_ee_camera,
     )
     seed_segmenter = SeededDepthSegmenter(depth_tolerance_m=0.010, max_radius_px=180)
     initial_mask = seed_segmenter.segment(initial_observation, target)
@@ -465,6 +472,9 @@ def main() -> int:
     if ARGS.label:
         coarse_report["wrist_handoff_mask_pixels"] = 0 if initial_mask is None else int(initial_mask.sum())
         coarse_report["wrist_handoff_sequence"] = initial_observation.sequence
+        coarse_report["wrist_optical_axis_base"] = initial_observation.T_base_camera[:3, 2].tolist()
+        coarse_report["wrist_angle_from_base_down_deg"] = float(np.degrees(np.arccos(
+            np.clip(-initial_observation.T_base_camera[2, 2], -1., 1.))))
         try:
             coarse_report["wrist_handoff"] = semantic_tracker.validate_wrist_handoff(initial_observation, initial_mask)
             coarse_report["passed"] = True
@@ -614,6 +624,9 @@ def main() -> int:
             "segmenter": ARGS.segmenter,
         },
         "perception_mode": ARGS.perception,
+        "wrist_camera_profile": ARGS.wrist_camera_profile,
+        "camera_configs": {name: _jsonable(cam.config) for name, cam in cameras.items()},
+        "motion_config": motion_cfg,
         "coarse_approach": coarse_report,
         "recovery_mode": ARGS.recovery,
         "scene_view": ARGS.scene_view,

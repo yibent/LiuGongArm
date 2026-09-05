@@ -10,6 +10,7 @@ param(
     [ValidateSet("florence", "florence_yoloe")]
     [string]$LocalizationMode = "florence_yoloe",
     [switch]$CoarseOnly,
+    [ValidateSet('fine_grasp', 'tabletop_wide')][string]$WristCameraProfile = 'fine_grasp',
     [double]$TestCoarseShiftM = 0,
     [ValidateRange(0, 120)]
     [double]$StartDelayS = 0,
@@ -177,6 +178,7 @@ try {
         $DemoArgs += @("--label", $Label, "--locator-port", "$LocatorPort", "--localization-mode", $LocalizationMode)
     }
     if ($CoarseOnly) { $DemoArgs += "--coarse-only" }
+    if (-not $Benchmark) { $DemoArgs += @("--wrist-camera-profile", $WristCameraProfile) }
     if ($TestCoarseShiftM -ne 0) { $DemoArgs += @("--test-coarse-shift-m", "$TestCoarseShiftM") }
     if ($StartDelayS -gt 0) { $DemoArgs += @("--start-delay-s", "$StartDelayS") }
     $DemoArgs += @("--perception", $Perception)

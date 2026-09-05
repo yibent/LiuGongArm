@@ -227,7 +227,7 @@ def spawn_tabletop_props() -> list[str]:
     return spawned
 
 
-def spawn_table_and_so101() -> None:
+def spawn_table_and_so101(*, include_tabletop_props: bool = True) -> None:
     import isaacsim.core.experimental.utils.stage as stage_utils
     from isaacsim.core.experimental.prims import XformPrim
 
@@ -255,4 +255,5 @@ def spawn_table_and_so101() -> None:
     print(f"[mr_liu] Table: {table_usd}")
     print(f"[mr_liu] SO-101: {so101_usd}")
     mount_so101_to_table()
-    spawn_tabletop_props()
+    if include_tabletop_props:
+        spawn_tabletop_props()

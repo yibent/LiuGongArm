@@ -10,6 +10,15 @@ from mr_liu.sim.demo_video import DemoVideoRecorder
 
 
 class VideoTimingTests(unittest.TestCase):
+    def test_coarse_fault_is_not_labeled_no_fault_or_rounded_to_two_cm(self):
+        recorder = object.__new__(DemoVideoRecorder)
+        recorder.fault_m, recorder.coarse_fault_m = 0., .025
+        self.assertEqual(recorder._fault_note(), "粗接近目标移位 2.5 cm")
+        recorder.fault_m = -.01
+        self.assertIn("闭爪前目标移位 -1 cm", recorder._fault_note())
+        recorder.fault_m = recorder.coarse_fault_m = 0.
+        self.assertEqual(recorder._fault_note(), "无故障注入")
+
     def test_holds_gaps_and_does_not_accelerate_with_frequent_callbacks(self):
         recorder = object.__new__(DemoVideoRecorder)
         recorder.started, recorder.frames, recorder.last_frame, recorder.fps = None, 0, None, 10

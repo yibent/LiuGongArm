@@ -6,6 +6,9 @@
 本地权重、环境安装见 [LOCAL_VISION_SETUP.md](LOCAL_VISION_SETUP.md)；
 原抓取与主动恢复见 [FINE_GRASP_CURRENT_HANDOFF.md](FINE_GRASP_CURRENT_HANDOFF.md)。
 
+已合并 `origin/master` 的 `f9b0c65`（合并提交 `3ed87b7`），保留其视觉记忆、YOLOE 优先检测及 Web 双视角/控制接口。
+**硬件和相机配置不按主分支优先：腕部安装位置、角度和焦距已恢复原成功方案，并在合并代码上实际复测。**
+
 ## 一条命令
 
 在仓库根目录 `D:\liuGong` 的 PowerShell 中运行：
@@ -14,7 +17,8 @@
 .\scripts\run_label_grasp.ps1 -Label 'red cube' -RecordVideo
 ```
 
-默认无头 Isaac Sim、Florence + YOLOE、GraspGenX/GraspMoE、原有 active recovery。
+默认无头 Isaac Sim、Florence + YOLOE、GraspGenX/GraspMoE、原有 active recovery、`fine_grasp` 腕部安装位。
+GraspGenX 服务不可用时明确失败，不再自动退回几何 backend；显式 `-Backend geometric` 仍可用于诊断。
 输出目录自动按时间创建在 `output/label_grasp/`；指定 `-Output` 时必须使用空目录，避免覆盖证据。
 脚本启动并回收自己创建的本地模型服务，不关闭原已存在的共享服务。
 
@@ -59,6 +63,35 @@
 - 算法不读取物体 USD 位姿来定位或补救。场景构造、显式扰动器、失败诊断及最终物理抬升统计才读取仿真真值；机器人自遮挡掩码使用机器人实例 ID，不使用目标实例 ID。
 - 物品 fragile/thin/reflective 等属性仍可由上游提供，位置从标签 RGB-D 观测得到。
 
+### 腕部安装选择与“画面倒置”
+
+`configs/cameras.yaml` 的全局默认和 demo 默认均为原成功安装位；`SceneCamera` 的 profile 按副本应用，不改写共享配置。
+
+| 参数（相对 gripper） | 默认 `fine_grasp` | 仅显式对照 `tabletop_wide` |
+|---|---|---|
+| 位移 m | `[0.060, 0, -0.030]` | `[0.150, 0, -0.100]` |
+| 安装四元数 wxyz | `[0.53895, 0, 0.84234, 0]` | `[0, 0, 1, 0]` |
+| 焦距（Isaac API 参数） | `1.8` | `1.0` |
+| 同一方块交接时光轴向下俯角 | 约 67.1° | 约 2.5° |
+| 合并后完整抓取结果 | 成功，物理抬升 6.15 cm | 目标裁切，腕部身份检查失败，未抓取 |
+
+两种安装角相差约 65.2°。宽视野方案在该精抓姿态下近乎水平看桌面，背景看起来倒置；
+它不是 RGB 被显示程序翻转，也不是把图像旋转 180° 就能解决的覆盖问题。
+以上俯角来自 `12_merged_cube` / `13_wide_camera` 的 `initial_rgbd.npz` 中同帧 `T_base_camera`：
+OpenCV 光轴为旋转矩阵第 3 列，基坐标 Z 朝上时俯角为 `asin(-T_base_camera[2, 2])`。
+安装配置采用 Isaac 的 +X forward 约定，运行时视觉外参采用 OpenCV +Z forward，不能混用。
+不对模型 RGB 单独翻转；RGB、深度、K、手眼变换必须配套一致。
+
+```powershell
+# 仅用于复现对照；不作失败时的自动相机 fallback
+.\scripts\run_label_grasp.ps1 -Label 'red cube' -WristCameraProfile tabletop_wide -CoarseOnly
+```
+
+当前仍为两路 15 Hz、120 Hz 物理步及合并后的 +90° Z 机器人基座方向，**不是整套仿真环境原样回退**。
+它们已随近距离相机在 `12_merged_cube` 通过一次完整回归；单次相机 A/B 不能证明所有物体的最优安装位。
+独立 demo 不加载主线默认的六个松散道具，保持显式单对象开发场景；Web 主场景默认多物体行为保留。
+若改真机安装或基座方向，必须重新标定/验收，不可直接套用这些仿真四元数。
+
 ## 快慢环与安全门
 
 FIND 在独立 `_envs/vision` 进程执行。默认端口 5570，仅绑定 `127.0.0.1`。
@@ -74,7 +107,7 @@ TRACK 明确使用 LK，不使用旧 WebUI 中以 MIL 为主的 CV 跟踪器。
 粗接近默认最多 4 cm/段、速度比例 0.65；这是 SO-101 仿真参数，不是真机速度认证。
 默认开放夹爪的指尖中心在观测顶面上方 6 cm。
 若不可达，可尝试最低 5 cm、朝初始机械臂位置的另一闭合轴方向，以及 15°/30° 的有限倾斜观察候选，缓解非对称夹爪 EE 偏置及五轴约束带来的可达性限制。
-正在回归的增强：粗接近可请求 IK 返回其实际达到的附近观察姿态作为新候选，最多调整三次，
+粗接近可请求 IK 返回其实际达到的附近观察姿态作为新候选，最多调整三次，
 位置变化 ≤3 mm、相对请求轴变化 ≤15°、相对竖直方向 ≤30°；仍需对新姿态完整重新规划检查。
 这不放宽执行器 5° 轴误差验收标准，也不改动 FineGrasp 的抓取姿态求解参数。
 这些都是新候选，仍须完整通过 IK、机器人/世界碰撞与观测点云上的指尖扫掠检查。
@@ -140,8 +173,13 @@ result = fine_node.execute(FineGraspRequest(target=updated_target))
 | `09_fruit_full` | `red ball`、球形水果代理：完整成功，物理抬升 7.90 cm，28 次伺服；腕部单独验证未通过，由场景视觉验证确认；不是实物苹果测试 |
 | `10_cup_full` | 尝试提高粗 IK 轴任务权重仍未通过；该权重试验已撤回，保留失败证据 |
 | `11_absent_label` | 方块场景传入不存在的 `banana`：返回 `semantic_target_not_found`，未进入粗移动或抓取 |
+| `12_merged_cube` | 合并后、原近距离安装位：完整成功，实际抬升 6.15 cm；6 段粗移动、13 次精细伺服、1 次模型调用约 687 ms；计划 8 cm 抬升终点未完全到达，但腕部和场景验证均确认已抓起 |
+| `13_wide_camera` | 同场景对照主线宽视野安装位：粗接近完成；目标被画面上沿裁切，`wrist_handoff_identity_mismatch`，不执行抓取 |
+| `14_merged_cup` | 咖啡杯识别、7 段粗接近及腕部交接通过；FineGrasp 24 次伺服/4 次模型调用后仍有 3.75 cm 平移误差，`servo_timeout`，未闭爪；恢复退让路径未验证，安全停止，抬升 0 |
+| `15_merged_moving` | 当前默认近距离相机：方块在粗接近中移动 2.5 cm，实际触发 `target_moved_during_transit` 停止并更新目标；7 段粗移动、35 次光流观测、15 次精细伺服后成功，物理抬升 5.61 cm，腕部与场景均确认；计划 8 cm 抬升终点仍未完全到达；录有视频 |
+| `16_camera_baseline_final` | 修复录像扰动标注并保存完整手眼链后的重复回归：2.5 cm 移位再次触发暂停/更新；7 段粗移动、15 次精细伺服，实际抬升 5.56 cm，两路验证通过；8 cm 抬升终点仍未完全到达；完整录像 `demo.mp4` |
 
-方块完整录像运行中，FIND（含模型加载）14.33 s，标签到交接 22.06 s，FineGrasp 21.84 s。
+合并前 `03_cube_full` 方块完整录像运行中，FIND（含模型加载）14.33 s，标签到交接 22.06 s，FineGrasp 21.84 s。
 这些不包括 Isaac/服务启动，且含录像和诊断开销；不能据此宣称工业实时吞吐率。
 所选 grasp 的 backend 为 GraspGenX，但实际是 **OBB 候选经模型评分**，不是纯扩散候选成功。
 
@@ -150,8 +188,10 @@ result = fine_node.execute(FineGraspRequest(target=updated_target))
 - `coarse_report.json`：检测框、光流统计、实际命令、guard、交接、失败原因。
 - `coarse/debug/`：RGB、深度、mask、同帧内外参、轨迹事件；可回放检查漂移。
 - `initial_wrist.png` / `initial_mask.png`：交接时腕部视野。
+- `initial_rgbd.npz`：同帧 RGB-D、K、相机外参；新运行还保存 `T_base_ee` / `T_ee_camera`，可检查变换链。
 - `report.json`：FineGrasp 结果、候选来源、伺服误差、抓取/抬升验证和仿真真值对照。
 - `demo.mp4` / `demo.video.json`：可选展示录像及时间元数据。
+- `07_cube_moving` / `15_merged_moving` 的旧录像页脚误标“无故障注入”，实际扰动以 `coarse_report.json` 的 `test_coarse_shift_applied` 和 guard 事件为准；已修复新录像的粗接近扰动标注，原证据不覆盖。
 - `console.log` / `locator_*.log` / `error.txt`：进程、模型和异常诊断。
 
 不能忽略的边界：
@@ -161,6 +201,8 @@ result = fine_node.execute(FineGraspRequest(target=updated_target))
 3. 同标签多个合格实例默认报歧义；还未实现复杂指代/任意杂乱场景的开放集身份验证。
 4. 光流无可靠特征、遮挡、视图变化过大时返回失败/重定位；不承诺纯色、金属和薄件都能跟踪。
 5. 真机还需实际标定、时间同步、机器人自遮挡模型、障碍地图、限速/急停与力控认证。此入口没有接管真机控制。
+6. 咖啡杯尚未完整抓起；工业工具、薄件、多姿态/光照/随机种子的冻结测试集也未完成本入口验收，不能由方块或球形代理成功推导泛化能力。
+7. 合入的 Web/CLI YOLOE 文本优先分支需要额外 CLIP tokenizer / MobileCLIP 文本编码权重，当前本地尚未配齐，会回退 Florence；本入口已实跑的是 Florence → YOLOE **视觉提示**，不要混淆两条分支的验证范围。
 
 单测运行：
 
@@ -169,3 +211,4 @@ D:\isaac\env_isaacsim60\python.exe -m unittest discover -s tests -v
 ```
 
 覆盖真实 LK 平移、无纹理拒绝、坐标变换、深度缺失、机器人排除、检测延迟、帧新鲜度、歧义目标、腕部身份门、运动中停止与物理扰动器。
+本次合并及相机取舍后的完整单测为 **242 项通过**；包括默认安装朝向夹持区域、profile 互不污染、正确的扰动录像标注，以及 IK 邻近姿态必须重新经过完整安全检查。

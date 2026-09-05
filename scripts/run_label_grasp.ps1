@@ -3,6 +3,7 @@ param(
     [ValidateSet('florence', 'florence_yoloe')][string]$LocalizationMode = 'florence_yoloe',
     [ValidateSet('geometric', 'graspgenx')][string]$Backend = 'graspgenx',
     [ValidateSet('off', 'assisted', 'active')][string]$Recovery = 'active',
+    [ValidateSet('fine_grasp', 'tabletop_wide')][string]$WristCameraProfile = 'fine_grasp',
     [string]$CaseJson = '', [string]$Output = '',
     [ValidateRange(-0.05, 0.05)][double]$TestCoarseShiftM = 0,
     [int]$LocatorPort = 5570, [switch]$CoarseOnly, [switch]$RecordVideo, [switch]$NoHeadless
@@ -37,7 +38,8 @@ try {
     $argsForDemo = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
         (Join-Path $PSScriptRoot 'run_fine_grasp_demo.ps1'), '-Label', $Label,
         '-LocatorPort', "$LocatorPort", '-LocalizationMode', $LocalizationMode,
-        '-Backend', $Backend, '-Recovery', $Recovery, '-SceneView', 'oblique', '-Output', $Output)
+        '-Backend', $Backend, '-Recovery', $Recovery, '-WristCameraProfile', $WristCameraProfile,
+        '-SceneView', 'oblique', '-Output', $Output)
     if ($CaseJson) { $argsForDemo += @('-CaseJson', $CaseJson) }
     if ($CoarseOnly) { $argsForDemo += '-CoarseOnly' }
     if ($TestCoarseShiftM -ne 0) { $argsForDemo += @('-TestCoarseShiftM', "$TestCoarseShiftM") }
