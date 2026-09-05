@@ -32,6 +32,9 @@ class MemoryView:
     bbox: list[float]
     score: float = 1.0
     pose: dict = field(default_factory=dict)
+    # New memories retain the source frame so YOLOE can receive the original
+    # box coordinates. Older JSON files omit this field and use the crop.
+    reference_image: str | None = None
 
 
 @dataclass
@@ -138,12 +141,21 @@ class ObjectMemoryStore:
             if not ok:
                 continue
             encoded.tofile(str(image_path))
+            reference_path = item_dir / f"{view}-reference-{int(time.time() * 1000)}-{uuid.uuid4().hex[:4]}.jpg"
+            reference_ok, reference_encoded = cv2.imencode(
+                ".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 90]
+            )
+            reference_image = None
+            if reference_ok:
+                reference_encoded.tofile(str(reference_path))
+                reference_image = str(reference_path)
             views.append(MemoryView(
                 view=view,
                 image=str(image_path),
                 bbox=[x1, y1, x2, y2],
                 score=float(_field(det, "score", 1.0)),
                 pose=dict(_field(det, "pose", {}) or {}),
+                reference_image=reference_image,
             ))
         if not views:
             raise ValueError("no valid detections to remember")
@@ -169,6 +181,8 @@ class ObjectMemoryStore:
             for view in item.views:
                 try:
                     Path(view.image).unlink(missing_ok=True)
+                    if view.reference_image:
+                        Path(view.reference_image).unlink(missing_ok=True)
                 except OSError:
                     pass
             try:

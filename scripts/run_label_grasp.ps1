@@ -11,7 +11,15 @@ param(
 $ErrorActionPreference = 'Stop'
 $labelRoot = Split-Path -Parent $PSScriptRoot
 $labelPython = Join-Path $labelRoot '_envs\vision\Scripts\python.exe'
-if (-not (Test-Path -LiteralPath $labelPython)) { throw 'Run scripts/setup_vision.ps1 first' }
+if (-not (Test-Path -LiteralPath $labelPython)) {
+    # Keep the checked-in overlay as the preferred deployment path, while
+    # allowing the repository's existing local venv to run the service during
+    # development on machines that have not created _envs\vision yet.
+    $labelPython = Join-Path $labelRoot '.venv\python.exe'
+}
+if (-not (Test-Path -LiteralPath $labelPython)) {
+    throw 'Vision Python was not found; run scripts/setup_vision.ps1 or create .venv first'
+}
 if ([string]::IsNullOrWhiteSpace($Output)) {
     $Output = Join-Path $labelRoot ('output\label_grasp\' + (Get-Date -Format 'yyyyMMdd_HHmmss'))
 }
@@ -45,8 +53,14 @@ try {
     if ($TestCoarseShiftM -ne 0) { $argsForDemo += @('-TestCoarseShiftM', "$TestCoarseShiftM") }
     if ($RecordVideo) { $argsForDemo += '-RecordVideo' }
     if ($NoHeadless) { $argsForDemo += '-NoHeadless' }
+    # Isaac writes non-fatal renderer warnings to stderr. PowerShell promotes
+    # native stderr to a terminating NativeCommandError under Stop; capture
+    # the stream while using the child process exit code as the result.
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
     & powershell @argsForDemo 2>&1 | Tee-Object -FilePath (Join-Path $Output 'console.log')
     $labelExit = $LASTEXITCODE
+    $ErrorActionPreference = $previousErrorActionPreference
 } finally {
     # A venv launcher can create a second python.exe on Windows. Only reap
     # our exact child, never other servers or an already-running shared locator.

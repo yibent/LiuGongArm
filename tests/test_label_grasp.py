@@ -11,7 +11,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "source"))
 from mr_liu.control.coarse_approach import CoarseApproach
-from mr_liu.grasp.contracts import CameraIntrinsics, RGBDObservation, TargetSpec
+from mr_liu.grasp.contracts import CameraIntrinsics, ObjectProperties, RGBDObservation, TargetSpec
 from mr_liu.perception.optical_flow import OpticalFlowTracker
 from mr_liu.perception.semantic_target import MetricTarget, SemanticFlowTarget, TargetObservationError, metric_component
 from mr_liu.sim.grasp_faults import OneShotCoarseShift
@@ -72,6 +72,20 @@ class LabelPerceptionTests(unittest.TestCase):
         obs = sample()
         with self.assertRaisesRegex(TargetObservationError, "insufficient_target_depth"):
             metric_component(replace(obs, depth_m=np.full_like(obs.depth_m, np.nan)), np.ones_like(obs.depth_m, bool), 1.)
+
+    def test_thin_target_can_use_submillimeter_support_plane_gate(self):
+        obs = sample()
+        depth = obs.depth_m.copy()
+        depth[20:40, 25:45] = 0.998
+        thin_obs = replace(obs, depth_m=depth)
+        target = TargetSpec("target", "thin key", properties=ObjectProperties(thin=True))
+        tracker = SemanticFlowTarget(Mock(), Mock(), target, 1., clock=lambda: 10.)
+        with self.assertRaisesRegex(TargetObservationError, "insufficient_target_depth"):
+            metric_component(thin_obs, thin_obs.depth_m < 1, 1., min_pixels=10)
+        # A 2 mm object is below the ordinary 4 mm gate but remains valid for
+        # the thin-target path. The point cloud must still be above the table.
+        evidence = tracker._metric_component(thin_obs, thin_obs.depth_m < 1, min_pixels=10)
+        self.assertGreater(evidence.top_z_m, 1.0)
 
     def test_robot_mask_cannot_be_selected_as_object(self):
         obs = sample()

@@ -36,7 +36,15 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
-$IsaacPython = "D:\isaac\env_isaacsim60\python.exe"
+$IsaacPython = if ($env:ISAAC_PYTHON) {
+    $env:ISAAC_PYTHON
+}
+elseif (Test-Path -LiteralPath "D:\isaacsim\python.bat") {
+    "D:\isaacsim\python.bat"
+}
+else {
+    "D:\isaac\env_isaacsim60\python.exe"
+}
 $ModelPython = Join-Path $ProjectRoot "_envs\graspgenx\python.exe"
 $ModelRoot = Join-Path $ProjectRoot "_vendor\GraspGenX"
 $CheckpointRoot = Join-Path $ProjectRoot "_models\graspgenx\checkpoints\release"
@@ -60,7 +68,7 @@ elseif (-not [System.IO.Path]::IsPathRooted($Output)) {
 }
 
 if (-not (Test-Path -LiteralPath $IsaacPython)) {
-    throw "Isaac Python was not found at $IsaacPython"
+    throw "Isaac Python launcher was not found at $IsaacPython; set ISAAC_PYTHON or update isaac_env.bat"
 }
 
 function Test-LocalPort([int]$TargetPort) {

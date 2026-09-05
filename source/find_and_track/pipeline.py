@@ -129,10 +129,18 @@ class FindTrackPipeline:
             # detections are handed back to CV on the following frame.
             sample_view = cfg.memory_view or "scene"
             sample = next((view for view in reversed(memory.views) if view.view == sample_view), memory.views[-1])
-            image = imread_unicode(sample.image)
+            reference = imread_unicode(sample.reference_image) if sample.reference_image else None
+            image = reference if reference is not None else imread_unicode(sample.image)
             if image is not None:
                 self.yoloe.load()
-                self.yoloe.set_image_prompt(image, memory.label, conf=cfg.conf)
+                if reference is not None and hasattr(self.yoloe, "set_visual_prompt"):
+                    self.yoloe.set_visual_prompt(
+                        image,
+                        [Detection(np.asarray(sample.bbox, dtype=np.float32), memory.label, score=sample.score)],
+                        conf=cfg.conf,
+                    )
+                else:
+                    self.yoloe.set_image_prompt(image, memory.label, conf=cfg.conf)
                 self._memory_ready = True
                 self._has_target = True
                 self._recovery_yoloe = cfg.fast_backend == "cv"

@@ -38,6 +38,7 @@ class _FakeYoloe:
     def __init__(self) -> None:
         self.has_prompt = False
         self.image_prompt_calls = 0
+        self.visual_prompt_calls = 0
 
     def load(self) -> None:
         return
@@ -47,6 +48,10 @@ class _FakeYoloe:
 
     def set_image_prompt(self, _image, _label, conf=None) -> None:
         self.image_prompt_calls += 1
+        self.has_prompt = True
+
+    def set_visual_prompt(self, _image, _detections, conf=None) -> None:
+        self.visual_prompt_calls += 1
         self.has_prompt = True
 
     def track(self, _frame, conf=None, persist=True):
@@ -116,8 +121,9 @@ class ObjectMemoryTests(unittest.TestCase):
             loaded = store.get(memory.memory_id)
             self.assertIsNotNone(loaded)
             self.assertEqual(len(loaded.views), 2)
+            self.assertTrue(all(view.reference_image for view in loaded.views))
             self.assertEqual(store.find("BLOCK")[0].memory_id, memory.memory_id)
-            self.assertTrue(all(Path(view.image).is_file() for view in loaded.views))
+            self.assertTrue(all(Path(view.image).is_file() and Path(view.reference_image).is_file() for view in loaded.views))
 
     def test_recall_arms_yoloe_image_prompt_without_florence(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -131,7 +137,7 @@ class ObjectMemoryTests(unittest.TestCase):
             pipe = FindTrackPipeline("unused.pt", finder=finder, yoloe_tracker=yoloe, memory_store=store)
             result = pipe.process_frame(frame, RuntimeConfig(prompt="cube", memory_id=memory.memory_id))
             self.assertEqual(finder.calls, 0)
-            self.assertEqual(yoloe.image_prompt_calls, 1)
+            self.assertEqual(yoloe.visual_prompt_calls, 1)
             self.assertEqual(result.stats.path, "fast")
 
 

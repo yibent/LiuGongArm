@@ -52,7 +52,16 @@ class LocalSemanticLocator:
         return result
 
 
-def metric_component(observation, roi, table_height_m, *, min_pixels=10):
+def metric_component(
+    observation,
+    roi,
+    table_height_m,
+    *,
+    min_pixels=10,
+    min_height_above_table_m=0.004,
+):
+    if min_height_above_table_m <= 0.0:
+        raise ValueError("min_height_above_table_m must be positive")
     valid = (np.asarray(roi, bool) & np.isfinite(observation.depth_m)
              & (observation.depth_m > 0.02) & (observation.depth_m < 3.0))
     robot = observation.metadata.get("robot_self_mask")
@@ -60,7 +69,8 @@ def metric_component(observation, roi, table_height_m, *, min_pixels=10):
         valid &= ~np.asarray(robot, bool)
     rows, cols = np.nonzero(valid)
     points = transform_points(observation.T_base_camera, deproject_depth(observation.depth_m, observation.intrinsics, valid))
-    above = (points[:, 2] > table_height_m + 0.004) & (points[:, 2] < table_height_m + 0.4)
+    above = ((points[:, 2] > table_height_m + float(min_height_above_table_m))
+             & (points[:, 2] < table_height_m + 0.4))
     mask = np.zeros(valid.shape, np.uint8)
     mask[rows[above], cols[above]] = 1
     count, labels, stats, _ = cv2.connectedComponentsWithStats(mask, 8)
@@ -93,6 +103,25 @@ class SemanticFlowTarget:
         self.handoff_after_s = None
         self.last_wrist_sequence = -1
 
+    @property
+    def min_height_above_table_m(self):
+        # Depth cameras often quantise a 2-4 mm object into a few valid
+        # samples. Thin targets may lower the support-plane gate, while all
+        # ordinary targets retain the conservative 4 mm separation.
+        properties = getattr(self.target, "properties", None)
+        if bool(getattr(properties, "thin", False)):
+            return 0.0002
+        return 0.004
+
+    def _metric_component(self, observation, roi, *, min_pixels=10):
+        return metric_component(
+            observation,
+            roi,
+            self.table_height_m,
+            min_pixels=min_pixels,
+            min_height_above_table_m=self.min_height_above_table_m,
+        )
+
     def capture(self):
         obs = self.camera.capture(self.target)
         if obs is None:
@@ -116,7 +145,7 @@ class SemanticFlowTarget:
             roi = np.zeros(obs.depth_m.shape, bool)
             roi[max(0, y1):max(0, min(roi.shape[0], y2)), max(0, x1):max(0, min(roi.shape[1], x2))] = True
             try:
-                candidate = metric_component(obs, roi, self.table_height_m)
+                candidate = self._metric_component(obs, roi)
             except TargetObservationError:
                 continue
             if self.anchor_color is not None:
@@ -146,7 +175,10 @@ class SemanticFlowTarget:
         mask = self.flow.update(obs.rgb)
         if mask is None:
             raise TargetObservationError(self.flow.diagnostic.get("flow_reason", "flow_lost"))
-        evidence = metric_component(obs, cv2.dilate(mask.astype(np.uint8), np.ones((3, 3), np.uint8)), self.table_height_m)
+        evidence = self._metric_component(
+            obs,
+            cv2.dilate(mask.astype(np.uint8), np.ones((3, 3), np.uint8)),
+        )
         if np.linalg.norm(evidence.color - self.anchor_color) > 0.18:
             raise TargetObservationError("appearance_identity_changed")
         self.flow_count += 1
@@ -170,7 +202,7 @@ class SemanticFlowTarget:
             raise TargetObservationError("stale_wrist_handoff")
         if mask is None or np.count_nonzero(mask) < 80:
             raise TargetObservationError("wrist_handoff_insufficient_mask")
-        evidence = metric_component(observation, mask, self.table_height_m, min_pixels=80)
+        evidence = self._metric_component(observation, mask, min_pixels=80)
         distance = float(np.linalg.norm(evidence.center_base_m - self.latest.center_base_m))
         color_error = float(np.linalg.norm(evidence.color - self.anchor_color))
         # Different surfaces are visible from the two cameras. This is a

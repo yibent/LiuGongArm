@@ -97,13 +97,19 @@ def run(args, out: Path) -> dict:
         fast = [r for r in rows[1:] if r["stats"]["path"] == "fast"]
         latencies = [r["wall_ms"] for r in fast]
         tracks_present = sum(bool(r["fast"]) for r in fast)
+        # YOLOE is allowed to bootstrap directly from its text vocabulary. In
+        # that path the first frame is ``fast`` and has no Florence boxes;
+        # requiring a slow detection here would reject the intended fast path.
+        first_frame_ok = bool(rows[0]["fast"])
+        if backend == "cv":
+            first_frame_ok = bool(rows[0]["slow"]) and bool(rows[0]["fast"])
         data = {
             "load_ms": load_ms, "first_frame_ms": rows[0]["wall_ms"],
             "fast_frames": len(fast), "fast_frames_with_detections": tracks_present,
             "fast_wall_median_ms": float(np.median(latencies)) if latencies else None,
             "fast_wall_p95_ms": float(np.percentile(latencies, 95)) if latencies else None,
             "cv_mil_active": sum(t.mil is not None for t in pipe.cv.tracks) if backend == "cv" else None,
-            "passed": bool(rows[0]["slow"]) and len(fast) == len(frames) - 1 and tracks_present == len(fast),
+            "passed": first_frame_ok and len(fast) == len(frames) - 1 and tracks_present == len(fast),
             "rows": rows,
         }
         report["backends"][backend] = data
