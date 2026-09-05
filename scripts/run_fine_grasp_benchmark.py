@@ -64,6 +64,7 @@ def _parse_args() -> argparse.Namespace:
         help="Additional custom case JSON; may be repeated",
     )
     parser.add_argument("--headless", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--record-video", action="store_true")
     parser.add_argument(
         "--backend", choices=("geometric", "graspgenx"), default="geometric"
     )
@@ -153,6 +154,8 @@ def _run_case(args: argparse.Namespace, case: BenchmarkCase, run_dir: Path) -> d
     ]
     if args.dry_run:
         command.append("--dry-run")
+    if args.record_video:
+        command.append("--record-video")
     (run_dir / "command.json").write_text(json.dumps(command, indent=2), encoding="utf-8")
     started = time.monotonic()
     returncode: int | None = None

@@ -21,6 +21,8 @@ def _parse_args() -> argparse.Namespace:
                         help="Keep the GUI open with physics paused after the test")
     parser.add_argument("--start-delay-s", type=float, default=0.,
                         help="Pause before the grasp test so the viewer can get ready")
+    parser.add_argument("--record-video", action="store_true",
+                        help="Record overview + two RGB-D RGB panels to demo.mp4 (adds render cost)")
     parser.add_argument(
         "--backend", choices=("geometric", "graspgenx"), default="geometric"
     )
@@ -107,6 +109,7 @@ TARGET_POSITION = CASE.position_m
 # the wrist optical axis about 10 cm above the target and nearly normal to the
 # tabletop, matching the intended fast-loop -> fine-loop handoff condition.
 FINE_ENTRY_JOINTS = (-0.5408, -0.5510, 0.8902, 0.8826, -0.0982, 0.0)
+VIDEO = None
 
 
 def _jsonable(value):
@@ -181,6 +184,7 @@ def _configure_arm_drives(arm: So101Arm, config: dict[str, object]) -> None:
 
 
 def main() -> int:
+    global VIDEO
     if ARGS.case_json:
         np.random.seed(CASE.seed)
     grasp_cfg = fine_grasp_config().copy()
@@ -211,6 +215,32 @@ def main() -> int:
         cameras["scene"]._cam.set_world_pose(position=pose[:3, 3],
             orientation=matrix_to_quaternion_wxyz(pose[:3, :3]), camera_axes="ros")
     wrist_scene_camera = cameras["wrist"]
+    overview_camera = None
+    if ARGS.record_video:
+        from isaacsim.sensors.camera import Camera
+        from mr_liu.sim.demo_video import DemoVideoRecorder
+        # Recording-only camera, deliberately excluded from the sensor registry
+        # passed to the controller. Never used for segmentation or verification.
+        overview_camera = Camera(prim_path="/World/DemoOnly/Overview", frequency=60,
+                                 resolution=(832, 624))
+        overview_camera.initialize()
+        overview_camera.set_focal_length(1.8)
+        overview_camera.set_clipping_range(0.01, 10.)
+        overview_pose = look_at_opencv([0.65, -0.90, 1.50], [0.22, -0.10, 1.18])
+        overview_camera.set_world_pose(position=overview_pose[:3, 3],
+            orientation=matrix_to_quaternion_wxyz(overview_pose[:3, :3]), camera_axes="ros")
+        VIDEO = DemoVideoRecorder(OUTPUT / "demo.mp4", CASE.name, ARGS.test_target_shift_m)
+    recording_active = False
+    control_ticks = 0
+
+    def capture_video():
+        if VIDEO is not None and recording_active:
+            VIDEO.capture(overview_camera.get_rgba(), wrist_scene_camera.rgb_rgba(),
+                          cameras["scene"].rgb_rgba())
+
+    def advance_observation_frame():
+        simulation_app.update()
+        capture_video()
     if ARGS.recovery != "off":
         for scene_camera in cameras.values():
             scene_camera.enable_instance_segmentation(leaf_paths=True)
@@ -243,7 +273,14 @@ def main() -> int:
     # at the closed-loop boundary; using physics-only ticks here preserves the
     # eye-in-hand semantics while avoiding hundreds of redundant renders.
     def advance_control_physics() -> None:
-        SimulationManager.step(steps=1)
+        nonlocal control_ticks
+        control_ticks += 1
+        if recording_active and control_ticks % 4 == 0:
+            # Replace (not add to) this physics tick with a rendered app tick,
+            # so closing/lifting/sideways motion is visible between observations.
+            advance_observation_frame()
+        else:
+            SimulationManager.step(steps=1)
 
     executor = IsaacCumotionExecutor(
         arm,
@@ -314,7 +351,7 @@ def main() -> int:
     camera = IsaacWristCamera(
         wrist_scene_camera,
         ee_pose_provider=arm.T_base_ee,
-        advance_frame=simulation_app.update,
+        advance_frame=advance_observation_frame,
         model_seed=CASE.seed,
         robot_mask_provider=(lambda: wrist_scene_camera.instance_mask("/World/SO101", leaf_paths=True))
                             if ARGS.recovery != "off" else None,
@@ -376,6 +413,8 @@ def main() -> int:
     fault = OneShotPreCloseShift(ARGS.test_target_shift_m, shift_sim_target)
     def trace_event(event):
         recorder.trace(event)
+        if VIDEO is not None:
+            VIDEO.trace(event)
         injected = fault.on_event(event)
         if injected is not None:
             recorder.trace(injected)
@@ -405,7 +444,7 @@ def main() -> int:
     if ARGS.recovery != "off":
         import copy
         external_camera = IsaacSceneCamera(
-            cameras["scene"], T_base_world=np.eye(4), advance_frame=simulation_app.update,
+            cameras["scene"], T_base_world=np.eye(4), advance_frame=advance_observation_frame,
             robot_mask_provider=lambda: cameras["scene"].instance_mask("/World/SO101", leaf_paths=True),
         )
         observer = SceneTargetObserver(external_camera,
@@ -439,6 +478,8 @@ def main() -> int:
 
         def recovery_trace(event):
             recorder.trace(event)
+            if VIDEO is not None:
+                VIDEO.trace(event)
             if event.get("event") == "attempt_end":
                 # Independent benchmark instrumentation only; never fed to the
                 # observer, controller, verifier or retry policy.
@@ -463,6 +504,8 @@ def main() -> int:
             return 1
         app_utils.play()
     print("[BusAgent] Starting closed-loop grasp test", flush=True)
+    recording_active = ARGS.record_video
+    capture_video()
     result = node.execute(
         FineGraspRequest(target=target, request_id="isaac-demo", dry_run=ARGS.dry_run)
     )
@@ -511,6 +554,14 @@ def main() -> int:
     if ARGS.case_json:
         report["benchmark_case"] = CASE.to_dict()
     (OUTPUT / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+    if VIDEO is not None:
+        report["video"] = {"path": "demo.mp4", "recording_overhead": True,
+                           "overview_is_perception_input": False}
+        (OUTPUT / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+        outcome = (f"成功：实际抬升 {report['actual_target_lift_m']*100:.1f} cm" if result.success
+                   else f"未成功 / 安全停止：{getattr(result.failure, 'value', result.failure)}")
+        VIDEO.finish(overview_camera.get_rgba(), wrist_scene_camera.rgb_rgba(),
+                     cameras["scene"].rgb_rgba(), outcome)
     print(json.dumps(report["result"], indent=2))
     return 0 if result.success else 2
 
@@ -525,6 +576,12 @@ except Exception:  # persist all Kit/Python failures for headless regressions
     (OUTPUT / "error.txt").write_text(error, encoding="utf-8")
     print(error, file=sys.stderr, flush=True)
 finally:
+    if VIDEO is not None:
+        try:
+            VIDEO.close()
+        except Exception:
+            exit_code = 1
+            print(traceback.format_exc(), file=sys.stderr, flush=True)
     if ARGS.keep_open and simulation_app.is_running():
         app_utils.pause()
         print(f"[BusAgent] Test finished (exit {exit_code}); GUI kept open, physics paused. "

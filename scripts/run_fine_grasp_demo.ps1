@@ -3,6 +3,8 @@ param(
     [string]$Backend = "graspgenx",
     [switch]$NoHeadless,
     [switch]$KeepOpen,
+    [switch]$RecordVideo,
+    [string]$CaseJson = "",
     [ValidateRange(0, 120)]
     [double]$StartDelayS = 0,
     [int]$Port = 5556,
@@ -162,6 +164,8 @@ try {
         $DemoArgs += "--no-headless"
     }
     if ($KeepOpen) { $DemoArgs += "--keep-open" }
+    if ($RecordVideo) { $DemoArgs += "--record-video" }
+    if (-not [string]::IsNullOrWhiteSpace($CaseJson)) { $DemoArgs += @("--case-json", $CaseJson) }
     if ($StartDelayS -gt 0) { $DemoArgs += @("--start-delay-s", "$StartDelayS") }
     $DemoArgs += @("--perception", $Perception)
     $DemoArgs += @("--segmenter", $Segmenter)

@@ -83,6 +83,34 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run_fine_grasp_demo.
 比较脚本冻结相同场景文件及哈希，保存源码提交、脏工作区标记和逐组结果。
 开发集不是验收集，当前默认五种对象均为程序生成的几何代理，不是实物扫描模型。
 
+### 无头录制与连续演示
+
+先在 Isaac Python 环境安装可选录制依赖，再运行四段连续演示：
+
+```powershell
+& D:/isaac/env_isaacsim60/python.exe -m pip install -r requirements-demo-video.txt
+& D:/isaac/env_isaacsim60/python.exe scripts/run_fine_grasp_gallery.py --output output/video_gallery/my_run
+```
+
+按顺序录制方块空抓恢复（显式移位 4 cm）、水果球形代理、杯子代理、锤子代理。
+不会根据成功与否筛掉片段；汇总为 `BusAgent_grasp_gallery.mp4` 和 `gallery.json`。
+同一目录加 `--resume` 可以复用已有完整视频/报告，否则请使用新目录保留旧证据。
+运行期间不要让电脑睡眠：系统待机会计入节点超时，不会被录制程序掩盖。
+
+单段录制可用 `run_fine_grasp_demo.ps1 -RecordVideo -Recovery active -SceneView oblique`，
+搭配 `-CaseJson` 选择对象；默认无头。GUI 演示可用 `-NoHeadless -KeepOpen -StartDelayS 15`。
+
+视频为 H.264 MP4、1280×720、15 fps；标题保留对象名、尝试次数、阶段和实际结果。
+右上为腕部 RGB-D 的 RGB，右下为固定相机 RGB-D 的 RGB，读取各自最新缓冲而非严格同步。
+左侧额外的 `/World/DemoOnly/Overview` **只负责录制，不进入感知/验证输入**。
+实际抓取传感器仍是两路；USD Camera 没有相机外壳模型，所以主画面看不到实体相机盒子。
+腕部安装位姿见 `configs/cameras.yaml` 的 `wrist`，固定斜上方位姿见 `scene.recovery_oblique`。
+
+录制模式每四个运动物理 tick 使用一次带渲染的 app tick 替代物理-only tick，
+使侧向观察、夹爪闭合和抬升不再只显示动作前后两帧。会增加渲染/编码开销，
+因此报告标记 `recording_overhead=true`，不能与无录制 benchmark 混算周期。
+模型/IK 等待期间保留静止帧；不通过删等待或只剪成功片段美化结果。
+
 ### BusAgent 装配要求
 
 原接入 README 的 `FineGraspSkill` 可以继续包装新节点，因为 `execute/cancel` 契约不变；

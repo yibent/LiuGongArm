@@ -1,0 +1,4 @@
+# Optional dependencies for headless MP4 recording in the Isaac Python env.
+imageio-ffmpeg==0.6.0
+Pillow>=10,<13
+opencv-python>=4.8,<5
