@@ -1,0 +1,57 @@
+backend: rmpflow
+device: cuda
+physics_dt: 0.008333333333333333
+# Eight 120 Hz physics steps per 15 Hz rendered frame; avoid 120 expensive
+# desktop/camera renders per simulated second.
+render_hz: 15
+
+# Finite commands use simulation time, independently of rendering/inference.
+commands:
+  speed_deg_s: 85.95
+  # Time-scaling a trajectory by 3 multiplies acceleration by 3 squared.
+  acceleration_deg_s2: 540
+  min_duration_s: 0.1666666667
+  # Free-space open/close command only; contact grasp uses its force-limited
+  # controller and is not sped up by this setting.
+  gripper_speed_deg_s: 160
+  gripper_acceleration_deg_s2: 900
+  position_tolerance_deg: 1.0
+  velocity_tolerance_deg_s: 1.0
+  # Frame-to-frame measured velocity, not TGS's final internal substep velocity.
+  settle_velocity_source: position_delta
+  settle_seconds: 0.35
+  settle_timeout_sim_s: 10
+  wall_timeout_s: 120
+vision_capture_hz: 10
+
+# Follow-target: track cube position only. Identity cube orientation does not
+# match the SO-101 gripper frame, so orientation tracking makes the arm wander.
+track_orientation: true
+
+# Keep collision low for follow-target. Table/ground are excluded so the EE
+# can reach a cube sitting above the desktop.
+cspace_target_metric_scalar: 1.0
+collision_metric_scalar: 50.0
+
+# Extra RMPflow knobs (slash path as in rmp_flow.yaml).
+# Increase target_rmp/*_p_gain if the EE lags; decrease if it oscillates.
+rmp_overrides:
+  axis_target_rmp/metric_scalar: 0.0
+  axis_target_rmp/accel_p_gain: 0.0
+  target_rmp/accel_p_gain: 130.0
+  target_rmp/accel_d_gain: 120.0
+  target_rmp/max_metric_scalar: 12000.0
+  joint_velocity_cap_rmp/max_velocity: 1.6
+
+obstacle_obb_margin: 0.02
+exclude_from_obstacles:
+  - /World/SO101
+  - /World/TargetCube
+  - /World/Table
+  - /World/GroundPlane
+  # The tabletop objects are candidate manipulation targets, so they must not
+  # be baked into the static avoidance world. This also avoids WorldBinding's
+  # non-unity ancestor-scale restriction for referenced YCB/block assets.
+  - /World/TabletopProps
+
+debug_follow: false

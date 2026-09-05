@@ -1,0 +1,5 @@
+# Torch-free dependencies used by the BusAgent/Isaac process.  The model,
+# CUDA dependencies and weights stay in the isolated GraspGenX server env.
+msgpack>=1.0,<2
+msgpack-numpy>=0.4.8,<0.5
+pyzmq>=25,<28

@@ -1,0 +1,78 @@
+table_usd_rel: /Isaac/Props/Mounts/SeattleLabTable/table_instanceable.usd
+hdri_rel: /NVIDIA/Assets/Skies/Studio/photo_studio_01_4k.hdr
+
+table_pos: [0.5, 0.0, 1.05]
+table_orient_wxyz: [0.70710678, 0.0, 0.0, 0.70710678]
+robot_pos: [0.2, 0.0, 1.02]
+# +90 degrees counter-clockwise around world Z, so the reachable half-plane
+# faces the working area in front of the mounted arm.
+robot_orient_wxyz: [0.70710678, 0.0, 0.0, 0.70710678]
+
+dome_intensity: 1000
+distant_intensity: 1200
+
+target:
+  prim_path: /World/TargetCube
+  position: [0.20, -0.20, 1.05]
+  size: 0.04
+
+# Loose rigid bodies placed above the tabletop and allowed to settle under
+# gravity.  Asset paths below are part of the Isaac Sim 6.0 official library.
+tabletop_props:
+  - name: block
+    kind: asset
+    prim_path: /World/TabletopProps/Block
+    asset_rel: /Isaac/Props/Blocks/red_block.usd
+    position: [0.48, -0.22, 1.15]
+    orientation_wxyz: [1.0, 0.0, 0.0, 0.0]
+    scale: [0.90, 0.90, 0.90]
+    mass: 0.08
+    semantic_label: block
+
+  - name: wrench
+    kind: procedural_wrench
+    prim_path: /World/TabletopProps/Wrench
+    position: [0.56, 0.20, 1.10]
+    orientation_wxyz: [0.9238795, 0.0, 0.0, 0.3826834]
+    mass: 0.12
+    semantic_label: wrench
+
+  - name: power_drill
+    kind: asset
+    prim_path: /World/TabletopProps/PowerDrill
+    asset_rel: /Isaac/Props/YCB/Axis_Aligned/035_power_drill.usd
+    position: [0.40, 0.22, 1.18]
+    orientation_wxyz: [0.7071068, 0.0, 0.0, 0.7071068]
+    scale: [0.50, 0.50, 0.50]
+    mass: 0.20
+    semantic_label: power_drill
+
+  - name: bolt_m20
+    kind: asset
+    prim_path: /World/TabletopProps/BoltM20
+    asset_rel: /Isaac/Props/Factory/factory_bolt_m20_loose/factory_bolt_m20_loose.usd
+    position: [0.68, -0.16, 1.12]
+    orientation_wxyz: [0.7071068, 0.0, 0.7071068, 0.0]
+    scale: [1.5, 1.5, 1.5]
+    mass: 0.05
+    semantic_label: bolt
+
+  - name: nut_m20
+    kind: asset
+    prim_path: /World/TabletopProps/NutM20
+    asset_rel: /Isaac/Props/Factory/factory_nut_m20_loose/factory_nut_m20_loose.usd
+    position: [0.66, -0.04, 1.12]
+    orientation_wxyz: [1.0, 0.0, 0.0, 0.0]
+    scale: [1.5, 1.5, 1.5]
+    mass: 0.04
+    semantic_label: nut
+
+  - name: gear
+    kind: asset
+    prim_path: /World/TabletopProps/Gear
+    asset_rel: /Isaac/Props/Factory/gear_assets/factory_gear_small/factory_gear_small.usd
+    position: [0.62, 0.09, 1.13]
+    orientation_wxyz: [1.0, 0.0, 0.0, 0.0]
+    scale: [1.2, 1.2, 1.2]
+    mass: 0.06
+    semantic_label: gear

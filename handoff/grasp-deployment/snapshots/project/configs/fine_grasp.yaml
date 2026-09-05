@@ -1,0 +1,136 @@
+# Model-independent FineGrasp safety and closed-loop parameters.
+# Distances are metres, angles are degrees and time values are seconds.
+backend: graspgenx
+# Baseline: eye-in-hand servo only. Multi-view remains explicit opt-in through
+# --perception multiview; the overhead RGB-D stream is not a control input yet.
+fusion:
+  enabled: false
+active_views:
+  enabled: false
+backends:
+  graspgenx:
+    # Run the weight-bearing server from the isolated GraspGenX environment.
+    # BusAgent/Isaac stays a small torch-free ZMQ client.
+    host: 127.0.0.1
+    port: 5556
+    timeout_ms: 5000
+    # object_points avoids shipping the full depth image after segmentation;
+    # scene_depth is also supported for protocol/debug parity.
+    request_mode: object_points
+    # GraspMoE's geometry branch uses +Z as gravity/up.  The points still come
+    # solely from the current wrist image, but are transformed through the
+    # current hand-eye chain before inference so top-down means -base Z.
+    inference_frame: base
+    # GraspMoE unions learned diffusion proposals with geometry-seeded OBB
+    # proposals, then scores both using the released discriminator.  This is
+    # materially more reliable on a five-axis arm than unconstrained diffusion
+    # orientations alone while keeping the neural model in the decision path.
+    planner: graspmoe
+    num_grasps: 100
+    max_candidates: 128
+    min_object_points: 64
+    # The upstream outlier filter forms an N x N distance matrix.  Capping the
+    # segmented wrist cloud prevents quadratic memory spikes on close views.
+    max_object_points: 4096
+    # Scores are useful for ranking but are not calibrated across unseen
+    # geometry and close-range partial views.  Safety comes from the explicit
+    # width/clearance/collision/IK filters, so retain the full ranked set.
+    min_confidence: 0.0
+    # A close wrist view sees only the upper silhouette of rounded/reflective
+    # objects. Reserve 10 mm for single-view width uncertainty. The backend
+    # additionally uses the larger one-sided extent in the local finger slab,
+    # so off-centre compound geometry cannot put SO-101's fixed jaw inside the
+    # target during a top-down insertion.
+    width_margin_m: 0.010
+    # Production requests must fail explicitly if the neural service fails.
+    fallback_backend: none
+    fallback_on_empty: false
+    stability:
+      cluster_translation_m: 0.025
+      cluster_rotation_deg: 25.0
+      consensus_bonus: 0.04
+      continuity_translation_m: 0.040
+      continuity_rotation_deg: 40.0
+      continuity_bonus: 0.10
+      switch_score_margin: 0.08
+    # Configured SO-101 parallel-jaw inner sweep approximation. All units are
+    # metres; update this block if fingers or jaw mechanics are changed.
+    sweep_volume:
+      extents_open: [0.075, 0.018, 0.045]
+      offset_open: [0.0, 0.0, 0.0225]
+      extents_mid: [0.0375, 0.018, 0.045]
+      offset_mid: [0.0, 0.0, 0.0225]
+      gripper_type: 0
+      fingertip_depth_m: 0.045
+frames:
+  base: base
+  end_effector: gripper_frame_link
+  camera: wrist_camera
+  grasp: grasp
+
+observation:
+  max_age_s: 0.25
+  min_mask_pixels: 80
+  min_valid_depth_pixels: 64
+  min_valid_depth_ratio: 0.35
+  depth_min_m: 0.025
+  depth_max_m: 0.60
+  depth_outlier_mad_scale: 4.0
+  # The target mask is already target-specific.  A fixed bottom crop is unsafe
+  # for an eye-in-hand camera because a correctly approached object naturally
+  # moves toward the lower image edge; use a calibrated robot-silhouette mask
+  # in the camera adapter when one is available instead.
+  self_mask_bottom_fraction: 0.0
+  max_centroid_jump_m: 0.035
+  tracking_alpha: 0.25
+  tracking_max_step_m: 0.004
+
+gripper:
+  min_width_m: 0.004
+  max_width_m: 0.075
+  finger_thickness_m: 0.009
+  finger_length_m: 0.045
+  default_force_n: 12.0
+  default_speed_mps: 0.025
+
+selection:
+  min_model_score: 0.0
+  table_height_m: 1.05
+  table_clearance_m: 0.006
+  pregrasp_distance_m: 0.060
+  collision_margin_m: 0.006
+  max_candidates: 128
+  # For elongated handles, fingers must close across the short cross-section.
+  # The desired candidate and the actual five-DOF FK realization are checked.
+  max_elongated_axis_error_deg: 18.0
+
+loop:
+  max_total_s: 45.0
+  max_observation_failures: 5
+  max_replans: 6
+  model_period_s: 0.50
+  model_replan_translation_m: 0.015
+  model_replan_rotation_deg: 12.0
+  # Match the compact arm planner's tested 5 mm Cartesian reach tolerance.
+  # Stable frames are still required, so this is not a one-frame acceptance.
+  servo_translation_tolerance_m: 0.005
+  servo_rotation_tolerance_deg: 5.0
+  servo_max_translation_step_m: 0.006
+  servo_max_rotation_step_deg: 3.0
+  servo_stable_frames: 3
+  servo_max_steps: 40
+  lift_distance_m: 0.080
+  verify_settle_s: 0.25
+
+debug:
+  enabled: true
+  output_dir: output/fine_grasp
+
+# Isaac Sim imports the compact SO-101's revolute drives with gains that leave
+# several degrees of gravity sag at the wrist.  These values model the robot's
+# internal position servos while keeping the URDF 10 N m effort limit intact.
+# They affect only the Isaac demo adapter, never a real robot driver.
+isaac_sim:
+  arm_drive_stiffness_nm_per_rad: 800.0
+  arm_drive_damping_nms_per_rad: 20.0
+  arm_drive_max_effort_nm: 10.0

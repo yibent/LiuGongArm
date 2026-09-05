@@ -1,0 +1,15 @@
+# Vision overlay only; reuse CUDA torch. setup_vision.ps1 installs matching
+# CUDA torchvision from the official PyTorch index before this file.
+# Do not install these into the grasp-model environment.
+transformers==4.57.6
+accelerate==1.12.0
+huggingface_hub==0.36.2
+safetensors==0.8.0
+ultralytics==8.4.140
+opencv-python==4.13.0.92
+fastapi==0.120.4
+uvicorn==0.29.0
+python-multipart==0.0.26
+lap==0.5.12
+scipy>=1.11
+requests>=2.32

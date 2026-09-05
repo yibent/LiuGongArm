@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "audited_at": "2026-09-05",
+  "scope": "Static deployment audit of GraspGenX fine-grasp and label-to-grasp; not a grasp-success certification.",
+  "project_config_source": {
+    "repository": "https://github.com/yibent/LiuGongArm",
+    "commit": "d63e2d014e4653453c35867ec5878898cc6db146",
+    "branch_at_capture": "master"
+  },
+  "local_model_config_capture": {
+    "observed_project_commit": "49e94ef0334307116661c2d986261b8b7fe27446",
+    "note": "gen/dis YAML captured from ignored local checkpoint directory; project snapshots come from remote master, not experimental M2T2."
+  },
+  "text_hash_algorithm": "SHA-256 of UTF-8 text with CRLF normalized to LF; final newline is significant.",
+  "files": [
+    {
+      "target": "configs/cameras.yaml",
+      "snapshot": "snapshots/project/configs/cameras.yaml",
+      "sha256_lf_utf8": "5aeb27008c1a9b5e2aefc07e89d7de0a3443a72ec30c125c64f1e313bf28fa92",
+      "source": "project_commit",
+      "tracked_in_project": true
+    },
+    {
+      "target": "configs/fine_grasp.yaml",
+      "snapshot": "snapshots/project/configs/fine_grasp.yaml",
+      "sha256_lf_utf8": "6c10045485b9baaf0f37ce163ab152f1dd3cf82fd32670e798169b188dfdde8a",
+      "source": "project_commit",
+      "tracked_in_project": true
+    },
+    {
+      "target": "configs/robot_so101.yaml",
+      "snapshot": "snapshots/project/configs/robot_so101.yaml",
+      "sha256_lf_utf8": "ea76757d7fe6fa101cc1642548a261a7cbfe9ef117d816dc03f2ef96e1884326",
+      "source": "project_commit",
+      "tracked_in_project": true
+    },
+    {
+      "target": "configs/motion.yaml",
+      "snapshot": "snapshots/project/configs/motion.yaml",
+      "sha256_lf_utf8": "d55322cfeb9bc555f6f6b8f8f3bfdae70813f0ce97701911ac6ec66704a95282",
+      "source": "project_commit",
+      "tracked_in_project": true
+    },
+    {
+      "target": "configs/scene.yaml",
+      "snapshot": "snapshots/project/configs/scene.yaml",
+      "sha256_lf_utf8": "78d3a942afad7bd5a4e30337c302b676b519403180d375b6b07c43ee42482d05",
+      "source": "project_commit",
+      "tracked_in_project": true
+    },
+    {
+      "target": "requirements-graspgenx-client.txt",
+      "snapshot": "snapshots/project/requirements-graspgenx-client.txt",
+      "sha256_lf_utf8": "74109f8369fa733f8ec20348372ea72497a190b67c46a680f477512f7997c98f",
+      "source": "project_commit",
+      "tracked_in_project": true
+    },
+    {
+      "target": "_models/graspgenx/checkpoints/release/gen/config.yaml",
+      "snapshot": "snapshots/model/graspgenx/gen/config.yaml",
+      "sha256_lf_utf8": "16aedbdc23441a1db818261b865f55bd71451d6224fc514615e0d1ab744b7dcb",
+      "source": "local_ignored_checkpoint",
+      "tracked_in_project": false
+    },
+    {
+      "target": "_models/graspgenx/checkpoints/release/dis/config.yaml",
+      "snapshot": "snapshots/model/graspgenx/dis/config.yaml",
+      "sha256_lf_utf8": "43cf8ea0ade67d938040bde0df318b3f4c9c19e4f88d97052dc175df2c28c8e7",
+      "source": "local_ignored_checkpoint",
+      "tracked_in_project": false
+    },
+    {
+      "target": "requirements-vision.txt",
+      "snapshot": "snapshots/project/requirements-vision.txt",
+      "sha256_lf_utf8": "e561eaec5bd3539971824be1eacd9de1f0c8e5cd840a95dd3d57d17518ce72d1",
+      "source": "project_commit",
+      "tracked_in_project": true
+    },
+    {
+      "target": "source/find_and_track/settings.py",
+      "snapshot": "snapshots/project/source/find_and_track/settings.py",
+      "sha256_lf_utf8": "fe5299f4a7789f8b55dd67e181a4e0eec1fb8cc06166a9e2db510842310a7c7a",
+      "source": "project_commit",
+      "tracked_in_project": true
+    }
+  ],
+  "graspgenx": {
+    "repository": "https://github.com/NVlabs/GraspGenX",
+    "commit": "b9429097728cb1c430dd78b92edf17ba318aad03",
+    "model_repository": "https://huggingface.co/adithyamurali/GraspGenXModel",
+    "model_revision": "7c834043c11a11417e31d6d5ea9355801e40a2c1",
+    "gripper_repository": "https://huggingface.co/datasets/adithyamurali/gripper_descriptions"
+  },
+  "weights": [
+    {
+      "target": "_models/graspgenx/checkpoints/release/gen/epoch_736.pth",
+      "bytes": 1210918342,
+      "sha256": "8b55f31cdb8340a573b4df27b027c15cff326bd6debcb389bf631d2aaab7ac44"
+    },
+    {
+      "target": "_models/graspgenx/checkpoints/release/dis/epoch_1056.pth",
+      "bytes": 483889478,
+      "sha256": "cbf3f3bdb2e4c03fca8486ed24de0e6a8a859e6bd22bce2f1434a610335abd3e"
+    }
+  ],
+  "weight_hash_provenance": "Pinned reference digests from project docs/MODEL_EVALUATION.md and docs/GRASPGENX_SERVER.md; checker verifies bytes locally only with --hash-weights.",
+  "not_included": [
+    "Model weights",
+    "Python environments",
+    "Third-party source trees",
+    "Isaac binary/USD asset library",
+    "Private environment variables",
+    "SSH credentials",
+    "Raw run logs"
+  ]
+}
