@@ -64,16 +64,15 @@ class AnyPlaceRuntime:
         self.weight_sha256=hashlib.sha256(checkpoint.read_bytes()).hexdigest()
         self.checkpoint=str(checkpoint.resolve())
 
-    def infer(self, parent, child, *, seed=0, candidates=20, iterations=50):
+    def infer(self, parent, child, *, seed=0, candidates=20, iterations=50,init_current_orientation=False):
         torch=self.torch
         parent=np.asarray(parent,dtype=np.float32);child=np.asarray(child,dtype=np.float32)
         for name,points in [('parent',parent),('child',child)]:
             if points.ndim!=2 or points.shape[1]!=3 or not np.isfinite(points).all():
                 raise ValueError(f'{name}: expected finite Nx3 cloud in metres')
             if len(points)<1024: raise ValueError(f'{name}: insufficient observed points (<1024)')
-        # Upstream unconditionally computes an unused 8192-point classifier cloud.
-        # Require sufficient parent points rather than inventing new geometry.
-        if len(parent)<8192: raise ValueError('parent: upstream evaluation requires >=8192 points')
+        # The unused success-classifier cloud is skipped by the tracked vendor
+        # patch. Actual diffusion still requires 1024 real input points per cloud.
         if not 2<=candidates<=20 or not 1<=iterations<=50: raise ValueError('Invalid inference budget')
         random.seed(seed);np.random.seed(seed);torch.manual_seed(seed)
         torch.cuda.reset_peak_memory_stats();torch.cuda.synchronize();started=time.perf_counter()
@@ -81,7 +80,7 @@ class AnyPlaceRuntime:
             transforms=self.infer_function(NullVisualizer(),parent,child,None,self.model,None,
                 scene_scale=1.,scene_mean=np.zeros(3),grid_pts=None,rot_grid=self.rotations,
                 viz=False,n_iters=iterations,init_k_val=candidates,no_sc_score=True,
-                run_affordance=False,init_parent_mean=False,init_orig_ori=False,
+                run_affordance=False,init_parent_mean=False,init_orig_ori=init_current_orientation,
                 with_coll=False,add_per_iter_noise=True,
                 per_iter_noise_kwargs={'rot':{'angle_deg':20,'rate':6.5},
                                        'trans':{'trans_dist':.03,'rate':5.5}},
@@ -94,6 +93,7 @@ class AnyPlaceRuntime:
             'physical_success':None,'transforms':transforms.tolist(),
             'transform_convention':'T_world_child_final = relative @ T_world_child_input',
             'seed':seed,'iterations':iterations,'candidates_requested':candidates,
+            'init_current_orientation':bool(init_current_orientation),
             'inference_s':time.perf_counter()-started,
             'cuda_peak_allocated_bytes':torch.cuda.max_memory_allocated(),
             'parent_points':len(parent),'child_points':len(child),

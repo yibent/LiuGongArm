@@ -80,6 +80,16 @@ class HeldSweep:
         # substitute a straight Cartesian path for a curved five-axis path.
         return max(self.collision_count(points,start),self.collision_count(points,end))
 
+    def contact_diagnostic(self, points, pose):
+        depth = self._contact_depth(points,pose)
+        indices = np.flatnonzero(depth > -.001)
+        owned = np.zeros(len(points),bool) if self.contact_mask is None else self.contact_mask
+        chosen = indices[:32]
+        return {'raw_hits':len(indices),'owned_hits':int(np.asarray(owned)[indices].sum()),
+                'points_base':points[chosen].tolist(),'depth_m':depth[chosen].tolist(),
+                'initial_depth_m':self._contact_depth(points[chosen],self.reference_pose).tolist(),
+                'pose':pose.tolist(),'reference_pose':self.reference_pose.tolist()}
+
 
 class IsaacPlaceMotion:
     def __init__(self, executor, gripper, *, refresh_destination=None, trace=lambda e:None, mask_refiner=None):
@@ -134,9 +144,13 @@ class IsaacPlaceMotion:
             owned_mask=self.mask_refiner(evidence.observation,owned_mask)
             proposed=owned_mask[rows,cols]
             roi=np.all(np.abs(local)<held.half_extents_m+.012,axis=1)
-            if np.sum(proposed&~roi)>max(3,.05*np.sum(proposed)):
-                from .contracts import PlaceError
-                raise PlaceError('held_mask_outside_attachment_roi')
+            # RGB mask boundaries can project onto background depth. They must
+            # remain world obstacles, not invalidate all well-associated object
+            # pixels or be erased by expanding the 3-D attachment ROI.
+            outside=int(np.sum(proposed&~roi))
+            if outside:
+                self.trace({'phase':'place_mask_depth_rejected','sequence':evidence.observation.sequence,
+                            'outside_attachment_points_retained':outside})
             # A model mask never erases the observed support plane.
             own=proposed&roi&(np.abs(points[:,2]-evidence.support_z_m)>.003)
         # Registered RGB/depth still has mixed-color edge pixels (anti-aliasing
@@ -177,7 +191,8 @@ class IsaacPlaceMotion:
         if not self.executor.is_observation_path_safe(goal,points,sweep):
             self.last_failure = self.executor.last_observation_path_rejection
             self.trace({"phase":"place_path_rejected","reason":self.last_failure,
-                        "ik":getattr(self.executor,"last_plan_diagnostic",{}),"goal":goal.tolist()})
+                        "ik":getattr(self.executor,"last_plan_diagnostic",{}),"goal":goal.tolist(),
+                        "profile":getattr(self.executor,"last_observation_path_profile",{})})
             return False
         self.trace({'phase':'place_path_checked','points_s':points_s,'elapsed_s':time.monotonic()-started,
                     'observation_age_s':time.monotonic()-evidence.observation.timestamp_s,
@@ -196,14 +211,19 @@ class IsaacPlaceMotion:
         if direction[2]<.9:
             self.last_failure='retreat_axis_not_upward'
             return False
-        retreat = pose.copy()
-        retreat[:3,3] += direction*.045
-        # Reserve a retreat corridor before release. Revalidate it after opening.
-        ok=self._safe(retreat,None,evidence,width_override=.075,contact_payload=held)
-        if ok:
-            self.release_contact=(held,pose.copy(),pose@held.T_ee_object)
-            self._release_retreat=retreat.copy()
-        return ok
+        # Search outward from the fixed jaw. Every alternative uses the same
+        # actual-FK, measured-contact and full world/self-collision checks.
+        for clearance in (0.,.003,.006,.010,.015,.020):
+            retreat = pose.copy()
+            retreat[:3,3] += direction*.045 + pose[:3,0]*clearance
+            ok=self._safe(retreat,None,evidence,width_override=.075,contact_payload=held)
+            self.trace({'phase':'place_retreat_candidate','lateral_escape_m':clearance,
+                        'safe':ok,'reason':self.last_failure})
+            if ok:
+                self.release_contact=(held,pose.copy(),pose@held.T_ee_object)
+                self._release_retreat=retreat.copy()
+                return True
+        return False
 
     def retreat_target(self):
         if self._release_retreat is None:

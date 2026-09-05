@@ -24,9 +24,9 @@ class AnyPlaceInputTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'child: insufficient'):
             self.runtime().infer(np.zeros((8192,3)),np.zeros((128,3)))
 
-    def test_upstream_classifier_sampling_requirement_explicit(self):
-        with self.assertRaisesRegex(ValueError,'>=8192'):
-            self.runtime().infer(np.zeros((1024,3)),np.zeros((1024,3)))
+    def test_sparse_parent_rejected(self):
+        with self.assertRaisesRegex(ValueError,'parent: insufficient'):
+            self.runtime().infer(np.zeros((1023,3)),np.zeros((1024,3)))
 
     def test_unsupported_budget_rejected_before_model(self):
         with self.assertRaisesRegex(ValueError,'budget'):

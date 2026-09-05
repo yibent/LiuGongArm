@@ -70,7 +70,7 @@ def run_place_after_grasp(**kwargs):
 def _run_place_after_grasp(*, result, initial_observation, initial_mask, target, camera, scene,
                           executor, gripper, port, label, relation, output, trace,
                           stable_base_asserted=False, grasp_attachment_ee=None, graspgenx_port=5556,
-                          observation_recorder):
+                          observation_recorder, place_backend='geometric',anyplace_url='http://127.0.0.1:5590'):
     output = Path(output); output.mkdir(parents=True,exist_ok=True)
     records=[]
     def event(data):
@@ -132,5 +132,10 @@ def _run_place_after_grasp(*, result, initial_observation, initial_mask, target,
     event({"phase":"place_handoff","half_extents_m":half.tolist(),"T_ee_object":held.T_ee_object.tolist(),
            "support_z_from_rgbd_m":support,"stable_base_asserted_by_fixture":stable_base_asserted,
            "limitations":"compact stable-base fixture, translation registration; not arbitrary object rotation tracking"})
-    node=GeneralPlaceNode(perception=perception,motion=motion,gripper=gripper,trace=event)
+    backend=None
+    if place_backend=='anyplace':
+        from .anyplace import AnyPlaceBackend,AnyPlaceClient
+        backend=AnyPlaceBackend(AnyPlaceClient(anyplace_url))
+    elif place_backend!='geometric':raise PlaceError('unknown_place_backend')
+    node=GeneralPlaceNode(perception=perception,motion=motion,gripper=gripper,trace=event,backend=backend)
     return node.execute(request,held)

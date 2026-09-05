@@ -341,6 +341,9 @@ class IsaacCumotionExecutor:
                 pose = world_pose(q)
                 if finger.path_collision_count(points_base, previous, pose):
                     self.last_observation_path_rejection = "observed_surface_finger_collision"
+                    if hasattr(finger,'contact_diagnostic'):
+                        rejected = previous if finger.collision_count(points_base,previous) else pose
+                        profile['contact'] = finger.contact_diagnostic(points_base,rejected)
                     return False
                 profile["surface_s"]+=time.monotonic()-checking
                 previous = pose

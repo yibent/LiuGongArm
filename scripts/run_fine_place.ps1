@@ -6,7 +6,9 @@ param(
     [string]$Output = '',
     [switch]$RecordVideo,
     [switch]$NoHeadless,
-    [int]$LocatorPort = 5570
+    [int]$LocatorPort = 5570,
+    [ValidateSet('geometric','anyplace')][string]$PlaceBackend='geometric',
+    [int]$AnyPlacePort=5590
 )
 $ErrorActionPreference='Stop'
 $placeRoot=Split-Path -Parent $PSScriptRoot
@@ -21,7 +23,23 @@ $placeService=$null
 $placeDemo=$null
 $placeModelIds=@()
 $placeExit=1
+$anyplaceService=$null
 try {
+    if ($PlaceBackend -eq 'anyplace') {
+        try {$anyHealth=Invoke-RestMethod "http://127.0.0.1:$AnyPlacePort/health" -TimeoutSec 2} catch {$anyHealth=$null}
+        if ($null -eq $anyHealth) {
+            $anyplaceService=Start-Process -FilePath (Join-Path $placeRoot '_envs\anyplace\Scripts\python.exe') -ArgumentList @(
+                '-u',(Join-Path $PSScriptRoot 'serve_anyplace.py'),'--port',"$AnyPlacePort",'--record-dir',(Join-Path $Output 'model_requests')) `
+                -WorkingDirectory $placeRoot -WindowStyle Hidden -PassThru `
+                -RedirectStandardOutput (Join-Path $Output 'anyplace_stdout.log') `
+                -RedirectStandardError (Join-Path $Output 'anyplace_stderr.log')
+            for ($i=0;$i -lt 120;$i++) {
+                if ($anyplaceService.HasExited) {throw 'AnyPlace service failed; inspect logs'}
+                try {$anyHealth=Invoke-RestMethod "http://127.0.0.1:$AnyPlacePort/health" -TimeoutSec 1;break} catch {Start-Sleep -Milliseconds 250}
+            }
+        }
+        if ($anyHealth.service -ne 'busagent-anyplace' -or $anyHealth.protocol -ne 1) {throw 'Invalid AnyPlace service'}
+    }
     try { $health=Invoke-RestMethod "http://127.0.0.1:$LocatorPort/health" -TimeoutSec 2 } catch { $health=$null }
     if ($null -eq $health) {
         $placeService=Start-Process -FilePath $placePython -ArgumentList @(
@@ -39,7 +57,8 @@ try {
         (Join-Path $PSScriptRoot 'run_fine_grasp_demo.ps1'),'-Backend','graspgenx','-Recovery','active',
         '-Label',$GraspLabel,'-LocalizationMode','florence',
         '-SceneView','oblique','-PlaceLabel',$Destination,'-PlaceFixture',$Fixture,'-PlaceRelation',$Relation,
-        '-LocatorPort',"$LocatorPort",'-Output',$Output)
+        '-LocatorPort',"$LocatorPort",'-Output',$Output,
+        '-PlaceBackend',$PlaceBackend,'-AnyPlaceUrl',"http://127.0.0.1:$AnyPlacePort")
     if ($RecordVideo) {$placeArgs+='-RecordVideo'}
     if ($NoHeadless) {$placeArgs+='-NoHeadless'}
     # Do not hold an inherited native pipe open through orphaned model helpers
@@ -67,6 +86,12 @@ try {
         elseif ($null -eq $placeExit) { $placeExit=1 }
     }
 } finally {
+    if ($null -ne $anyplaceService) {
+        Get-CimInstance Win32_Process | Where-Object {
+            $_.ParentProcessId -eq $anyplaceService.Id -and $_.CommandLine -like '*serve_anyplace.py*'
+        } | ForEach-Object {Stop-Process -Id $_.ProcessId -ErrorAction SilentlyContinue}
+        if (-not $anyplaceService.HasExited) {Stop-Process -Id $anyplaceService.Id -ErrorAction SilentlyContinue}
+    }
     foreach ($ownedId in ($placeModelIds | Select-Object -Unique)) {
         $owned=Get-CimInstance Win32_Process -Filter "ProcessId=$ownedId" -ErrorAction SilentlyContinue
         if ($owned -and $owned.CommandLine -like '*serve_graspgenx.py*') { Stop-Process -Id $ownedId -ErrorAction SilentlyContinue }

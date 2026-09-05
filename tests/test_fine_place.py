@@ -57,6 +57,41 @@ class Rig:
 
 
 class FinePlaceTests(unittest.TestCase):
+    def test_rgb_mask_background_depth_is_kept_as_obstacle(self):
+        rgb=np.zeros((16,16,3),np.uint8);rgb[:]=[20,40,200];rgb[5:10,5:10]=[180,80,60]
+        rows,cols=np.indices((16,16));rows=rows.ravel();cols=cols.ravel()
+        points=np.c_[(cols-8)*.001,(rows-8)*.001,np.full(256,1.)]
+        own=(rows>=5)&(rows<10)&(cols>=5)&(cols<10);points[own,2]=1.10
+        pose=np.eye(4);pose[2,3]=1.1
+        executor=SimpleNamespace(clear_grasp_plan=lambda:None,robot_state=lambda:SimpleNamespace(T_base_ee=pose))
+        held=SimpleNamespace(T_ee_object=np.eye(4),half_extents_m=np.array([.02]*3),chromaticity=np.array([180,80,60])/320)
+        refined=np.zeros((16,16),bool);refined[4:11,4:11]=True
+        obs=SimpleNamespace(rgb=rgb,depth_m=np.ones((16,16)),sequence=1)
+        motion=IsaacPlaceMotion(executor,None,mask_refiner=lambda *a:refined)
+        with patch('mr_liu.place.isaac_motion.scene_cloud',return_value=(points,rows,cols)):
+            remaining=motion._points(SimpleNamespace(observation=obs,support_z_m=1.),held)
+        self.assertEqual(len(remaining),231)
+        self.assertTrue(np.all(remaining[:,2]==1.))
+
+    def test_site_reserves_all_yaws_before_moving(self):
+        r=Rig()
+        from mr_liu.place.geometry import select_site as actual
+        with patch('mr_liu.place.node.select_site',wraps=actual) as selector:
+            result=r.node().execute(PlaceRequest('region',dry_run=True),r.held)
+        expected=np.linalg.norm(r.held.half_extents_m[:2])+r.held.half_extents_m[2]*np.sin(np.deg2rad(5))
+        np.testing.assert_allclose(selector.call_args.args[1][:2],[expected,expected])
+        self.assertEqual(result.phase,'planned')
+
+    def test_retreat_alternatives_must_pass_unchanged_checks(self):
+        pose=np.diag([1.,-1.,-1.,1.])
+        executor=SimpleNamespace(clear_grasp_plan=lambda:None,robot_state=lambda:SimpleNamespace(T_base_ee=pose))
+        motion=IsaacPlaceMotion(executor,SimpleNamespace(state=lambda:SimpleNamespace(width_m=.03)))
+        motion._points=Mock(return_value=np.empty((0,3)))
+        motion._safe=Mock(side_effect=[False,False,True])
+        self.assertTrue(motion.opening_safe(Rig().held,None))
+        self.assertEqual(motion._safe.call_count,3)
+        np.testing.assert_allclose(motion.retreat_target()[:3,3],[.006,0,.045])
+
     def test_florence_service_error_is_actionable_and_does_not_return_geometry(self):
         from mr_liu.place.perception import FlorencePlaceLocator
         locator=FlorencePlaceLocator()

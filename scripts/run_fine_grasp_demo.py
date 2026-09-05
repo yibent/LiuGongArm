@@ -33,6 +33,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--localization-mode", choices=("florence", "florence_yoloe"), default="florence_yoloe")
     parser.add_argument("--coarse-only", action="store_true", help="Test label approach and wrist handoff without closing")
     parser.add_argument("--place-label", help="Opt-in Florence/RGB-D fine placement after verified grasp")
+    parser.add_argument('--place-backend',choices=('geometric','anyplace'),default='geometric')
+    parser.add_argument('--anyplace-url',default='http://127.0.0.1:5590')
     parser.add_argument("--place-fixture", choices=("region","tray"), default="region")
     parser.add_argument("--place-relation", choices=("on","inside"), default="on")
     parser.add_argument("--wrist-camera-profile", choices=("fine_grasp", "tabletop_wide"), default="fine_grasp")
@@ -681,7 +683,8 @@ def main() -> int:
                 initial_mask=initial_mask,target=target,camera=camera,scene=place_scene,executor=executor,
                 gripper=gripper,port=ARGS.locator_port,label=ARGS.place_label,relation=ARGS.place_relation,
                 output=OUTPUT/"place",trace=trace_event,stable_base_asserted=CASE.shape=="cube",
-                grasp_attachment_ee=grasp_attachment_ee,graspgenx_port=ARGS.graspgenx_port)
+                grasp_attachment_ee=grasp_attachment_ee,graspgenx_port=ARGS.graspgenx_port,
+                place_backend=ARGS.place_backend,anyplace_url=ARGS.anyplace_url)
         except Exception as exc:
             executor.stop()
             place_result = PlaceResult(False,"handoff","isaac-fine-place",

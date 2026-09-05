@@ -11,11 +11,12 @@ class GeneralPlaceNode:
     name = "general_place"
 
     def __init__(self, *, perception, motion, gripper, settings=None,
-                 clock=time.monotonic, trace=lambda e: None):
+                 clock=time.monotonic, trace=lambda e: None, backend=None):
         self.perception, self.motion, self.gripper = perception,motion,gripper
         self.settings = settings or PlaceSettings()
         self.clock, self.trace = clock,trace
         self.cancelled = False
+        self.backend = backend
 
     def cancel(self):
         self.cancelled = True
@@ -62,12 +63,26 @@ class GeneralPlaceNode:
             fresh(destination.observation)
             initial_corners=transform_points(held_pose,box_corners(held.half_extents_m))
             initial_radius=np.max(np.abs(initial_corners[:,:2]-held_pose[:2,3]),axis=0)
-            xy = select_site(destination, np.r_[initial_radius,held.half_extents_m[2]],
-                             cfg.boundary_margin_m+held.uncertainty_m)
-            if request.relation == "relative":
-                xy=destination.center_base_m[:2].copy()
-                if not footprint_supported(destination,xy,initial_radius,cfg.boundary_margin_m+held.uncertainty_m):
-                    raise PlaceError("requested_relative_position_infeasible")
+            if self.backend is None:
+                # Five-axis approach-axis IK may change yaw during translation.
+                # Reserve the entire upright yaw envelope, including allowed
+                # tilt, instead of selecting a barely-fitting initial footprint.
+                reserved_radius = (np.linalg.norm(held.half_extents_m[:2])
+                    + held.half_extents_m[2]*np.sin(np.deg2rad(cfg.max_object_tilt_deg)))
+                xy = select_site(destination, np.array([reserved_radius,reserved_radius,held.half_extents_m[2]]),
+                                 cfg.boundary_margin_m+held.uncertainty_m)
+                metrics['reserved_footprint_radius_m']=float(reserved_radius)
+                metrics['place_backend']='geometric'
+                if request.relation == "relative":
+                    xy=destination.center_base_m[:2].copy()
+                    if not footprint_supported(destination,xy,initial_radius,cfg.boundary_margin_m+held.uncertainty_m):
+                        raise PlaceError("requested_relative_position_infeasible")
+            else:
+                try:
+                    xy=self.backend.select(request,held,destination,initial_ee,
+                                           cfg.boundary_margin_m+held.uncertainty_m)
+                finally:
+                    metrics.update(getattr(self.backend,'last_metrics',{}))
             local_xy = xy - destination.center_base_m[:2]
             anchor = destination.center_base_m.copy()
             goal_object = held_pose.copy()

@@ -7,6 +7,8 @@ param(
     [string]$CaseJson = "",
     [string]$Label = "",
     [string]$PlaceLabel = "",
+    [ValidateSet('geometric','anyplace')][string]$PlaceBackend = 'geometric',
+    [string]$AnyPlaceUrl = 'http://127.0.0.1:5590',
     [ValidateSet('region','tray')][string]$PlaceFixture = 'region',
     [ValidateSet('on','inside')][string]$PlaceRelation = 'on',
     [int]$LocatorPort = 5570,
@@ -182,6 +184,7 @@ try {
     }
     if ($CoarseOnly) { $DemoArgs += "--coarse-only" }
     if ($PlaceLabel) {
+        $DemoArgs += @('--place-backend',$PlaceBackend,'--anyplace-url',$AnyPlaceUrl)
         if ($Benchmark) { throw 'Placement is not part of the grasp-only benchmark' }
         $DemoArgs += @('--place-label', $PlaceLabel, '--locator-port', "$LocatorPort",
                       '--place-fixture', $PlaceFixture, '--place-relation', $PlaceRelation)
