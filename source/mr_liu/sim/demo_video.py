@@ -28,6 +28,8 @@ PHASES = {
     "place_open": "缓慢松爪", "place_retreat": "退出 / 检查物体是否留在原位",
     "place_verify": "多帧验证放置位置与稳定性", "place_succeeded": "放置视觉验证通过",
     "place_failed": "放置未完成 / 安全停止", "place_path_rejected": "持物路径检查未通过",
+    "place_segment_payload": "同帧持物轮廓核验（SAM2 辅助）",
+    "place_path_checked": "新点云 / 持物 / 实际关节路径检查通过",
 }
 
 

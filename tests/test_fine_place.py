@@ -46,7 +46,10 @@ class Rig:
         if self.block:return False
         self.pose=goal.copy(); self.moves+=1
         return True
-    def opening_safe(self,*a):return self.open_safe
+    def opening_safe(self,*a):
+        self.retreat=self.pose.copy();self.retreat[2,3]+=.045
+        return self.open_safe
+    def retreat_target(self):return self.retreat.copy()
     def stop(self):self.stop_count+=1
     def state(self):return GripperState(self.t,.075 if self.opened else .036)
     def open(self,*a,**kw):self.opened=True;return True
@@ -54,6 +57,76 @@ class Rig:
 
 
 class FinePlaceTests(unittest.TestCase):
+    def test_florence_service_error_is_actionable_and_does_not_return_geometry(self):
+        from mr_liu.place.perception import FlorencePlaceLocator
+        locator=FlorencePlaceLocator()
+        response=Mock(ok=False,reason='Internal Server Error')
+        response.json.return_value={'message':'model load: insufficient memory'}
+        locator.session=SimpleNamespace(post=Mock(return_value=response))
+        with self.assertRaisesRegex(PlaceError,'destination_model_unavailable: model load: insufficient memory'):
+            locator.locate(Rig().obs(),'blue region')
+
+    def test_retreat_uses_preflighted_tool_axis_not_world_vertical(self):
+        from scipy.spatial.transform import Rotation
+        pose=np.eye(4);pose[:3,:3]=Rotation.from_euler('xyz',[178,0,30],degrees=True).as_matrix()
+        executor=SimpleNamespace(clear_grasp_plan=lambda:None,robot_state=lambda:SimpleNamespace(T_base_ee=pose))
+        gripper=SimpleNamespace(state=lambda:SimpleNamespace(width_m=.03))
+        motion=IsaacPlaceMotion(executor,gripper)
+        motion._points=Mock(return_value=np.empty((0,3)));motion._safe=Mock(return_value=True)
+        with self.assertRaisesRegex(PlaceError,'retreat_not_preflighted'):motion.retreat_target()
+        self.assertTrue(motion.opening_safe(Rig().held,None))
+        expected=pose.copy();expected[:3,3]-=pose[:3,2]*.045
+        np.testing.assert_allclose(motion.retreat_target(),expected)
+        np.testing.assert_allclose(motion._safe.call_args.args[0],expected)
+        snapshot=motion.retreat_target();snapshot[0,3]=10
+        np.testing.assert_allclose(motion.retreat_target(),expected)
+        pose[:3,:3]=np.eye(3)
+        self.assertFalse(motion.opening_safe(Rig().held,None))
+        self.assertEqual(motion.last_failure,'retreat_axis_not_upward')
+
+    def test_path_fk_cache_reuses_exact_samples_but_rechecks_world_and_base(self):
+        import time
+        path=Path(__file__).resolve().parents[1]/"source/mr_liu/grasp/adapters/isaac_motion.py"
+        tree=ast.parse(path.read_text(encoding="utf-8"))
+        cls=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=="IsaacCumotionExecutor")
+        method=next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name=="is_observation_path_safe")
+        namespace={"np":np,"time":time,"_JointStepPlan":type("JointStep",(),{})}
+        exec(compile(ast.fix_missing_locations(ast.Module(body=[method],type_ignores=[])),str(path),"exec"),namespace)
+        plan=namespace["_JointStepPlan"]();plan.q_target=np.array([.01,0.])
+        base=[np.zeros(3),np.array([1.,0.,0.,0.])]
+        inspector=SimpleNamespace(in_self_collision=Mock(return_value=False),in_collision_with_obstacle=Mock(return_value=False))
+        executor=SimpleNamespace(_plan=lambda target:plan,_arm_values=lambda getter:np.zeros(2),
+            articulation=SimpleNamespace(get_dof_positions=lambda:np.zeros(2)),_collision_inspector=inspector,
+            controller=SimpleNamespace(world_binding=SimpleNamespace(get_world_interface=lambda:
+                SimpleNamespace(get_world_to_robot_base_transform=lambda:base))),
+            _world_ee_pose_from_joints=Mock(return_value=np.eye(4)))
+        finger=SimpleNamespace(path_collision_count=Mock(return_value=0))
+        check=lambda:namespace["is_observation_path_safe"](executor,np.eye(4),np.empty((0,3)),finger)
+        self.assertTrue(check());calls=executor._world_ee_pose_from_joints.call_count
+        self.assertGreater(calls,1)
+        self.assertTrue(check());self.assertEqual(executor._world_ee_pose_from_joints.call_count,calls)
+        self.assertEqual(inspector.in_self_collision.call_count,6)
+        self.assertEqual(inspector.in_collision_with_obstacle.call_count,6)
+        self.assertEqual(finger.path_collision_count.call_count,6)
+        base[0][0]=.001
+        self.assertTrue(check());self.assertEqual(executor._world_ee_pose_from_joints.call_count,2*calls)
+
+    def test_release_contact_only_allows_nonincreasing_initial_contact(self):
+        point=np.array([[-.00448,0,-.015]])
+        sweep=HeldSweep(None,.075,reference_pose=np.eye(4),max_distance_m=.010,contact_mask=np.array([True]))
+        self.assertEqual(sweep.collision_count(point,np.eye(4)),0)
+        away=np.eye(4);away[0,3]=.002
+        self.assertEqual(sweep.collision_count(point,away),0)
+        pressing=np.eye(4);pressing[0,3]=-.002
+        self.assertGreater(sweep.collision_count(point,pressing),0)
+        unrelated=HeldSweep(None,.075,reference_pose=np.eye(4),max_distance_m=.010,contact_mask=np.array([False]))
+        self.assertGreater(unrelated.collision_count(point,np.eye(4)),0)
+
+    def test_release_contact_cannot_exempt_deep_penetration(self):
+        point=np.array([[0.,0,-.015]])
+        sweep=HeldSweep(None,.075,reference_pose=np.eye(4),max_distance_m=.010,contact_mask=np.array([True]))
+        self.assertGreater(sweep.collision_count(point,np.eye(4)),0)
+
     def test_swept_volume_broad_phase_matches_exhaustive_collision_test(self):
         from scipy.spatial.transform import Rotation
         from mr_liu.grasp.contact import FingerGeometry

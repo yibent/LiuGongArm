@@ -4,6 +4,7 @@ V1 is restricted to compact payloads in the calibrated fingertip corridor.
 Long tools/full attached-body self-collision are deliberately not advertised.
 """
 import time
+from dataclasses import replace
 import cv2
 import numpy as np
 from scipy.spatial import cKDTree
@@ -14,12 +15,19 @@ from .appearance import appearance_matches
 
 
 class HeldSweep:
-    def __init__(self, held, width, *, opening=False, reference_pose=None,max_distance_m=None):
+    def __init__(self, held, width, *, opening=False, reference_pose=None,max_distance_m=None,contact_mask=None):
         self.held = held
         self.width = width
         self.opening = opening
         self.reference_pose,self.max_distance_m=reference_pose,max_distance_m
         self._tree_points=None;self._last_pose=None;self._last_count=0
+        self.contact_mask=contact_mask
+
+    def _contact_depth(self,points,pose):
+        local=transform_points(invert_transform(pose),points)
+        depths=[np.min(half-np.abs(local-center),axis=1)
+                for center,half in FingerGeometry(open_width_m=self.width).boxes()]
+        return np.maximum.reduce(depths)
 
     def collision_count(self, points, pose):
         if self.reference_pose is not None:
@@ -31,6 +39,13 @@ class HeldSweep:
                 raise PlaceError('nonlocal_ik_rotation')
         if self._tree_points is not points:
             self._tree=cKDTree(points);self._tree_points=points;self._last_pose=None
+            self._contact_initial=None
+            if self.contact_mask is not None:
+                initial=self._contact_depth(points,self.reference_pose)
+                # Only previously measured payload contact at the calibrated
+                # jaw surface (<=1 mm penetration). Not a whole-object exemption.
+                self._contact_initial=initial
+                self._contact_allowed=np.asarray(self.contact_mask,bool)&(initial>=-.001)&(initial<=.001)
         if self._last_pose is not None and np.array_equal(pose,self._last_pose):
             return self._last_count
         widths = np.linspace(self.width,.075,12) if self.opening else [self.width]
@@ -47,6 +62,11 @@ class HeldSweep:
             radii.append(np.linalg.norm(self.held.half_extents_m+.001)+1e-9)
         hits=self._tree.query_ball_point(centers,radii)
         indices=np.unique(np.concatenate(hits)).astype(int) if any(len(v) for v in hits) else np.empty(0,int)
+        if self._contact_initial is not None and len(indices):
+            depth=self._contact_depth(points[indices],pose)
+            escaping=(self._contact_allowed[indices]
+                      & (depth<=self._contact_initial[indices]+.0002)&(depth<=.001))
+            indices=indices[~escaping]
         nearby=points[indices]
         count = max(FingerGeometry(open_width_m=float(w)).collision_count(nearby,pose) for w in widths)
         if self.held is not None:
@@ -67,6 +87,8 @@ class IsaacPlaceMotion:
         self.refresh_destination, self.trace = refresh_destination,trace
         self.last_failure = None
         self.mask_refiner=mask_refiner
+        self.release_contact=None
+        self._release_retreat=None
         self.executor.clear_grasp_plan()
 
     def robot_state(self):
@@ -129,7 +151,7 @@ class IsaacPlaceMotion:
         own |= edge
         return points[~own]
 
-    def _safe(self, goal, held, evidence, opening=False,width_override=None):
+    def _safe(self, goal, held, evidence, opening=False,width_override=None,contact_payload=None):
         self.last_failure = None
         started=time.monotonic()
         if held is not None:
@@ -143,10 +165,15 @@ class IsaacPlaceMotion:
             self.last_failure = "gripper_width_unknown"
             return False
         points = self._points(evidence,held)
+        contact_mask=None
+        if contact_payload is not None:
+            external=self._points(evidence,contact_payload)
+            contact_mask=cKDTree(external).query(points,k=1)[0]>1e-8
         points_s=time.monotonic()-started
         current=self.robot_state().T_base_ee
         limit=max(.010,1.5*np.linalg.norm(goal[:3,3]-current[:3,3])+.002)
-        sweep = HeldSweep(held,width,opening=opening,reference_pose=current,max_distance_m=limit)
+        sweep = HeldSweep(held,width,opening=opening,reference_pose=current,max_distance_m=limit,
+                          contact_mask=contact_mask)
         if not self.executor.is_observation_path_safe(goal,points,sweep):
             self.last_failure = self.executor.last_observation_path_rejection
             self.trace({"phase":"place_path_rejected","reason":self.last_failure,
@@ -163,14 +190,38 @@ class IsaacPlaceMotion:
         if sweep.collision_count(self._points(evidence,held),pose):
             self.last_failure = "opening_sweep_collision"
             return False
+        # Pull back along the calibrated finger axis. World-vertical withdrawal
+        # can scrape a held face when the achieved wrist is slightly tilted.
+        direction=-pose[:3,2]
+        if direction[2]<.9:
+            self.last_failure='retreat_axis_not_upward'
+            return False
         retreat = pose.copy()
-        retreat[2,3] += .045
+        retreat[:3,3] += direction*.045
         # Reserve a retreat corridor before release. Revalidate it after opening.
-        return self._safe(retreat,None,evidence,width_override=.075)
+        ok=self._safe(retreat,None,evidence,width_override=.075,contact_payload=held)
+        if ok:
+            self.release_contact=(held,pose.copy(),pose@held.T_ee_object)
+            self._release_retreat=retreat.copy()
+        return ok
+
+    def retreat_target(self):
+        if self._release_retreat is None:
+            from .contracts import PlaceError
+            raise PlaceError('retreat_not_preflighted')
+        return self._release_retreat.copy()
 
     def move_checked(self, goal, held, evidence, *, opening=False):
         self.executor.clear_grasp_plan()
-        if not self._safe(goal,held,evidence,opening):
+        contact_payload=None
+        if held is None and opening and self.release_contact is not None:
+            original,release_ee,object_pose=self.release_contact
+            current=self.robot_state().T_base_ee
+            if np.linalg.norm(current[:3,3]-release_ee[:3,3])<.015:
+                # The released object stays in the world; it must not be moved
+                # along with the retreating wrist's attachment transform.
+                contact_payload=replace(original,T_ee_object=invert_transform(current)@object_pose)
+        if not self._safe(goal,held,evidence,opening,contact_payload=contact_payload):
             return False
         # A slow IK check cannot authorize motion against an old observation.
         if self.refresh_destination is None:
@@ -180,7 +231,7 @@ class IsaacPlaceMotion:
         if np.linalg.norm(fresh.center_base_m-evidence.center_base_m)>.008:
             self.last_failure = "destination_changed_during_plan"
             return False
-        if not self._safe(goal,held,fresh,opening):
+        if not self._safe(goal,held,fresh,opening,contact_payload=contact_payload):
             return False
         if time.monotonic()-fresh.observation.timestamp_s > .35:
             self.last_failure = "scene_stale_after_plan"

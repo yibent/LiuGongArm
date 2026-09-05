@@ -20,6 +20,7 @@ def main():
     parser.add_argument("run",type=Path)
     parser.add_argument("--collision",action="store_true",help="Recheck recorded start/goal local volumes, not full joint-path IK")
     parser.add_argument("--sam2-probe",action="store_true",help="Use the separately generated local SAM2 probe mask")
+    parser.add_argument("--release",action="store_true",help="Inspect opened-finger initial contact (requires --collision)")
     args=parser.parse_args()
     directory=args.run/"place"
     trace=json.loads((directory/"trace.json").read_text(encoding="utf-8"))
@@ -61,6 +62,30 @@ def main():
             refiner=lambda observation,seed:probe['mask']
         motion=IsaacPlaceMotion(executor,None,mask_refiner=refiner)
         points=motion._points(SimpleNamespace(observation=obs,support_z_m=evidence.support_z_m),held)
+        if args.release:
+            from scipy.spatial import cKDTree
+            allpoints=motion._points(SimpleNamespace(observation=obs,support_z_m=evidence.support_z_m),None)
+            contact=cKDTree(points).query(allpoints)[0]>1e-8
+            sweep=HeldSweep(None,.075,reference_pose=ee,max_distance_m=.07,contact_mask=contact)
+            initial_depth=sweep._contact_depth(allpoints,ee)
+            initial_hits=initial_depth>-.001
+            result['release']={'initial_count':sweep.collision_count(allpoints,ee),
+                'initial_points_local_m':transform_points(invert_transform(ee),allpoints[initial_hits]).tolist(),
+                'initial_payload_contact':contact[initial_hits].tolist(),
+                'initial_depth_m':initial_depth[initial_hits].tolist(),
+                'note':'Linear diagnostic only, not actual FK path or motion authorization'}
+            for lateral in (0.,.004,.008):
+                counts=[]
+                for alpha in np.linspace(0,1,46):
+                    sample=ee.copy();sample[:3,3]+=alpha*(ee[:3,0]*lateral+np.array([0,0,.045]))
+                    counts.append(sweep.collision_count(allpoints,sample))
+                result['release'][f'linear_lateral_{lateral:g}_max_count']=max(counts)
+            counts=[]
+            for alpha in np.linspace(0,1,46):
+                sample=ee.copy();sample[:3,3]-=alpha*ee[:3,2]*.045
+                counts.append(sweep.collision_count(allpoints,sample))
+            result['release']['linear_negative_tool_z_max_count']=max(counts)
+            print(json.dumps(result,indent=2));return
         sweep=HeldSweep(held,report["gripper"]["width_m"])
         goal=np.array(next(e for e in reversed(trace) if e["phase"]=="place_path_rejected")["goal"])
         result["collision_replay"]={"external_points":len(points),

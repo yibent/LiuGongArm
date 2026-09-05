@@ -137,7 +137,7 @@ class GeneralPlaceNode:
             self.motion.stop()
             event("place_release_check")
             if not self.motion.opening_safe(held,destination):
-                raise PlaceError("opening_or_retreat_infeasible")
+                raise PlaceError("opening_or_retreat_infeasible",getattr(self.motion,"last_failure","") or "")
             # Planning can be slow: acquire both destination and payload again.
             latest = self.perception.destination(request)
             fresh(latest.observation)
@@ -169,15 +169,16 @@ class GeneralPlaceNode:
                     or not -.02 <= self.clock()-state.timestamp_s <= cfg.max_age_s):
                 raise PlaceError("gripper_not_open")
             event("place_retreat")
-            retreat = self.motion.robot_state().T_base_ee.copy()
-            retreat[2,3] += .045
+            retreat = self.motion.retreat_target()
             # Closed-loop retreat: payload is now a world obstacle; no attachment.
             for _ in range(12):
                 state = self.motion.robot_state()
-                if retreat[2,3]-state.T_base_ee[2,3] < .003:
+                delta=retreat[:3,3]-state.T_base_ee[:3,3]
+                distance=np.linalg.norm(delta)
+                if distance < .003:
                     break
                 step = state.T_base_ee.copy()
-                step[2,3] += min(cfg.max_step_m,retreat[2,3]-state.T_base_ee[2,3])
+                step[:3,3] += delta*min(1.,cfg.max_step_m/max(distance,1e-12))
                 if not self.motion.move_checked(step,None,latest,opening=True):
                     raise PlaceError("released_retreat_infeasible")
             else:

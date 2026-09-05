@@ -31,7 +31,10 @@ class FlorencePlaceLocator:
         response = self.session.post(self.url, json={"sequence":obs.sequence,"label":label,
             "mode":"florence", "segment":True, "describe":self.describe,
             "jpeg":base64.b64encode(jpeg).decode()}, timeout=self.timeout_s)
-        response.raise_for_status()
+        if not response.ok:
+            try:detail=response.json().get('message',response.reason)
+            except ValueError:detail=response.reason
+            raise PlaceError('destination_model_unavailable',str(detail)[:500])
         result = response.json()
         if result.get("protocol") != 1 or result.get("sequence") != obs.sequence:
             raise PlaceError("model_frame_mismatch")

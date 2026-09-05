@@ -84,9 +84,10 @@ def _run_place_after_grasp(*, result, initial_observation, initial_mask, target,
         raise PlaceError("initial_payload_geometry_unavailable")
     from mr_liu.grasp.backends.graspgenx import ZmqGraspGenXTransport
     refiner=Sam2PayloadRefiner(ZmqGraspGenXTransport('127.0.0.1',graspgenx_port,60000),trace=event)
-    # Load the local tiny model without granting any move/release permission.
-    # The live contour is recomputed against a new scene observation later.
-    refiner.warm(initial_observation,initial_mask)
+    # Defer SAM2 until the first path preflight, after Florence has evicted its
+    # weights. On a 16 GB host simultaneous loading can exhaust Windows commit.
+    # A cold first check never authorizes motion: move_checked reacquires and
+    # rechecks new RGB-D afterwards, with the normal 350 ms age gate unchanged.
     mask=initial_mask & np.isfinite(initial_observation.depth_m) & (initial_observation.depth_m>0)
     original=transform_points(initial_observation.T_base_camera,
         deproject_depth(initial_observation.depth_m,initial_observation.intrinsics,mask))

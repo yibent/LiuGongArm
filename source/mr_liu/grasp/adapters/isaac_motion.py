@@ -306,7 +306,23 @@ class IsaacCumotionExecutor:
         else:
             self.last_observation_path_rejection = "unsupported_plan_type"
             return False
-        previous = self._world_ee_pose_from_joints(q0)
+        # FK is deterministic for exact q and a fixed calibrated robot base.
+        # Rechecking a path against new depth must not recompute every immutable
+        # FK sample. World collision tests are still executed for every sample.
+        binding=self.controller.world_binding.get_world_interface()
+        base=binding.get_world_to_robot_base_transform()
+        base_key=tuple(np.concatenate([np.asarray(v.numpy() if hasattr(v,'numpy') else v,
+                                                dtype=float).reshape(-1) for v in base]))
+        if getattr(self,'_observation_fk_base_key',None)!=base_key:
+            self._observation_fk_cache={};self._observation_fk_base_key=base_key
+        def world_pose(q):
+            key=np.asarray(q,dtype=np.float64).tobytes()
+            if key not in self._observation_fk_cache:
+                self._observation_fk_cache[key]=self._world_ee_pose_from_joints(q)
+                if len(self._observation_fk_cache)>1024:
+                    self._observation_fk_cache.pop(next(iter(self._observation_fk_cache)))
+            return self._observation_fk_cache[key]
+        previous = world_pose(q0)
         profile["waypoints"]=len(waypoints)
         profile["max_joint_delta_rad"]=float(max(np.max(np.abs(q-q0)) for q in waypoints))
         for start, end in zip(waypoints, waypoints[1:]):
@@ -322,7 +338,7 @@ class IsaacCumotionExecutor:
                     return False
                 profile["world_s"]+=time.monotonic()-checking
                 checking=time.monotonic()
-                pose = self._world_ee_pose_from_joints(q)
+                pose = world_pose(q)
                 if finger.path_collision_count(points_base, previous, pose):
                     self.last_observation_path_rejection = "observed_surface_finger_collision"
                     return False
