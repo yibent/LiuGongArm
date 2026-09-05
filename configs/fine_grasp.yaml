@@ -1,6 +1,12 @@
 # Model-independent FineGrasp safety and closed-loop parameters.
 # Distances are metres, angles are degrees and time values are seconds.
 backend: geometric
+# Baseline: eye-in-hand servo only. Multi-view remains explicit opt-in through
+# --perception multiview; the overhead RGB-D stream is not a control input yet.
+fusion:
+  enabled: false
+active_views:
+  enabled: false
 backends:
   graspgenx:
     # Run the weight-bearing server from the isolated GraspGenX environment.

@@ -1,6 +1,6 @@
 # MR Liu + YOLOE
 
-机械臂仿真工程：Isaac Sim 桌面 SO-101 + cuMotion follow-target，接入 Florence-2 FIND 与 YOLOE / OpenCV TRACK，并提供桌面顶视 RGB 与腕部 RGBD 相机。
+机械臂仿真工程：Isaac Sim 桌面 SO-101 + cuMotion follow-target，接入 Florence-2 FIND 与 YOLOE / OpenCV TRACK，并提供桌面顶视与腕部两路 RGB-D 相机。
 
 合并自：
 
@@ -52,6 +52,8 @@ D:\isaac\env_isaacsim60\python.exe -m pip install -r requirements-vision.txt
 FineGrasp 的架构、Isaac 闭环 demo、失败排查和真机前置条件见
 [`docs/FINE_GRASP.md`](docs/FINE_GRASP.md)；模型实测与选型证据见
 [`docs/MODEL_EVALUATION.md`](docs/MODEL_EVALUATION.md)。
+当前开发基线与后续主动观察版本的边界见
+[`docs/FINE_GRASP_BASELINE.md`](docs/FINE_GRASP_BASELINE.md)；尚未通过真实物体泛化验收。
 
 | 做什么 | 命令 |
 |---|---|
@@ -65,8 +67,20 @@ FineGrasp 的架构、Isaac 闭环 demo、失败排查和真机前置条件见
 
 FineGrasp wrapper 在自己启动模型服务时会等待 GraspGenX warmup 返回 `status=ready`，并把
 串行运行结果保存到按秒时间戳的 `output/fine_grasp_runs/<timestamp>_<backend>/`。本机已保存
-一次无 fallback 的 GraspGenX Isaac cube 闭环成功证据：模型 687 ms、最终
+早期版本的一次无 fallback 的 GraspGenX Isaac cube 闭环成功证据：模型 687 ms、最终
 3.39 mm/0.15°、腕部视觉验证抬升 82.05 mm、Isaac 刚体实际抬升 82.06 mm。
+这不代表当前基线已通过验收；最新双 RGB-D 基线回归实际抬升 80.24 mm，
+但节点视觉随动验证失败，完整结果和限制见上述基线说明。
+
+双 RGB-D 相机运行时验证（本机 PowerShell；不会执行抓取）：
+
+```powershell
+& D:\isaac\env_isaacsim60\python.exe scripts\verify_cameras.py
+```
+
+输出目录 `output/camera_verify/<timestamp>/` 保存两路 RGB、深度图、带渲染时间及
+OpenCV 光学坐标系位姿的 RGB-D NPZ 和检测报告。脚本验证两路流各自帧号递增，
+不表示跨相机时间同步或双相机融合已完成。
 
 相机运行时验证（Linux）：
 
@@ -100,5 +114,5 @@ D:\isaac\env_isaacsim60\python.exe vision_main.py --webui --host 127.0.0.1 --por
 | `configs/motion.yaml` | physics dt、device、RMPflow |
 | `configs/cameras.yaml` | 场景相机 / 腕部相机 |
 
-相机 rig 默认启用：`/World/Cameras/TableTopRGB` 位于桌面正上方并输出 RGB；
+相机 rig 默认启用：`/World/Cameras/TableTopRGB` 位于桌面正上方并输出 RGB 与米制深度（保留旧 prim 路径兼容已有消费者）；
 `/World/SO101/gripper/WristRGBD` 挂载在夹爪节点下，随机械臂运动并输出 RGB 与米制深度。

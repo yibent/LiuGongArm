@@ -397,12 +397,13 @@ exit_code = 0
 try:
     exit_code = main()
 except Exception:  # persist all Kit/Python failures for headless regressions
+    exit_code = 1
     OUTPUT.mkdir(parents=True, exist_ok=True)
     error = traceback.format_exc()
     (OUTPUT / "error.txt").write_text(error, encoding="utf-8")
-    print(error, file=sys.stderr)
-    raise
+    print(error, file=sys.stderr, flush=True)
 finally:
-    simulation_app.close()
+    # Isaac 6 fast shutdown exits here, before the SystemExit below.
+    simulation_app.close(exit_code=exit_code)
 
 raise SystemExit(exit_code)

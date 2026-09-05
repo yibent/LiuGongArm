@@ -11,9 +11,16 @@ sys.path.insert(0, str(ROOT / "source"))
 
 from mr_liu.grasp.contracts import ObjectProperties, TargetSpec  # noqa: E402
 from mr_liu.grasp.policy import policy_for_target  # noqa: E402
+from mr_liu.config import fine_grasp_config  # noqa: E402
+from mr_liu.grasp.settings import FineGraspSettings  # noqa: E402
 
 
 class FineGraspContractTests(unittest.TestCase):
+    def test_baseline_does_not_enable_experimental_multiview(self) -> None:
+        settings = FineGraspSettings.from_mapping(fine_grasp_config())
+        self.assertFalse(settings.fusion.enabled)
+        self.assertFalse(settings.active_views.enabled)
+
     def test_empty_object_id_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             TargetSpec("  ")

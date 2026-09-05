@@ -1,6 +1,7 @@
 # Camera rig used by the simulation and the vision pipeline.
 enabled: true
 scene:
+  # Keep the existing prim path for consumers; this camera now outputs RGB-D.
   prim_path: /World/Cameras/TableTopRGB
   resolution: [640, 480]
   frequency: 30
@@ -10,7 +11,7 @@ scene:
   target: [0.50, 0.0, 1.05]
   focal_length: 1.8
   clipping_range: [0.01, 10.0]
-  annotators: [rgb]
+  annotators: [rgb, distance_to_image_plane]
 wrist:
   parent_prim_path: /World/SO101/gripper
   prim_path: /World/SO101/gripper/WristRGBD
