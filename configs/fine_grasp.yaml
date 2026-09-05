@@ -131,6 +131,10 @@ debug:
 # internal position servos while keeping the URDF 10 N m effort limit intact.
 # They affect only the Isaac demo adapter, never a real robot driver.
 isaac_sim:
-  arm_drive_stiffness_nm_per_rad: 800.0
-  arm_drive_damping_nms_per_rad: 20.0
-  arm_drive_max_effort_nm: 10.0
+  # The imported SO-101 shoulder/wrist drives sag several millimetres under
+  # the tabletop grasp pose.  These values are simulation-only and give the
+  # position servos enough authority to settle the final approach; the real
+  # robot adapter keeps its own torque limits.
+  arm_drive_stiffness_nm_per_rad: 1200.0
+  arm_drive_damping_nms_per_rad: 25.0
+  arm_drive_max_effort_nm: 20.0
