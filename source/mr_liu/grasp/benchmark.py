@@ -465,6 +465,11 @@ def classify_report(
         and not physical_lift
         and failure in {"table_clearance", "gripper_width_infeasible", "collision"}
     )
+    attempts = report.get("attempt_results") or [result]
+    physics = report.get("attempt_physics") or [{"actual_target_lift_m": actual_lift_m}]
+    first_lift = _number(physics[0].get("actual_target_lift_m"))
+    first_success = bool(attempts[0].get("success") and first_lift is not None and first_lift >= lift_threshold_m)
+    grasp_attempts = metrics.get("grasp_attempts", metrics.get("close_commanded"))
     return {
         "success": physical_success,
         "task_success": physical_success if expected_feasible else correct_infeasibility_rejection,
@@ -485,6 +490,14 @@ def classify_report(
         "servo_steps": metrics.get("servo_steps"),
         "process_returncode": process_returncode,
         "process_error": process_error,
+        "recovery_mode": report.get("recovery_mode", "off"),
+        "recovery_attempts": metrics.get("recovery_attempts", 1),
+        "grasp_attempts": grasp_attempts,
+        "first_attempt_success": first_success,
+        "recovered_success": bool(physical_success and not first_success),
+        "successful_regrasp": bool(physical_success and grasp_attempts is not None and grasp_attempts > 1),
+        "active_view_moves": metrics.get("total_active_view_moves", metrics.get("active_view_moves", 0)),
+        "recovery_stop_reason": metrics.get("recovery_stop_reason"),
     }
 
 
@@ -498,6 +511,17 @@ def _metric_summary(rows: Iterable[Mapping[str, Any]], key: str) -> dict[str, fl
         "median": statistics.median(values),
         "p95": values[p95_index],
     }
+
+
+def validate_frozen_case_bytes(data: bytes, expected_sha256: str) -> bool:
+    """Accept only transport newline changes, never edited case contents.
+
+    Early Windows manifests hashed CRLF bytes while Git stores LF. Preserve
+    those frozen definitions/hashes and validate both explicit encodings.
+    """
+    import hashlib
+    lf = data.replace(b"\r\n", b"\n")
+    return expected_sha256 in {hashlib.sha256(value).hexdigest() for value in (data, lf, lf.replace(b"\n", b"\r\n"))}
 
 
 def aggregate_runs(runs: list[Mapping[str, Any]]) -> dict[str, Any]:
@@ -543,9 +567,12 @@ def aggregate_runs(runs: list[Mapping[str, Any]]) -> dict[str, Any]:
         ),
         "failure_counts": dict(sorted(failure_counts.items())),
         "false_successes": sum(bool(r.get("node_success")) and not bool(r.get("physical_lift_success")) for r in runs),
-        "attempted_trials": sum(r.get("actual_lift_m") is not None and
-                                r.get("failure_category") not in {"table_clearance", "ik_unreachable", "geometry_uncertain", "target_not_visible"}
-                                for r in feasible_runs),
+        "attempted_trials": sum((r.get("grasp_attempts") or 0) > 0 for r in feasible_runs),
+        "attempt_count_unknown_trials": sum(r.get("grasp_attempts") is None for r in feasible_runs),
+        "first_attempt_successes": sum(bool(r.get("first_attempt_success")) for r in runs),
+        "recovered_successes": sum(bool(r.get("recovered_success")) for r in runs),
+        "successful_regrasps": sum(bool(r.get("successful_regrasp")) for r in runs),
+        "active_view_moves": sum(int(r.get("active_view_moves", 0)) for r in runs),
         "by_shape": grouped("shape"),
         "by_material": grouped("material"),
         "metrics": {

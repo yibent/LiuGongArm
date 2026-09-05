@@ -22,6 +22,7 @@ from mr_liu.grasp.benchmark import (  # noqa: E402
     default_unseen_cases,
     render_markdown,
     write_case,
+    validate_frozen_case_bytes,
 )
 
 
@@ -69,6 +70,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--graspgenx-port", type=int, default=5556)
     parser.add_argument("--perception", choices=("single", "multiview"), default="single")
     parser.add_argument("--segmenter", choices=("depth", "sam2"), default="depth")
+    parser.add_argument("--recovery", choices=("off", "assisted", "active"), default="off")
+    parser.add_argument("--drop-initial-wrist-frames", type=int, default=0)
     parser.add_argument("--manifest", type=Path)
     parser.add_argument("--split", choices=("development", "acceptance"), default="development")
     parser.add_argument("--dry-run", action="store_true", help="Exercise planning only (not scored as physical success)")
@@ -90,7 +93,7 @@ def _expanded_cases(args: argparse.Namespace) -> list[BenchmarkCase]:
         for entry in manifest["splits"][args.split]:
             path = args.manifest.parent / entry["path"]
             data = path.read_bytes()
-            if hashlib.sha256(data).hexdigest() != entry["sha256"]:
+            if not validate_frozen_case_bytes(data, entry["sha256"]):
                 raise ValueError(f"Frozen case was modified: {path}")
             cases.append(BenchmarkCase.from_mapping(json.loads(data)))
         return cases
@@ -140,6 +143,8 @@ def _run_case(args: argparse.Namespace, case: BenchmarkCase, run_dir: Path) -> d
         str(args.graspgenx_port),
         "--perception", args.perception,
         "--segmenter", args.segmenter,
+        "--recovery", args.recovery,
+        "--drop-initial-wrist-frames", str(args.drop_initial_wrist_frames),
         "--headless" if args.headless else "--no-headless",
     ]
     if args.dry_run:

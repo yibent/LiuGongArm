@@ -6,6 +6,11 @@
 通过 GraspGenX 候选、IK/碰撞筛选和小步伺服完成接近、闭爪、抬升与验证。
 仿真头顶相机也已升级 RGB-D，但尚未参与抓取决策。
 
+新开发线 `codex/active-grasp-recovery` 增加了实验性的双 RGB-D 主动恢复：
+失败后检查持物状态、安全退让、腕部多视角重新观察，再生成抓取并闭环执行。
+机制、运行方式、验证证据和安全边界见 [主动恢复开发说明](docs/ACTIVE_GRASP_RECOVERY.md)。
+下文的 `2c7b53f` 状态指已发布的旧基线，不代表新开发线的最新结果。
+
 **请先读 [BusAgent 接入 README](docs/BUSAGENT_README.md)**：包含已开发内容、
 实际模型评估、环境要求、一键 demo、Python 接入代码、失败处理和后续增强计划。
 

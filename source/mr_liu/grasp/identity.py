@@ -8,6 +8,31 @@ from mr_liu.grasp.geometry import deproject_depth
 from mr_liu.grasp.transforms import invert_transform, transform_points
 
 
+class RobotMaskedSegmenter:
+    """Exclude a known-robot silhouette before prompting/region growing.
+
+    The silhouette comes from calibrated robot geometry (sim robot instance
+    paths here), never from the target object's simulator instance label.
+    """
+    def __init__(self, segmenter, *, require_mask=False):
+        self.segmenter = segmenter
+        self.require_mask = require_mask
+
+    @property
+    def last_diagnostic(self):
+        return getattr(self.segmenter, "last_diagnostic", {})
+
+    def segment(self, observation, target):
+        robot = observation.metadata.get("robot_self_mask")
+        if robot is None:
+            return None if self.require_mask else self.segmenter.segment(observation, target)
+        robot = np.asarray(robot, bool)
+        depth = observation.depth_m.copy()
+        depth[robot] = np.nan
+        mask = self.segmenter.segment(replace(observation, depth_m=depth), target)
+        return None if mask is None else np.asarray(mask, bool) & ~robot
+
+
 class GeometricIdentitySegmenter:
     """Coarse location initializes once; subsequent prompts use tracked geometry.
 

@@ -84,6 +84,15 @@ class CameraRGBDFrameTests(unittest.TestCase):
         self.assertIsNone(self.camera.rgbd_frame())
         self.camera._cam.get_current_frame.assert_not_called()
 
+    def test_robot_mask_uses_leaf_paths_and_normalized_isaac6_frame_key(self):
+        self.frame["instance_id_segmentation"] = {
+            "data": np.array([[1, 2, 0], [2, 0, 1]], dtype=np.uint32),
+            "info": {"idToLabels": {"1": "/World/SO101/gripper/mesh",
+                                     "2": "/World/UnseenObject/mesh"}},
+        }
+        mask = self.camera.instance_mask("/World/SO101", leaf_paths=True)
+        np.testing.assert_array_equal(mask, [[True, False, False], [False, False, True]])
+
 
 if __name__ == "__main__":
     unittest.main()

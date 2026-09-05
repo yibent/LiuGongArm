@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any, Sequence, Callable
 
 import numpy as np
 
@@ -41,6 +41,9 @@ def select_grasp(
     motion: MotionExecutor,
     policy: ExecutionPolicy,
     config: SelectionConfig,
+    *,
+    local_path_check: Callable[[np.ndarray, np.ndarray, float], bool] | None = None,
+    failed_grasps: Sequence[SelectedGrasp] = (),
 ) -> SelectionResult:
     rejected: Counter[str] = Counter()
     feasible: list[SelectedGrasp] = []
@@ -141,6 +144,15 @@ def select_grasp(
             continue
         T_grasp_pregrasp = make_transform(translation=np.asarray([0.0, 0.0, -config.pregrasp_distance_m]))
         T_base_pregrasp = T_base_grasp @ T_grasp_pregrasp
+        if any(np.linalg.norm(T_base_grasp[:3, 3] - old.T_base_grasp[:3, 3]) < 0.012
+               and abs(np.dot(T_base_grasp[:3, 0], old.T_base_grasp[:3, 0])) > np.cos(np.deg2rad(15))
+               and np.dot(T_base_grasp[:3, 2], old.T_base_grasp[:3, 2]) > np.cos(np.deg2rad(15))
+               for old in failed_grasps):
+            reject("previous_failed_grasp")
+            continue
+        if local_path_check is not None and not local_path_check(T_base_pregrasp, T_base_grasp, candidate.width_m):
+            reject("observed_finger_collision")
+            continue
         if not motion.is_reachable(T_base_pregrasp) or not motion.is_reachable(T_base_grasp):
             reject("ik_unreachable")
             continue

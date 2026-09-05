@@ -62,6 +62,7 @@ class GeneralGraspNode:
         settings: FineGraspSettings,
         clock: Callable[[], float] = time.monotonic,
         trace: TraceCallback | None = None,
+        failed_grasps=(),
     ) -> None:
         self.camera = camera
         self.segmenter = segmenter
@@ -72,6 +73,7 @@ class GeneralGraspNode:
         self.settings = settings
         self.clock = clock
         self.trace = trace
+        self.failed_grasps = failed_grasps
         self._cancelled = False
         self._last_sequence = -1
         self._fusion = LocalSurfaceFusion(settings.fusion)
@@ -93,6 +95,10 @@ class GeneralGraspNode:
             "replans": 0,
             "servo_steps": 0,
             "candidates": 0,
+            "close_commanded": 0,
+            "model_calls": 0,
+            "model_total_ms": 0.0,
+            "active_view_moves": 0,
         }
         self._cancelled = False
         self._last_sequence = -1
@@ -129,10 +135,12 @@ class GeneralGraspNode:
                     geometry = self._fusion.geometry(observation, geometry)
                 self._emit(FineGraspPhase.GENERATE, observation_sequence=observation.sequence)
                 generated_at = self.clock()
+                metrics["model_calls"] = int(metrics["model_calls"]) + 1
                 candidates = list(
                     self.backend.generate(observation, geometry.points_camera, request.target)
                 )
                 metrics["model_latency_ms"] = round((self.clock() - generated_at) * 1000.0, 3)
+                metrics["model_total_ms"] = float(metrics["model_total_ms"]) + float(metrics["model_latency_ms"])
                 # A slow model consumes time: validate a NEW observation before
                 # permitting even the pregrasp move, not only after arrival.
                 if self.settings.fusion.enabled and not request.dry_run:
@@ -158,6 +166,12 @@ class GeneralGraspNode:
                     self.motion,
                     policy,
                     self.settings.selection,
+                    failed_grasps=self.failed_grasps,
+                    local_path_check=(
+                        lambda start, end, width: FingerGeometry(open_width_m=min(
+                            self.settings.gripper.max_width_m, width + 0.006)).path_collision_count(
+                                geometry.points_base, start, end) == 0
+                    ) if self.settings.fusion.enabled else None,
                 )
                 for reason, count in selection.rejected.items():
                     metrics[f"rejected_{reason}"] = int(metrics.get(f"rejected_{reason}", 0)) + count
@@ -177,14 +191,6 @@ class GeneralGraspNode:
                         started,
                     )
                 selected = selection.grasp
-                if self.settings.fusion.enabled:
-                    count = self._finger_geometry.path_collision_count(
-                        geometry.points_base, selected.T_base_pregrasp, selected.T_base_grasp)
-                    metrics["selected_finger_surface_collisions"] = count
-                    if count:
-                        return self._failure(request, FailureCode.COLLISION,
-                                             "Observed target intersects open-finger approach sweep",
-                                             metrics, started, selected)
                 self._emit(
                     FineGraspPhase.PREGRASP,
                     score=selected.score,
@@ -202,6 +208,16 @@ class GeneralGraspNode:
                         selected_grasp=selected,
                         metrics=metrics,
                     )
+
+                if self.settings.fusion.enabled:
+                    # Selection/IK can itself be slow. Validate again just before
+                    # authorizing pregrasp; never let a map reset retain a pose.
+                    confirmed = self._observe(request, metrics, allow_same_sequence=False)
+                    if isinstance(confirmed, FineGraspResult):
+                        return self._with_elapsed(confirmed, started, metrics)
+                    if metrics.get("fusion_reset") == "motion_or_identity_inconsistent":
+                        self._emit(FineGraspPhase.GENERATE, event="target_changed_before_pregrasp")
+                        continue
 
                 prepare_grasp = getattr(self.motion, "prepare_grasp", None)
                 if callable(prepare_grasp) and not prepare_grasp(selected):
@@ -262,6 +278,11 @@ class GeneralGraspNode:
                     if isinstance(latest, FineGraspResult):
                         return self._with_elapsed(latest, started, metrics)
                     current_observation, current_geometry = latest
+                    if self.settings.fusion.enabled and metrics.get("fusion_reset") == "motion_or_identity_inconsistent":
+                        self.motion.stop()
+                        replan_required = True
+                        self._emit(FineGraspPhase.GENERATE, event="discard_pose_after_map_reset")
+                        break
                     baseline_extent = max(float(np.linalg.norm(geometry.extents_m)), 1e-4)
                     extent_ratio = float(np.linalg.norm(current_geometry.extents_m)) / baseline_extent
                     if extent_ratio > 3.0 or extent_ratio < 0.15:
@@ -442,7 +463,14 @@ class GeneralGraspNode:
                         )
                     ),
                 )
+                before_close_hook = getattr(self.verifier, "before_close", None)
+                if callable(before_close_hook):
+                    before_close_hook(before_close)
+                terminal = self._terminal_check(request, deadline, metrics, selected)
+                if terminal is not None:
+                    return terminal
                 self._emit(FineGraspPhase.CLOSE, force_n=policy.force_n)
+                metrics["close_commanded"] = 1
                 if not self.gripper.close(0.0, force_n=policy.force_n, speed_mps=policy.close_speed_mps):
                     return self._failure(
                         request,
@@ -689,11 +717,16 @@ class GeneralGraspNode:
             if self._finger_geometry.path_collision_count(self._fusion.points_base, start_pose, pose):
                 self._emit(FineGraspPhase.OBSERVE, event="view_rejected", reason="target_finger_collision")
                 continue
+            checker = getattr(self.motion, "is_observation_path_safe", None)
+            if not callable(checker) or not checker(pose, self._fusion.points_base, self._finger_geometry):
+                self._emit(FineGraspPhase.OBSERVE, event="view_rejected", reason="actual_path_unverified")
+                continue
             self._emit(FineGraspPhase.OBSERVE, event="active_view_move", xyz_m=pose[:3, 3].tolist())
             if not self.motion.move_to(pose, speed_scale=cfg.speed_scale):
                 self.motion.stop()
                 return self._failure(request, FailureCode.GEOMETRY_UNCERTAIN,
                                      "Active observation motion failed", metrics, self.clock())
+            metrics["active_view_moves"] = int(metrics.get("active_view_moves", 0)) + 1
             observed = self._observe(request, metrics, allow_same_sequence=False)
             if isinstance(observed, FineGraspResult):
                 return observed

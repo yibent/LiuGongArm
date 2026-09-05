@@ -50,6 +50,7 @@ class IsaacWristCamera:
         max_extrinsic_rotation_drift: float = 0.002,
         render_settle_frames: int = 2,
         model_seed: int = 0,
+        robot_mask_provider: Callable[[], np.ndarray | None] | None = None,
     ) -> None:
         if camera.which != "wrist":
             raise ValueError("IsaacWristCamera requires the configured wrist camera")
@@ -63,6 +64,7 @@ class IsaacWristCamera:
         self.render_settle_frames = max(int(render_settle_frames), 1)
         self._sequence = 0
         self.model_seed = int(model_seed)
+        self.robot_mask_provider = robot_mask_provider
         self._reference_T_ee_camera: np.ndarray | None = None
 
     def capture(self, target: TargetSpec) -> RGBDObservation | None:
@@ -130,6 +132,7 @@ class IsaacWristCamera:
             target_mask=None if mask is None else np.asarray(mask, dtype=bool).copy(),
             metadata={"sim_rendering_time": sim_frame.get("rendering_time"), "model_seed": self.model_seed,
                       "pose_source": "render_camera_params" if render_pose is not None else "live_pose",
+                      "robot_self_mask": self.robot_mask_provider() if self.robot_mask_provider else None,
                       "render_updates": attempt + 1},
         )
 
@@ -155,3 +158,44 @@ class IsaacWristCamera:
                 "Eye-in-hand extrinsic changed: "
                 f"translation drift={translation_drift:.6f}m rotation_fro={rotation_drift:.6f}"
             )
+
+
+class IsaacSceneCamera:
+    """Fixed eye-to-hand RGB-D; never fabricate a wrist hand-eye chain.
+
+    T_base_world must come from the host's calibrated world/base relation.
+    In this Isaac scene the application's base coordinates are world metres.
+    """
+    def __init__(self, camera, *, T_base_world, advance_frame, clock=time.monotonic,
+                 robot_mask_provider=None):
+        if camera.which != "scene" or not camera.has_depth:
+            raise ValueError("External observer requires the configured scene RGB-D camera")
+        self.camera, self.advance_frame, self.clock = camera, advance_frame, clock
+        self.T_base_world = np.asarray(T_base_world, dtype=float).copy()
+        self.robot_mask_provider = robot_mask_provider
+        self._last_id = None
+        self._pose = None
+        self._sequence = 0
+
+    def capture(self, target):
+        del target
+        for step in range(16):
+            self.advance_frame()
+            sample = self.camera.rgbd_frame()
+            if sample is None or step < 1 or sample.acquisition_id == self._last_id:
+                continue
+            if self._pose is not None and not np.allclose(self._pose, sample.T_world_camera, atol=1e-5):
+                raise RuntimeError("Fixed overhead camera moved; recalibration required")
+            self._pose = sample.T_world_camera.copy()
+            self._last_id = sample.acquisition_id
+            self._sequence += 1
+            k = sample.intrinsics
+            width, height = self.camera.resolution
+            return RGBDObservation(
+                sequence=self._sequence, timestamp_s=self.clock(), rgb=sample.rgba[:, :, :3],
+                depth_m=sample.depth_m, intrinsics=CameraIntrinsics(width, height, k[0, 0], k[1, 1], k[0, 2], k[1, 2]),
+                T_base_camera=self.T_base_world @ sample.T_world_camera, camera_frame="overhead_camera",
+                metadata={"mount_type": "fixed", "sim_rendering_time": sample.rendering_time_s,
+                          "robot_self_mask": self.robot_mask_provider() if self.robot_mask_provider else None},
+            )
+        return None

@@ -24,6 +24,9 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--perception", choices=("single", "multiview"), default="single")
     parser.add_argument("--planner", choices=("graspmoe", "diffusion"), default="graspmoe")
     parser.add_argument("--segmenter", choices=("depth", "sam2"), default="depth")
+    parser.add_argument("--recovery", choices=("off", "assisted", "active"), default="off")
+    parser.add_argument("--drop-initial-wrist-frames", type=int, default=0,
+                        help="Explicit test-only transient camera fault after the initial diagnostic capture")
     parser.add_argument(
         "--case-json",
         type=Path,
@@ -56,7 +59,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "source"))
 
 from mr_liu.config import fine_grasp_config, motion_config, scene_config
-from mr_liu.grasp.adapters.isaac_camera import IsaacWristCamera, T_world_opencv_from_ros_pose
+from mr_liu.grasp.adapters.isaac_camera import IsaacWristCamera, IsaacSceneCamera, T_world_opencv_from_ros_pose
 from mr_liu.grasp.adapters.isaac_gripper import IsaacGripperController
 from mr_liu.grasp.adapters.isaac_motion import IsaacCumotionExecutor
 from mr_liu.grasp.backends.factory import create_grasp_backend
@@ -70,7 +73,9 @@ from mr_liu.grasp.contracts import FineGraspRequest, ObjectProperties, TargetSpe
 from mr_liu.grasp.debug import DebugSegmenter, FineGraspDebugRecorder
 from mr_liu.grasp.node import GeneralGraspNode
 from mr_liu.grasp.segmentation import AppearanceDepthTrackerSegmenter, SeededDepthSegmenter
-from mr_liu.grasp.identity import GeometricIdentitySegmenter, RemotePromptSegmenter
+from mr_liu.grasp.identity import GeometricIdentitySegmenter, RemotePromptSegmenter, RobotMaskedSegmenter
+from mr_liu.grasp.recovery import RecoveringGraspNode, RecoveryConfig
+from mr_liu.grasp.scene_observer import SceneTargetObserver, SceneAssistedVerifier
 from mr_liu.grasp.backends.graspgenx import ZmqGraspGenXTransport
 from mr_liu.grasp.settings import FineGraspSettings
 from mr_liu.grasp.transforms import invert_transform, transform_points
@@ -187,6 +192,9 @@ def main() -> int:
     target_rigid.set_world_poses(positions=[[0.0, 0.0, 2.0]])
     cameras = spawn_configured_cameras()
     wrist_scene_camera = cameras["wrist"]
+    if ARGS.recovery != "off":
+        for scene_camera in cameras.values():
+            scene_camera.enable_instance_segmentation(leaf_paths=True)
     SimulationManager.setup_simulation(
         # CPU PhysX keeps articulated USD transforms synchronized with RTX
         # sensors. cuMotion itself still runs on CUDA. GPU/Fabric mode requires
@@ -289,6 +297,8 @@ def main() -> int:
         ee_pose_provider=arm.T_base_ee,
         advance_frame=simulation_app.update,
         model_seed=CASE.seed,
+        robot_mask_provider=(lambda: wrist_scene_camera.instance_mask("/World/SO101", leaf_paths=True))
+                            if ARGS.recovery != "off" else None,
     )
     initial_observation = camera.capture(target)
     if initial_observation is None:
@@ -329,6 +339,7 @@ def main() -> int:
 
     target_xform = XformPrim(TARGET_PATH)
     initial_target_position = _pose(target_xform)
+    attempt_physics = []
     segmenter = AppearanceDepthTrackerSegmenter(seed_segmenter)
     if ARGS.segmenter == "sam2":
         segmenter = RemotePromptSegmenter(ZmqGraspGenXTransport("127.0.0.1", ARGS.graspgenx_port, 60000),
@@ -348,6 +359,62 @@ def main() -> int:
         settings=FineGraspSettings.from_mapping(grasp_cfg),
         trace=recorder.trace,
     )
+    if ARGS.drop_initial_wrist_frames:
+        class TransientCameraFault:
+            def __init__(self, source, count):
+                self.source, self.remaining = source, count
+            def capture(self, target):
+                if self.remaining > 0:
+                    self.remaining -= 1
+                    return None
+                return self.source.capture(target)
+        camera = TransientCameraFault(camera, ARGS.drop_initial_wrist_frames)
+        node.camera = camera
+    if ARGS.recovery != "off":
+        import copy
+        external_camera = IsaacSceneCamera(
+            cameras["scene"], T_base_world=np.eye(4), advance_frame=simulation_app.update,
+            robot_mask_provider=lambda: cameras["scene"].instance_mask("/World/SO101", leaf_paths=True),
+        )
+        observer = SceneTargetObserver(external_camera,
+            table_height_m=grasp_cfg["selection"]["table_height_m"],
+            require_robot_mask=True,
+            recorder=FineGraspDebugRecorder(OUTPUT / "overhead"))
+
+        def attempt_factory(index, failed, current_target):
+            config = copy.deepcopy(grasp_cfg)
+            active = index > 0 or ARGS.perception == "multiview"
+            config["fusion"] = {"enabled": active}
+            config["active_views"] = {"enabled": active}
+            if active:
+                config["selection"]["max_elongated_axis_error_deg"] = 180.0
+            inner = AppearanceDepthTrackerSegmenter(
+                SeededDepthSegmenter(depth_tolerance_m=0.010, max_radius_px=180))
+            if ARGS.segmenter == "sam2":
+                inner = RemotePromptSegmenter(ZmqGraspGenXTransport("127.0.0.1", ARGS.graspgenx_port, 60000),
+                                              SeededDepthSegmenter(depth_tolerance_m=0.010, max_radius_px=180))
+            if active:
+                inner = GeometricIdentitySegmenter(inner)
+            inner = RobotMaskedSegmenter(inner, require_mask=True)
+            attempt_recorder = FineGraspDebugRecorder(OUTPUT / f"attempt_{index + 1}" / "debug")
+            def trace_attempt(event):
+                attempt_recorder.trace(event)
+                recorder.trace({**event, "attempt": index + 1})
+            return GeneralGraspNode(camera=camera, segmenter=DebugSegmenter(inner, attempt_recorder),
+                backend=create_grasp_backend(config), motion=executor, gripper=gripper,
+                verifier=SceneAssistedVerifier(observer, executor, current_target),
+                settings=FineGraspSettings.from_mapping(config), trace=trace_attempt, failed_grasps=failed)
+
+        def recovery_trace(event):
+            recorder.trace(event)
+            if event.get("event") == "attempt_end":
+                # Independent benchmark instrumentation only; never fed to the
+                # observer, controller, verifier or retry policy.
+                attempt_physics.append({"attempt": event["attempt"],
+                    "actual_target_lift_m": _pose(target_xform)[2] - initial_target_position[2]})
+        node = RecoveringGraspNode(attempt_factory=attempt_factory, observer=observer,
+                                  motion=executor, gripper=gripper, trace=recovery_trace,
+                                  config=RecoveryConfig(max_attempts=2 if ARGS.recovery == "active" else 1))
     result = node.execute(
         FineGraspRequest(target=target, request_id="isaac-demo", dry_run=ARGS.dry_run)
     )
@@ -371,6 +438,10 @@ def main() -> int:
             "segmenter": ARGS.segmenter,
         },
         "perception_mode": ARGS.perception,
+        "recovery_mode": ARGS.recovery,
+        "fault_initial_wrist_frames": ARGS.drop_initial_wrist_frames,
+        "attempt_results": _jsonable(getattr(node, "attempt_results", [])),
+        "attempt_physics": attempt_physics,
         "effective_config": grasp_cfg,
         "result": _jsonable(result),
         "initial_target_position_m": initial_target_position,
