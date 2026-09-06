@@ -43,7 +43,8 @@ def main():
                 if state['runtime'] is None:state['runtime']=AnyPlaceRuntime(args.checkpoint,root=ROOT)
                 result=state['runtime'].infer(request['parent'],request['child'],
                     seed=request.get('seed',0),candidates=request.get('candidates',20),
-                    iterations=request.get('iterations',50))
+                    iterations=request.get('iterations',50),
+                    init_current_orientation=bool(request.get('init_current_orientation',False)))
                 result.update(sequence=request['sequence'],protocol=1,
                               input_geometry=request.get('input_geometry','unspecified'))
                 if record:record.write_text(json.dumps({'request':request,'response':result},allow_nan=False),encoding='utf-8')

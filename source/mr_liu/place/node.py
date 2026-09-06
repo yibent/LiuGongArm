@@ -2,7 +2,7 @@
 from __future__ import annotations
 import time
 import numpy as np
-from mr_liu.grasp.transforms import invert_transform, transform_points
+from mr_liu.grasp.transforms import invert_transform, transform_points, interpolate_pose_step, rotation_angle_rad
 from .contracts import PlaceError, PlaceResult, PlaceSettings
 from .geometry import box_corners, select_site, footprint_supported
 from .release import stationary_release_state
@@ -46,6 +46,10 @@ class GeneralPlaceNode:
             if self.cancelled:
                 raise PlaceError("cancelled")
             self.motion.stop()
+            if request.relation in {"insert", "hang"}:
+                metrics.update(requested_relation=request.relation,
+                    missing_capabilities=["6d_payload_tracking", "contact_motion_control", "task_release_verification"])
+                raise PlaceError("placement_relation_not_executable", request.relation)
             if not held.stable_base_verified:
                 raise PlaceError("stable_base_unverified")
             if not -.02 <= started-held.verified_at_s <= 3.:
@@ -57,7 +61,11 @@ class GeneralPlaceNode:
                 raise PlaceError("held_state_unverified")
             initial_ee = self.motion.robot_state().T_base_ee.copy()
             held_pose = initial_ee @ held.T_ee_object
-            if np.degrees(np.arccos(np.clip(held_pose[2,2],-1,1))) > cfg.max_object_tilt_deg:
+            held_object_rotation = held_pose[:3, :3].copy()
+            full_pose = bool(getattr(self.backend, "supports_full_pose", False)
+                             and getattr(self.motion, "tracks_orientation", False))
+            if (not full_pose and
+                    np.degrees(np.arccos(np.clip(held_pose[2,2],-1,1))) > cfg.max_object_tilt_deg):
                 raise PlaceError("object_orientation_infeasible")
             event("place_find")
             destination = self.perception.destination(request)
@@ -94,14 +102,36 @@ class GeneralPlaceNode:
                                            cfg.boundary_margin_m+held.uncertainty_m)
                 finally:
                     metrics.update(getattr(self.backend,'last_metrics',{}))
+            # A full-pose backend owns the object orientation.  Keep the
+            # selected SE(3) transform intact; only its vertical translation
+            # is recomputed from the observed support plane and the requested
+            # release gap.  Translation-only controllers must explicitly
+            # reject this path rather than silently discarding rotation.
+            target_object_rotation = held_object_rotation.copy()
+            selected_pose = getattr(self.backend, "selected_object_pose", None) if self.backend is not None else None
+            if selected_pose is not None:
+                selected_pose = np.asarray(selected_pose, dtype=np.float64)
+                if selected_pose.shape != (4, 4) or not np.all(np.isfinite(selected_pose)):
+                    raise PlaceError("invalid_selected_object_pose")
+                target_object_rotation = selected_pose[:3, :3].copy()
+                if not full_pose and rotation_angle_rad(held_object_rotation, target_object_rotation) > np.deg2rad(.5):
+                    raise PlaceError("rotation_requires_pose_controller")
             local_xy = xy - destination.center_base_m[:2]
             anchor = destination.center_base_m.copy()
-            goal_object = held_pose.copy()
-            goal_object[:3,3] = [*xy,destination.support_z_m+held.half_extents_m[2]+cfg.release_gap_m]
+            goal_object = np.eye(4, dtype=np.float64)
+            goal_object[:3, :3] = target_object_rotation
+            goal_object[:2,3] = xy
+            object_bottom_offset = float(transform_points(goal_object, box_corners(held.half_extents_m))[:,2].min()
+                                         - goal_object[2,3])
+            goal_object[2,3] = destination.support_z_m + cfg.release_gap_m - object_bottom_offset
             goal_ee = goal_object @ invert_transform(held.T_ee_object)
             if np.linalg.norm(goal_ee[:3,3]-initial_ee[:3,3]) > cfg.max_fine_travel_m:
                 raise PlaceError("requires_fast_loop_handoff")
             metrics["target_object_position_m"] = goal_object[:3,3].tolist()
+            metrics["target_object_pose"] = goal_object.tolist()
+            metrics["target_object_rotation_change_deg"] = float(np.degrees(
+                rotation_angle_rad(held_object_rotation, target_object_rotation)))
+            metrics["full_pose_controller"] = full_pose
             if request.dry_run:
                 return PlaceResult(False,"planned",request.request_id,message="Perception-only plan; path/release not executed",
                                    metrics=metrics)
@@ -129,6 +159,9 @@ class GeneralPlaceNode:
                 drift = np.linalg.norm(payload.T_base_object[:3,3]-expected[:3,3])
                 if drift > cfg.max_slip_m:
                     raise PlaceError("payload_slipped")
+                payload_rotation_slip_deg = float(np.degrees(payload.orientation_residual_rad))
+                if payload_rotation_slip_deg > cfg.max_payload_rotation_slip_deg:
+                    raise PlaceError("payload_rotated_in_gripper")
                 corners = transform_points(payload.T_base_object,box_corners(held.half_extents_m))
                 radius = np.max(np.abs(corners[:,:2]-payload.T_base_object[:2,3]),axis=0)
                 if not footprint_supported(destination,xy,radius,cfg.boundary_margin_m+held.uncertainty_m):
@@ -145,30 +178,54 @@ class GeneralPlaceNode:
                     event('place_reselect_supported_site',xy_base_m=xy.tolist())
                     metrics['target_object_position_m'][:2]=xy.tolist()
                 tilt = np.degrees(np.arccos(np.clip(payload.T_base_object[2,2],-1,1)))
-                if tilt > cfg.max_object_tilt_deg:
+                if not full_pose and tilt > cfg.max_object_tilt_deg:
                     raise PlaceError("payload_tilted")
                 bottom = float(corners[:,2].min())
                 gap = bottom-destination.support_z_m
                 error_xy = xy-payload.T_base_object[:2,3]
+                orientation_error_deg = float(np.degrees(rotation_angle_rad(
+                    payload.T_base_object[:3,:3], target_object_rotation)))
                 metrics.update(iterations=iteration+1, xy_error_m=float(np.linalg.norm(error_xy)),
-                               release_gap_m=gap, payload_residual_m=payload.residual_m)
-                if stage == "align" and np.linalg.norm(error_xy) <= cfg.xy_tolerance_m and gap >= cfg.preplace_height_m-.004:
+                               release_gap_m=gap, payload_residual_m=payload.residual_m,
+                               payload_rotation_slip_deg=payload_rotation_slip_deg,
+                               object_orientation_error_deg=orientation_error_deg,
+                               object_tilt_deg=float(tilt))
+                if (stage == "align" and np.linalg.norm(error_xy) <= cfg.xy_tolerance_m
+                        and abs(gap-cfg.preplace_height_m) <= .004):
+                    stage = ("rotate" if orientation_error_deg > cfg.orientation_tolerance_deg
+                             else "descend")
+                if (stage == "rotate" and np.linalg.norm(error_xy) <= cfg.xy_tolerance_m
+                        and abs(gap-cfg.preplace_height_m) <= .004
+                        and orientation_error_deg <= cfg.orientation_tolerance_deg):
                     stage = "descend"
                 if (stage == "descend" and np.linalg.norm(error_xy) <= cfg.xy_tolerance_m
-                        and abs(gap-cfg.release_gap_m) <= cfg.release_gap_tolerance_m):
+                        and abs(gap-cfg.release_gap_m) <= cfg.release_gap_tolerance_m
+                        and orientation_error_deg <= cfg.orientation_tolerance_deg):
                     final_payload = payload
                     break
                 if gap < -held.uncertainty_m:
                     raise PlaceError("support_penetration")
-                desired_gap = cfg.preplace_height_m if stage == "align" else cfg.release_gap_m
-                delta = np.r_[error_xy, desired_gap-gap]
-                # If below clearance, lift before any lateral displacement.
-                if stage == "align" and gap < cfg.preplace_height_m-.004:
-                    delta[:2] = 0
-                norm = np.linalg.norm(delta)
-                delta *= min(1.,cfg.max_step_m/max(norm,1e-12))
-                goal = state.T_base_ee.copy()
-                goal[:3,3] += delta
+                desired_gap = cfg.preplace_height_m if stage in {"align", "rotate"} else cfg.release_gap_m
+                # Establish clearance before rotating or translating laterally.
+                # Once above the preplace plane, move toward the complete
+                # AnyPlace object orientation in bounded 4-degree tokens.
+                below_clearance = stage == "align" and gap < cfg.preplace_height_m-.004
+                desired_rotation = (target_object_rotation if stage in {"rotate", "descend"}
+                                    else held_object_rotation)
+                desired_center = (payload.T_base_object[:2,3].copy() if below_clearance
+                                  else xy.copy())
+                desired_object = np.eye(4, dtype=np.float64)
+                desired_object[:3,:3] = desired_rotation
+                desired_object[:2,3] = desired_center
+                desired_object[2,3] = destination.support_z_m + desired_gap - float(
+                    transform_points(desired_object, box_corners(held.half_extents_m))[:,2].min()
+                    - desired_object[2,3])
+                desired_ee = desired_object @ invert_transform(held.T_ee_object)
+                goal = interpolate_pose_step(
+                    state.T_base_ee, desired_ee,
+                    max_translation_m=cfg.max_step_m,
+                    max_rotation_rad=np.deg2rad(cfg.max_rotation_step_deg),
+                )
                 if np.linalg.norm(goal[:3,3]-initial_ee[:3,3]) > cfg.max_fine_travel_m:
                     raise PlaceError("fine_workspace_exceeded")
                 if not self.motion.move_checked(goal,held,destination):
@@ -196,9 +253,98 @@ class GeneralPlaceNode:
                     fresh(payload.observation)
                 corners = transform_points(payload.T_base_object,box_corners(held.half_extents_m))
                 gap = corners[:,2].min()-latest.support_z_m
-                if (np.linalg.norm(payload.T_base_object[:2,3]-xy)>cfg.xy_tolerance_m
-                        or not cfg.release_gap_m-cfg.release_gap_tolerance_m <= gap <= cfg.release_gap_m+cfg.release_gap_tolerance_m
-                        or np.linalg.norm(payload.T_base_object[:3,3]-expected[:3,3])>cfg.max_slip_m):
+                release_xy_error = float(np.linalg.norm(payload.T_base_object[:2,3]-xy))
+                release_gap_error = float(gap-cfg.release_gap_m)
+                release_slip = float(np.linalg.norm(payload.T_base_object[:3,3]-expected[:3,3]))
+                metrics.update(release_xy_error_m=release_xy_error,
+                               release_gap_error_m=release_gap_error,
+                               release_slip_m=release_slip,
+                               release_orientation_error_deg=float(np.degrees(
+                                   rotation_angle_rad(payload.T_base_object[:3,:3], target_object_rotation))),
+                               release_payload_orientation_residual_deg=float(np.degrees(
+                                   payload.orientation_residual_rad)),
+                               release_xy_ok=bool(release_xy_error <= cfg.xy_tolerance_m),
+                               release_gap_ok=bool(cfg.release_gap_m-cfg.release_gap_tolerance_m <= gap <= cfg.release_gap_m+cfg.release_gap_tolerance_m),
+                               release_slip_ok=bool(release_slip <= cfg.max_slip_m))
+                pose_outside_tolerance = (
+                    release_xy_error > cfg.xy_tolerance_m
+                    or not cfg.release_gap_m-cfg.release_gap_tolerance_m <= gap <= cfg.release_gap_m+cfg.release_gap_tolerance_m
+                    or release_slip > cfg.max_slip_m
+                    or np.degrees(rotation_angle_rad(payload.T_base_object[:3,:3], target_object_rotation))
+                       > cfg.orientation_tolerance_deg
+                )
+                if pose_outside_tolerance:
+                    # A Panda can stop a few millimetres short after the last
+                    # Cartesian step.  When the payload is still demonstrably
+                    # attached and the measured error fits one bounded step,
+                    # close the loop once before declaring the release pose
+                    # invalid.  This is a new, collision-checked motion token;
+                    # it never widens the final acceptance tolerances.
+                    correction = np.r_[xy-payload.T_base_object[:2,3],
+                                       cfg.release_gap_m-gap]
+                    orientation_error = rotation_angle_rad(
+                        payload.T_base_object[:3,:3], target_object_rotation)
+                    correction_norm = float(np.linalg.norm(correction))
+                    can_correct = (
+                        release_slip <= cfg.max_slip_m
+                        and release_xy_error <= cfg.xy_tolerance_m + cfg.max_step_m
+                        and abs(gap-cfg.release_gap_m) <= cfg.release_gap_tolerance_m + cfg.max_step_m
+                        and correction_norm <= cfg.max_step_m
+                        and orientation_error <= np.deg2rad(cfg.max_rotation_step_deg)
+                        and release_attempt < 2
+                    )
+                    metrics.update(release_correction_m=correction_norm,
+                                   release_correction_attempted=bool(can_correct))
+                    if can_correct:
+                        def correction_pose(state, delta):
+                            pose = state.T_base_ee.copy()
+                            pose[:3,:3] = target_object_rotation @ held.T_ee_object[:3,:3].T
+                            pose[:3,3] += delta
+                            return interpolate_pose_step(
+                                state.T_base_ee, pose,
+                                max_translation_m=max(float(np.linalg.norm(delta)), 1e-6),
+                                max_rotation_rad=np.deg2rad(cfg.max_rotation_step_deg),
+                            )
+
+                        event("place_release_correction", attempt=release_attempt+1,
+                              correction_m=correction.tolist(),
+                              measured_error_m=release_xy_error)
+                        # Lateral motion at the release height can put the
+                        # finger sweep into the support surface.  Use three
+                        # bounded Cartesian tokens: a short lift, the lateral
+                        # correction while clear, and a final vertical return.
+                        # Each token is independently revalidated by
+                        # ``move_checked``; the final acceptance test below is
+                        # unchanged.
+                        state = release_state
+                        if release_xy_error > cfg.xy_tolerance_m:
+                            lift_m = min(.004, cfg.max_step_m)
+                            lift = np.array([0., 0., lift_m])
+                            if not self.motion.move_checked(
+                                correction_pose(state, lift), held, latest
+                            ):
+                                raise PlaceError("release_correction_infeasible",
+                                                 getattr(self.motion, "last_failure", "") or "")
+                            state = self.motion.robot_state()
+                            lateral = np.array([correction[0], correction[1], 0.])
+                            if np.linalg.norm(lateral) > 1e-9 and not self.motion.move_checked(
+                                correction_pose(state, lateral), held, latest
+                            ):
+                                raise PlaceError("release_correction_infeasible",
+                                                 getattr(self.motion, "last_failure", "") or "")
+                            state = self.motion.robot_state()
+                            down = np.array([0., 0., correction[2] - lift_m])
+                            if np.linalg.norm(down) > 1e-9 and not self.motion.move_checked(
+                                correction_pose(state, down), held, latest
+                            ):
+                                raise PlaceError("release_correction_infeasible",
+                                                 getattr(self.motion, "last_failure", "") or "")
+                        else:
+                            goal = correction_pose(state, correction)
+                            if not self.motion.move_checked(goal, held, latest):
+                                raise PlaceError("release_correction_infeasible",
+                                                 getattr(self.motion, "last_failure", "") or "")
+                        continue
                     raise PlaceError("release_pose_changed")
                 if self.cancelled:
                     raise PlaceError("cancelled")
@@ -234,10 +380,16 @@ class GeneralPlaceNode:
             event("place_retreat")
             retreat = self.motion.retreat_target()
             # Closed-loop retreat: payload is now a world obstacle; no attachment.
-            for _ in range(12):
+            # A checked endpoint can advance less than the nominal 6 mm step
+            # when cuMotion settles a Panda joint trajectory. Keep the same
+            # bounded Cartesian increment but allow enough iterations for the
+            # full 45 mm withdrawal to converge.
+            for retreat_iteration in range(24):
                 state = self.motion.robot_state()
                 delta=retreat[:3,3]-state.T_base_ee[:3,3]
                 distance=np.linalg.norm(delta)
+                metrics['retreat_iterations'] = retreat_iteration + 1
+                metrics['retreat_distance_m'] = float(distance)
                 if distance < .003:
                     break
                 step = state.T_base_ee.copy()

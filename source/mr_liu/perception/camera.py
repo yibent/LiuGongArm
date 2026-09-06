@@ -93,6 +93,13 @@ class SceneCamera:
             raise ValueError(f"Camera {self.which!r} needs position or translation")
 
         self._cam = Camera(**kwargs)
+        if self.config.get("look_at", False):
+            from mr_liu.grasp.transforms import look_at_opencv, matrix_to_quaternion_wxyz
+            if translation is not None:
+                raise ValueError("World look-at requires a world-mounted camera")
+            pose = look_at_opencv(world_position, target or self.config["target"])
+            self._cam.set_world_pose(position=pose[:3, 3],
+                orientation=matrix_to_quaternion_wxyz(pose[:3, :3]), camera_axes="ros")
         self._cam.set_focal_length(float(self.config.get("focal_length", 1.8)))
         near, far = self.config.get("clipping_range", [0.01, 10.0])
         self._cam.set_clipping_range(float(near), float(far))
@@ -287,8 +294,8 @@ def spawn_configured_cameras(*, profiles: dict[str, str] | None = None) -> dict[
     if not bool(cfg.get("enabled", True)):
         return {}
     cameras: dict[str, SceneCamera] = {}
-    for which in ("scene", "wrist"):
-        if which not in cfg:
+    for which in ("scene", "placement", "wrist"):
+        if which not in cfg or not cfg[which].get("enabled", True):
             continue
         camera = SceneCamera(which, profile=(profiles or {}).get(which))
         camera.spawn()

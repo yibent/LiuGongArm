@@ -17,8 +17,10 @@ from .payload_mask import Sam2PayloadRefiner
 from .recording import AsyncRGBDRecorder
 
 
-def spawn_place_fixture(kind="region", *, x=.25, y=-.198):
+def spawn_place_fixture(kind="region", *, x=.25, y=-.198, clutter=0):
     """Scene construction only; these coordinates never enter PlaceRequest."""
+    from .fixtures import fixture_boxes
+    parts = fixture_boxes(kind, x=x, y=y, clutter=clutter)
     from pxr import UsdGeom, UsdPhysics, Gf
     import omni.usd
     stage = omni.usd.get_context().get_stage()
@@ -43,13 +45,8 @@ def spawn_place_fixture(kind="region", *, x=.25, y=-.198):
         prim.CreateDisplayColorAttr([Gf.Vec3f(*color)])
         if collision:
             UsdPhysics.CollisionAPI.Apply(prim.GetPrim())
-    box("Floor",(x,y,1.051),(.10,.10,.002),(.05,.12,.85))
-    if kind == "tray":
-        for axis in (0,1):
-            for sign in (-1,1):
-                pos=[x,y,1.068];pos[axis]+=sign*.05
-                size=[.106,.106,.036];size[axis]=.006
-                box(f"Wall{axis}{'p' if sign>0 else 'n'}",pos,size,(.04,.10,.80))
+    for part in parts:
+        box(part.name, part.position, part.size, part.color)
     return paths
 
 
@@ -71,7 +68,9 @@ def _run_place_after_grasp(*, result, initial_observation, initial_mask, target,
                           executor, gripper, port, label, relation, output, trace,
                           stable_base_asserted=False, grasp_attachment_ee=None, graspgenx_port=5556,
                           observation_recorder, place_backend='geometric',anyplace_url='http://127.0.0.1:5590',
-                          settings=None):
+                          settings=None, m2t2_url='http://127.0.0.1:5580',
+                          m2t2_surface_range_m=.02, m2t2_scene_radius_m=.2,
+                          anyplace_init_current_orientation=False):
     output = Path(output); output.mkdir(parents=True,exist_ok=True)
     records=[]
     def event(data):
@@ -88,8 +87,12 @@ def _run_place_after_grasp(*, result, initial_observation, initial_mask, target,
     if initial_mask is None or initial_mask.sum()<80:
         raise PlaceError("initial_payload_geometry_unavailable")
     from mr_liu.grasp.backends.graspgenx import ZmqGraspGenXTransport
-    refiner=Sam2PayloadRefiner(ZmqGraspGenXTransport('127.0.0.1',graspgenx_port,60000),trace=event,
-                              track_between_inference=True)
+    if place_backend == 'm2t2':
+        from mr_liu.grasp.backends.m2t2 import M2T2Client
+        mask_transport = M2T2Client(m2t2_url, timeout_s=60.)
+    else:
+        mask_transport = ZmqGraspGenXTransport('127.0.0.1', graspgenx_port, 60000)
+    refiner=Sam2PayloadRefiner(mask_transport,trace=event,track_between_inference=True)
     # Defer SAM2 until the first path preflight, after Florence has evicted its
     # weights. On a 16 GB host simultaneous loading can exhaust Windows commit.
     # A cold first check never authorizes motion: move_checked reacquires and
@@ -125,23 +128,87 @@ def _run_place_after_grasp(*, result, initial_observation, initial_mask, target,
         raise PlaceError("measured_attachment_pose_missing")
     pose=ee @ invert_transform(grasp_attachment_ee) @ pose
     held=HeldObject(target.object_id,invert_transform(ee)@pose,half,ref,anchor,time.monotonic(),stable_base_asserted)
-    perception=RGBDPlacePerception(scene,camera,FlorencePlaceLocator(port),trace=event,recorder=observation_recorder)
+    # The first handoff uses translation ICP because the object is still in the
+    # measured pickup pose and the wrist view can expose only one face.  Once
+    # the attachment/reference cloud is established, AnyPlace enables bounded
+    # 6D registration for every subsequent view and release check.
+    perception=RGBDPlacePerception(
+        scene,camera,FlorencePlaceLocator(port),trace=event,
+        recorder=observation_recorder,track_6d=False
+    )
     event({"phase":"place_bootstrap","expected_pose":pose.tolist(),"half_extents_m":half.tolist(),
            "source_center_m":center.tolist(),"support_z_m":support,
            "measured_attachment_T_base_ee":np.asarray(grasp_attachment_ee).tolist()})
     measured=perception.payload(held,pose)
+    # Keep an observed wrist cloud in the object frame.  During transport a
+    # Panda hand can hide the top face from the wrist camera while the fixed
+    # placement camera sees a side face; registering against both measured
+    # subsets avoids treating that viewpoint change as slip.  Only depth/
+    # appearance-associated points within the measured envelope are retained.
+    measured_object = transform_points(invert_transform(measured.T_base_object), measured.points_base)
+    measured_object = measured_object[
+        np.all(np.abs(measured_object) <= held.half_extents_m + .004, axis=1)
+    ]
     held=replace(held,T_ee_object=invert_transform(executor.robot_state().T_base_ee)@measured.T_base_object,
+                 reference_points_object=np.vstack((held.reference_points_object, measured_object)),
                  verified_at_s=time.monotonic())
+    # AnyPlace's diffusion input requires >=1024 real child points. Acquire
+    # fresh wrist and fixed-placement views after handoff and register each
+    # measured cloud into the same object frame. No interpolation or geometry
+    # padding is used; insufficient multi-view evidence remains a hard refusal.
+    if place_backend == 'anyplace':
+        perception.track_6d = True
+        fused=[held.reference_points_object]
+        for view_camera in (perception.wrist, perception.scene):
+            try:
+                view_obs=perception.capture(view_camera)
+                view_expected=executor.robot_state().T_base_ee @ held.T_ee_object
+                view_payload=perception.payload(held,view_expected,observation=view_obs)
+                if np.linalg.norm(view_payload.T_base_object[:3,3]-view_expected[:3,3]) > .008:
+                    raise PlaceError('payload_slipped')
+            except PlaceError as exc:
+                event({'phase':'place_multiview_payload_rejected',
+                       'camera':getattr(getattr(view_camera,'camera',None),'which','unknown'),
+                       'failure':exc.code})
+                continue
+            points_object=transform_points(invert_transform(view_payload.T_base_object),view_payload.points_base)
+            points_object=points_object[np.all(np.abs(points_object)<=held.half_extents_m+.004,axis=1)]
+            if len(points_object):
+                fused.append(points_object)
+                event({'phase':'place_multiview_payload',
+                       'camera':view_payload.observation.camera_frame,
+                       'points':int(len(points_object))})
+        merged=np.vstack(fused)
+        # Deterministic voxel thinning removes duplicate pixels from repeated
+        # views without inventing samples or changing the measured envelope.
+        keys=np.floor(merged/.0008).astype(np.int64)
+        _,unique=np.unique(keys,axis=0,return_index=True)
+        merged=merged[np.sort(unique)]
+        held=replace(held,reference_points_object=merged,verified_at_s=time.monotonic())
+        event({'phase':'place_multiview_fusion','points':int(len(merged)),
+               'minimum_required':1024,'sufficient':bool(len(merged)>=1024)})
     request=PlaceRequest(label,relation,request_id="isaac-fine-place")
     motion=IsaacPlaceMotion(executor,gripper,refresh_destination=lambda:perception.destination(request),trace=event,
                            mask_refiner=refiner)
     event({"phase":"place_handoff","half_extents_m":half.tolist(),"T_ee_object":held.T_ee_object.tolist(),
            "support_z_from_rgbd_m":support,"stable_base_asserted_by_fixture":stable_base_asserted,
-           "limitations":"compact stable-base fixture, translation registration; not arbitrary object rotation tracking"})
+           "payload_tracking":"local_6d_rigid_registration" if place_backend == 'anyplace' else "translation_registration",
+           "orientation_control":getattr(executor,'orientation_mode','unknown')})
     backend=None
     if place_backend=='anyplace':
         from .anyplace import AnyPlaceBackend,AnyPlaceClient
-        backend=AnyPlaceBackend(AnyPlaceClient(anyplace_url))
+        backend=AnyPlaceBackend(AnyPlaceClient(anyplace_url),
+                              init_current_orientation=anyplace_init_current_orientation,
+                              supports_full_pose=(
+                                  getattr(executor,'orientation_mode',None) == 'full'
+                                  and bool(getattr(executor,'tracks_orientation',False))
+                              ))
+    elif place_backend=='m2t2':
+        from .m2t2 import M2T2PlaceBackend
+        from mr_liu.grasp.backends.m2t2 import M2T2Client
+        backend=M2T2PlaceBackend(M2T2Client(m2t2_url),trace=event,
+                                 input_surface_range_m=m2t2_surface_range_m,
+                                 scene_radius_m=m2t2_scene_radius_m)
     elif place_backend!='geometric':raise PlaceError('unknown_place_backend')
     node=GeneralPlaceNode(perception=perception,motion=motion,gripper=gripper,trace=event,backend=backend,
                           settings=settings)

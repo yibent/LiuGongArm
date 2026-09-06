@@ -1,0 +1,96 @@
+name: franka
+usd_prim_path: /World/Franka
+articulation_prim_path: /World/Franka
+base_link_name: panda_link0
+usd_asset_rel: /Isaac/Robots/FrankaRobotics/FrankaPanda/franka.usd
+usd_variants: [[Gripper, Default], [Mesh, Performance]]
+tool_frame: grasp_center
+tool_parent_prim_path: /World/Franka/panda_hand
+# Fixed symmetric pinch frame: +X closes across hand Y; +Z approaches object.
+tool_from_parent_translation: [0.0, 0.0, 0.1034]
+tool_from_parent_rpy: [0.0, 0.0, 1.5707963267948966]
+gripper_joint: panda_finger_joint1
+gripper_joints: [panda_finger_joint1, panda_finger_joint2]
+gripper_type: parallel_prismatic
+pinch_center_x_per_width: 0.0
+fixed_finger_center_offset_m: 0.0
+orientation_mode: full
+drive_max_velocity_deg_s: 100
+gripper_max_velocity_m_s: 0.04
+solver_position_iterations: 64
+solver_velocity_iterations: 4
+robot_dir: assets/robots/franka
+urdf: robot.urdf
+xrdf: robot.xrdf
+rmp_flow: rmp_flow.yaml
+controlled_joints: [panda_joint1, panda_joint2, panda_joint3, panda_joint4, panda_joint5, panda_joint6, panda_joint7]
+all_joints: [panda_joint1, panda_joint2, panda_joint3, panda_joint4, panda_joint5, panda_joint6, panda_joint7, panda_finger_joint1, panda_finger_joint2]
+default_joint_positions:
+  panda_joint1: 0.0
+  panda_joint2: -0.568
+  panda_joint3: 0.0
+  panda_joint4: -2.811
+  panda_joint5: 0.0
+  panda_joint6: 3.037
+  panda_joint7: 0.741
+  panda_finger_joint1: 0.04
+  panda_finger_joint2: 0.04
+finger_geometry:
+  symmetric: true
+  thickness_m: 0.012
+  breadth_m: 0.025
+  length_m: 0.045
+  open_width_m: 0.08
+contact_material:
+  static_friction: 1.2
+  dynamic_friction: 1.0
+  restitution: 0.0
+overrides:
+  scene:
+    robot_pos: [-0.20, -0.15, 1.05]
+    robot_orient_wxyz: [1.0, 0.0, 0.0, 0.0]
+  cameras:
+    placement:
+      enabled: true
+      # Closer, slightly oblique observer for the Panda handoff.  The old
+      # 0.85 m baseline view rendered a rotated payload at only ~50 pixels,
+      # which made the fixed-camera 6D registration underconstrained.
+      position: [0.36, 0.30, 1.42]
+      target: [0.28, -0.16, 1.09]
+      focal_length: 2.0
+    wrist:
+      parent_prim_path: /World/Franka/panda_hand
+      prim_path: /World/Franka/panda_hand/WristRGBD
+      translation: [0.06, 0.0, 0.035]
+      orientation_wxyz: [0.5449135, 0.0, -0.8384922, 0.0]
+      profiles:
+        fine_grasp:
+          translation: [0.06, 0.0, 0.035]
+          orientation_wxyz: [0.5449135, 0.0, -0.8384922, 0.0]
+          focal_length: 1.8
+        tabletop_wide:
+          translation: [0.06, 0.0, 0.035]
+          orientation_wxyz: [0.5449135, 0.0, -0.8384922, 0.0]
+          focal_length: 1.0
+  motion:
+    cspace_target_metric_scalar: 50.0
+    rmp_overrides:
+      axis_target_rmp/metric_scalar: 10.0
+      axis_target_rmp/accel_p_gain: 210.0
+  fine_grasp:
+    frames:
+      end_effector: grasp_center
+    gripper:
+      max_width_m: 0.08
+      default_force_n: 20.0
+    isaac_sim:
+      preserve_asset_arm_drives: true
+    backends:
+      graspgenx:
+        sweep_volume:
+          extents_open: [0.08, 0.025, 0.045]
+          offset_open: [0.0, 0.0, 0.0225]
+          extents_mid: [0.04, 0.025, 0.045]
+          offset_mid: [0.0, 0.0, 0.0225]
+          gripper_type: 0
+          fingertip_depth_m: 0.045

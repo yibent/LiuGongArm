@@ -1,0 +1,137 @@
+{
+  "protocol": 1,
+  "purpose": "default_object_release_correction_ablation",
+  "robot": "franka",
+  "contact_material": "profile",
+  "cases": [
+    {
+      "name": "01_default_region_center",
+      "object": {
+        "name": "cube_default",
+        "shape": "cube",
+        "dimensions_m": [
+          0.036,
+          0.036,
+          0.036
+        ],
+        "position_m": [
+          0.324,
+          -0.198,
+          1.068
+        ],
+        "seed": 0,
+        "yaw_deg": 0.0,
+        "mass_kg": 0.035,
+        "color_rgb": [
+          0.85,
+          0.12,
+          0.08
+        ],
+        "material": "matte",
+        "fragile": false,
+        "thin": false,
+        "reflective": false,
+        "expected_feasible": true,
+        "mesh_path": null,
+        "light_scale": 1.0,
+        "metadata": {}
+      },
+      "label": "red cube",
+      "place_backend": "m2t2",
+      "grasp_backend": "m2t2",
+      "fixture": "region",
+      "relation": "on",
+      "destination": "blue square",
+      "x": 0.25,
+      "y": -0.198,
+      "init_current_orientation": false,
+      "clutter": 0
+    },
+    {
+      "name": "02_default_region_left",
+      "object": {
+        "name": "cube_default",
+        "shape": "cube",
+        "dimensions_m": [
+          0.036,
+          0.036,
+          0.036
+        ],
+        "position_m": [
+          0.324,
+          -0.198,
+          1.068
+        ],
+        "seed": 0,
+        "yaw_deg": 0.0,
+        "mass_kg": 0.035,
+        "color_rgb": [
+          0.85,
+          0.12,
+          0.08
+        ],
+        "material": "matte",
+        "fragile": false,
+        "thin": false,
+        "reflective": false,
+        "expected_feasible": true,
+        "mesh_path": null,
+        "light_scale": 1.0,
+        "metadata": {}
+      },
+      "label": "red cube",
+      "place_backend": "m2t2",
+      "grasp_backend": "m2t2",
+      "fixture": "region",
+      "relation": "on",
+      "destination": "blue square",
+      "x": 0.235,
+      "y": -0.198,
+      "init_current_orientation": false,
+      "clutter": 0
+    },
+    {
+      "name": "03_default_tray_center",
+      "object": {
+        "name": "cube_default",
+        "shape": "cube",
+        "dimensions_m": [
+          0.036,
+          0.036,
+          0.036
+        ],
+        "position_m": [
+          0.324,
+          -0.198,
+          1.068
+        ],
+        "seed": 0,
+        "yaw_deg": 0.0,
+        "mass_kg": 0.035,
+        "color_rgb": [
+          0.85,
+          0.12,
+          0.08
+        ],
+        "material": "matte",
+        "fragile": false,
+        "thin": false,
+        "reflective": false,
+        "expected_feasible": true,
+        "mesh_path": null,
+        "light_scale": 1.0,
+        "metadata": {}
+      },
+      "label": "red cube",
+      "place_backend": "m2t2",
+      "grasp_backend": "m2t2",
+      "fixture": "tray",
+      "relation": "inside",
+      "destination": "blue tray",
+      "x": 0.23,
+      "y": -0.198,
+      "init_current_orientation": false,
+      "clutter": 0
+    }
+  ]
+}

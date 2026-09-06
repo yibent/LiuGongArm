@@ -81,6 +81,12 @@ def metric_component(observation, roi, table_height_m, *, min_pixels=10):
 
 
 class SemanticFlowTarget:
+    # Cross-view RGB chromaticity varies with the Panda wrist camera's grazing
+    # angle and the fixed scene camera's illumination. Keep the stricter 0.18
+    # identity gate for same-view tracking, while allowing a small measured
+    # handoff margin; geometry and depth gates remain unchanged.
+    HANDOFF_MAX_COLOR_ERROR = 0.20
+
     def __init__(self, camera, locator, target, table_height_m, *, clock=time.monotonic, trace=lambda event: None, recorder=None):
         self.camera, self.locator, self.target = camera, locator, target
         self.table_height_m, self.clock, self.trace = table_height_m, clock, trace
@@ -173,9 +179,14 @@ class SemanticFlowTarget:
         evidence = metric_component(observation, mask, self.table_height_m, min_pixels=80)
         distance = float(np.linalg.norm(evidence.center_base_m - self.latest.center_base_m))
         color_error = float(np.linalg.norm(evidence.color - self.anchor_color))
+        self.trace({"phase":"handoff", "event":"wrist_identity_check",
+                    "center_disagreement_m":distance, "color_disagreement":color_error,
+                    "scene_center_base_m":self.latest.center_base_m.tolist(),
+                    "wrist_center_base_m":evidence.center_base_m.tolist(),
+                    "mask_pixels":int(evidence.mask.sum())})
         # Different surfaces are visible from the two cameras. This is a
         # coarse association gate; FineGrasp still refines the wrist geometry.
-        if distance > 0.03 or color_error > 0.18:
+        if distance > 0.03 or color_error > self.HANDOFF_MAX_COLOR_ERROR:
             raise TargetObservationError("wrist_handoff_identity_mismatch")
         self.last_wrist_sequence = observation.sequence
         return {"center_disagreement_m": distance, "color_disagreement": color_error,

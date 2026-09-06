@@ -5,7 +5,7 @@ import time
 import cv2
 import numpy as np
 import requests
-from mr_liu.grasp.geometry import register_object_translation
+from mr_liu.grasp.geometry import register_object_rigid, register_object_translation
 from mr_liu.grasp.transforms import transform_points
 from mr_liu.perception.optical_flow import OpticalFlowTracker
 from .contracts import PlaceError, PayloadEvidence
@@ -43,7 +43,7 @@ class FlorencePlaceLocator:
 
 class RGBDPlacePerception:
     def __init__(self, scene_camera, wrist_camera, locator, *, clock=time.monotonic,
-                 trace=lambda e: None, recorder=None):
+                 trace=lambda e: None, recorder=None, track_6d=False):
         self.scene, self.wrist, self.locator = scene_camera, wrist_camera, locator
         self.clock, self.trace, self.recorder = clock, trace, recorder
         self.last = {}
@@ -52,6 +52,7 @@ class RGBDPlacePerception:
         self.reference_surface = None
         self.request_key = None
         self.latest_destination = None
+        self.track_6d = bool(track_6d)
 
     def capture(self, camera):
         obs = camera.capture(None)
@@ -109,7 +110,20 @@ class RGBDPlacePerception:
         """Release-time object/support evidence from one current RGB-D frame."""
         obs=destination.observation
         if not -.02<=self.clock()-obs.timestamp_s<=.35:raise PlaceError('stale_observation')
-        return self.payload(held,expected,observation=obs)
+        try:
+            return self.payload(held,expected,observation=obs)
+        except PlaceError as primary:
+            # The fixed placement camera is authoritative for the destination,
+            # but the held object can be partly hidden by the fingers during a
+            # low descent.  Acquire a *new* wrist frame as bounded payload
+            # evidence rather than treating a single failed registration as a
+            # dropped object or reusing an old frame.  The caller still applies
+            # its normal camera-sequence, age, slip, collision and release
+            # checks to the returned observation.
+            self.trace({'phase':'place_payload_destination_fallback',
+                        'primary_failure':primary.code,
+                        'destination_camera':getattr(obs,'camera_frame','unknown')})
+            return self.payload(held,expected)
 
     def payload(self, held, expected, *, released=False, observation=None):
         # Wrist first during alignment. After release, external vision is needed
@@ -126,18 +140,53 @@ class RGBDPlacePerception:
                 chosen = ((np.linalg.norm(points-expected[:3,3],axis=1)<radius)
                           & appearance_matches(obs.rgb[rows,cols],held.chromaticity))
                 cloud = points[chosen]
+                self.trace({"phase":"place_payload_attempt", "camera":getattr(obs,"camera_frame","unknown"),
+                            "expected_center_m":expected[:3,3].tolist(), "points":int(len(cloud))})
                 if len(cloud) < 32:
                     raise PlaceError("payload_not_visible")
                 reference = transform_points(expected,held.reference_points_object)
-                registration = register_object_translation(reference, cloud, min_inliers=24,
-                    max_correspondence_m=.020, initial_translation_m=np.zeros(3))
+                if self.track_6d:
+                    registration = register_object_rigid(
+                        reference, cloud, min_inliers=24,
+                        max_correspondence_m=.020,
+                        max_translation_m=.012,
+                        max_rotation_rad=np.deg2rad(12.),
+                    )
+                    translation_m = registration.translation_m
+                    orientation_residual_rad = registration.rotation_rad
+                else:
+                    registration = register_object_translation(reference, cloud, min_inliers=24,
+                        max_correspondence_m=.020, initial_translation_m=np.zeros(3))
+                    translation_m = float(np.linalg.norm(registration.translation_base_m))
+                    orientation_residual_rad = 0.
                 if not registration.reliable or registration.residual_m > .004:
+                    self.trace({"phase":"place_payload_rejected", "camera":getattr(obs,"camera_frame","unknown"),
+                                "points":int(len(cloud)), "residual_m":float(registration.residual_m),
+                                "inlier_ratio":float(registration.inlier_ratio), "reliable":bool(registration.reliable),
+                                "track_6d":self.track_6d,
+                                "translation_correction_m":translation_m,
+                                "rotation_correction_deg":float(np.degrees(orientation_residual_rad))})
                     raise PlaceError("payload_registration_uncertain")
-                pose = expected.copy()
-                pose[:3,3] += registration.translation_base_m
-                # Translation tracking is deliberately restricted to stable,
-                # approximately upright payloads. It does not estimate 6D rotation.
-                return PayloadEvidence(obs,pose,cloud,registration.residual_m)
+                if self.track_6d:
+                    # register_object_rigid returns the bounded base-frame
+                    # correction that maps the expected cloud onto this fresh
+                    # observation. Applying it on the left preserves the full
+                    # measured object orientation rather than projecting the
+                    # model target back onto the pickup orientation.
+                    pose = registration.T_reference_current @ expected
+                else:
+                    pose = expected.copy()
+                    pose[:3,3] += registration.translation_base_m
+                self.trace({"phase":"place_payload_tracked", "camera":getattr(obs,"camera_frame","unknown"),
+                            "track_6d":self.track_6d,
+                            "translation_correction_m":translation_m,
+                            "rotation_correction_deg":float(np.degrees(orientation_residual_rad)),
+                            "residual_m":float(registration.residual_m),
+                            "inlier_ratio":float(registration.inlier_ratio)})
+                return PayloadEvidence(obs,pose,cloud,registration.residual_m,
+                                       orientation_residual_rad)
             except PlaceError as exc:
+                self.trace({"phase":"place_payload_camera_failed", "camera":getattr(camera,"which","unknown"),
+                            "failure":exc.code})
                 failures.append(exc.code)
         raise PlaceError("payload_unverified", ",".join(failures))

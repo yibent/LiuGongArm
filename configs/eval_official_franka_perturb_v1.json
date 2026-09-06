@@ -1,0 +1,18 @@
+{
+  "protocol": 1,
+  "controller": "isaacsim.robot.manipulators.examples.franka.PickPlaceController",
+  "cases": [
+    {"name":"p01_near_center","object":"standard cube","cube_position":[0.20,0.20,0.02575],"target_position":[-0.20,-0.20,0.02575],"cube_size":[0.0515,0.0515,0.0515]},
+    {"name":"p02_front_right","object":"standard cube","cube_position":[0.42,0.25,0.02575],"target_position":[-0.25,-0.18,0.02575],"cube_size":[0.0515,0.0515,0.0515]},
+    {"name":"p03_front_left","object":"standard cube","cube_position":[0.43,-0.25,0.02575],"target_position":[-0.22,0.20,0.02575],"cube_size":[0.0515,0.0515,0.0515]},
+    {"name":"p04_side_transfer","object":"standard cube","cube_position":[0.20,-0.40,0.02575],"target_position":[-0.30,0.30,0.02575],"cube_size":[0.0515,0.0515,0.0515]},
+    {"name":"p05_axis_cross","object":"standard cube","cube_position":[0.38,0.05,0.02575],"target_position":[-0.38,-0.05,0.02575],"cube_size":[0.0515,0.0515,0.0515]},
+    {"name":"p06_left_front","object":"standard cube","cube_position":[0.05,0.42,0.02575],"target_position":[-0.35,-0.20,0.02575],"cube_size":[0.0515,0.0515,0.0515]},
+    {"name":"p07_reverse_diagonal","object":"standard cube","cube_position":[-0.20,0.35,0.02575],"target_position":[0.30,-0.30,0.02575],"cube_size":[0.0515,0.0515,0.0515]},
+    {"name":"p08_left_side","object":"standard cube","cube_position":[-0.40,0.20,0.02575],"target_position":[0.30,-0.20,0.02575],"cube_size":[0.0515,0.0515,0.0515]},
+    {"name":"p09_edge_diagonal","object":"standard cube","cube_position":[0.46,-0.05,0.02575],"target_position":[-0.30,0.35,0.02575],"cube_size":[0.0515,0.0515,0.0515]},
+    {"name":"p10_small_offset","object":"small cube","cube_position":[0.32,0.18,0.0175],"target_position":[-0.28,-0.32,0.0175],"cube_size":[0.035,0.035,0.035]},
+    {"name":"p11_yaw_90","object":"90 degree rectangular part","cube_position":[0.34,-0.16,0.020],"cube_orientation":[0.7071068,0.0,0.0,0.7071068],"gripper_yaw_deg":90.0,"target_position":[-0.30,0.22,0.020],"cube_size":[0.070,0.035,0.040]},
+    {"name":"p12_raised_target","object":"small cube on raised platform","cube_position":[0.36,0.10,0.020],"target_position":[-0.25,-0.22,0.070],"cube_size":[0.040,0.040,0.040],"target_platform_height":0.050,"target_platform_size":[0.16,0.16]}
+  ]
+}

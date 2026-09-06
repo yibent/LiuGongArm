@@ -1,5 +1,17 @@
 # AnyPlace 放置实验线
 
+2026-09-06 Franka 实测：`output/franka/23_anyplace_multiview` 已使用多视角实际 RGB-D 点云调用模型，parent 2225 点、child 5401 点，推理约 25.69 s。20 个候选全部需要当前控制器尚不支持的物体旋转，19 个还不满足当前高度检查，未释放。旋转/高度拒绝计数可重叠。
+
+`output/franka/batch_20260906_d/summary.json` 的 10 项冻结开发批次全部完成，完整成功 0/10；AnyPlace 的普通平面、朝向初始化、含障碍和托盘尝试均没有形成可验收的物理释放。`10_anyplace_cube_clutter2` 曾得到 1 个旋转变化 0.492° 的模型候选并完成对齐，但释放前姿态复检失败，仍保持夹持。该结果证明候选可执行性、释放姿态和释放后稳定性必须分开统计。
+
+复杂任务批次 `output/franka/complex_20260906_a/summary.json` 已完成 4/4，完整成功 0/4：socket/insert 的 M2T2 和 AnyPlace 均在夹爪/抓取阶段停止；rack/hang 的 M2T2 和 AnyPlace 均在 IK 阶段停止。两类任务都没有进入释放，因此不计为插入或悬挂成功。
+
+当前 live 接入已启用腕部与独立放置相机观测融合，过滤重复测量，不补造表面。`run_anyplace_pick_place.ps1 -InitCurrentOrientation` 传入官方当前朝向初始化；外层坐标参数已修复为匹配内层的 `FixtureX/Y`。默认 Franka + profile 接触材质；抓取仍为 GraspGenX，只有放置来自 AnyPlace。
+
+复杂场景已定义 `socket/insert`（38 mm 方孔、独立四壁、测试 32 mm 圆柱）和 `rack/hang`（立柱、横杆及防脱钩尖），可增加 0/1/2 个真实碰撞障碍。它们是后续 6D 与接触控制的实验设施；当前平面放置节点明确拒绝执行，尚未实现插入/悬挂物理成功。不能通过放宽 1 度旋转阈值或丢弃模型朝向实现这些任务。
+
+本机 `D:\sam3.pt` 已通过 Ultralytics SAM3SemanticPredictor 离线实测：参数无缺失键；腕部图像中红方块置信度 0.793、托盘置信度 0.901。首次加载约 53.0 s，热推理约 0.33–2.05 s，峰值分配约 2.19 GB。报告为 `output/sam3/01_franka_rgbd/report.json`，当前只作为独立分割对照，未在实时抓取闭环中未经验证替换 SAM2/深度分割。
+
 分支 `codex/anyplace-placement`，从接入 M2T2 之前的 `5a1d81d` 开始。
 按用户要求停止 M2T2 开发并删除本地 `codex/m2t2-pick-place`；删除前保存于提交 `2c8962c`，短期可用 reflog / 提交号恢复。没有删除模型缓存、实验输出，也没有删除远端分支。
 

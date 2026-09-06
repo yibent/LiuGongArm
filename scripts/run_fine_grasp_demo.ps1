@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("geometric", "graspgenx")]
+    [ValidateSet("geometric", "graspgenx", "m2t2")]
     [string]$Backend = "graspgenx",
     [switch]$NoHeadless,
     [switch]$KeepOpen,
@@ -7,10 +7,17 @@ param(
     [string]$CaseJson = "",
     [string]$Label = "",
     [string]$PlaceLabel = "",
-    [ValidateSet('geometric','anyplace')][string]$PlaceBackend = 'geometric',
+    [ValidateSet('geometric','anyplace','m2t2')][string]$PlaceBackend = 'geometric',
     [string]$AnyPlaceUrl = 'http://127.0.0.1:5590',
-    [ValidateSet('region','tray')][string]$PlaceFixture = 'region',
-    [ValidateSet('on','inside')][string]$PlaceRelation = 'on',
+    [switch]$AnyPlaceInitCurrentOrientation,
+    [ValidateSet('so101','franka')][string]$Robot = 'so101',
+    [ValidateSet('asset','profile')][string]$ContactMaterial = 'asset',
+    [string]$M2T2Url = 'http://127.0.0.1:5580',
+    [ValidateRange(0,.02)][double]$M2T2SurfaceRangeM = .02,
+    [ValidateRange(.15,.5)][double]$M2T2SceneRadiusM = .2,
+    [ValidateSet('region','tray','socket','rack')][string]$PlaceFixture = 'region',
+    [ValidateSet('on','inside','insert','hang')][string]$PlaceRelation = 'on',
+    [ValidateRange(0,2)][int]$PlaceClutter=0,
     [ValidateRange(0.35,1.0)][double]$ReleaseMaxAgeS=0.35,
     [ValidateRange(0.20,0.30)][double]$PlaceFixtureX=0.25,
     [ValidateRange(-0.24,-0.15)][double]$PlaceFixtureY=-0.198,
@@ -43,6 +50,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$env:MR_LIU_ROBOT = $Robot
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $IsaacPython = "D:\isaac\env_isaacsim60\python.exe"
 $ModelPython = Join-Path $ProjectRoot "_envs\graspgenx\python.exe"
@@ -188,13 +196,16 @@ try {
     if ($CoarseOnly) { $DemoArgs += "--coarse-only" }
     if ($PlaceLabel) {
         $DemoArgs += @('--place-backend',$PlaceBackend,'--anyplace-url',$AnyPlaceUrl)
+        if ($AnyPlaceInitCurrentOrientation) {$DemoArgs += '--anyplace-init-current-orientation'}
+        $DemoArgs += @('--m2t2-url',$M2T2Url,'--m2t2-surface-range-m',"$M2T2SurfaceRangeM",'--m2t2-scene-radius-m',"$M2T2SceneRadiusM")
         if ($Benchmark) { throw 'Placement is not part of the grasp-only benchmark' }
         $DemoArgs += @('--place-label', $PlaceLabel, '--locator-port', "$LocatorPort",
                       '--place-fixture', $PlaceFixture, '--place-relation', $PlaceRelation,
                       '--release-max-age-s',"$ReleaseMaxAgeS",'--place-fixture-x',"$PlaceFixtureX",
-                      '--place-fixture-y',"$PlaceFixtureY")
+                      '--place-fixture-y',"$PlaceFixtureY",'--place-clutter',"$PlaceClutter")
     }
     if (-not $Benchmark) { $DemoArgs += @("--wrist-camera-profile", $WristCameraProfile) }
+    if (-not $Benchmark) { $DemoArgs += @('--contact-material', $ContactMaterial) }
     if ($TestCoarseShiftM -ne 0) { $DemoArgs += @("--test-coarse-shift-m", "$TestCoarseShiftM") }
     if ($StartDelayS -gt 0) { $DemoArgs += @("--start-delay-s", "$StartDelayS") }
     $DemoArgs += @("--perception", $Perception)

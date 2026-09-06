@@ -71,6 +71,8 @@ def polygon_mask(item, shape):
 
 
 def support_evidence(obs, mask, *, relation="on", offset=(0., 0.)):
+    if relation not in {"on", "inside", "relative"}:
+        raise PlaceError("horizontal_support_relation_unsupported", relation)
     points, rows, cols = scene_cloud(obs)
     local = points[mask[rows, cols]]
     if len(local) < 80:

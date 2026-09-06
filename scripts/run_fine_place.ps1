@@ -1,15 +1,19 @@
 param(
+    [ValidateSet('so101','franka')][string]$Robot='so101',
+    [ValidateSet('asset','profile')][string]$ContactMaterial='asset',
     [string]$GraspLabel = 'red cube',
     [string]$CaseJson = '',
     [string]$Destination = 'blue square',
-    [ValidateSet('region','tray')][string]$Fixture = 'region',
-    [ValidateSet('on','inside')][string]$Relation = 'on',
+    [ValidateSet('region','tray','socket','rack')][string]$Fixture = 'region',
+    [ValidateSet('on','inside','insert','hang')][string]$Relation = 'on',
+    [ValidateRange(0,2)][int]$Clutter=0,
     [string]$Output = '',
     [switch]$RecordVideo,
     [switch]$NoHeadless,
     [int]$LocatorPort = 5570,
     [ValidateSet('geometric','anyplace')][string]$PlaceBackend='geometric',
     [int]$AnyPlacePort=5590,
+    [switch]$AnyPlaceInitCurrentOrientation,
     [ValidateRange(0.35,1.0)][double]$ReleaseMaxAgeS=0.35,
     [ValidateRange(0.20,0.30)][double]$FixtureX=0.25,
     [ValidateRange(-0.24,-0.15)][double]$FixtureY=-0.198
@@ -58,13 +62,14 @@ try {
     }
     if ($health.service -ne 'busagent-semantic-locator' -or $health.protocol -ne 1) { throw 'Invalid Florence service' }
     $placeArgs=@('-NoProfile','-ExecutionPolicy','Bypass','-File',
-        (Join-Path $PSScriptRoot 'run_fine_grasp_demo.ps1'),'-Backend','graspgenx','-Recovery','active',
+        (Join-Path $PSScriptRoot 'run_fine_grasp_demo.ps1'),'-Robot',$Robot,'-ContactMaterial',$ContactMaterial,'-Backend','graspgenx','-Recovery','active',
         '-Label',$GraspLabel,'-LocalizationMode','florence',
         '-SceneView','oblique','-PlaceLabel',$Destination,'-PlaceFixture',$Fixture,'-PlaceRelation',$Relation,
         '-LocatorPort',"$LocatorPort",'-Output',$Output,
         '-PlaceBackend',$PlaceBackend,'-AnyPlaceUrl',"http://127.0.0.1:$AnyPlacePort",
-        '-ReleaseMaxAgeS',"$ReleaseMaxAgeS",'-PlaceFixtureX',"$FixtureX",'-PlaceFixtureY',"$FixtureY")
+        '-ReleaseMaxAgeS',"$ReleaseMaxAgeS",'-PlaceFixtureX',"$FixtureX",'-PlaceFixtureY',"$FixtureY",'-PlaceClutter',"$Clutter")
     if ($RecordVideo) {$placeArgs+='-RecordVideo'}
+    if ($AnyPlaceInitCurrentOrientation) {$placeArgs+='-AnyPlaceInitCurrentOrientation'}
     if ($CaseJson) {$placeArgs+=@('-CaseJson',$CaseJson)}
     if ($NoHeadless) {$placeArgs+='-NoHeadless'}
     # Do not hold an inherited native pipe open through orphaned model helpers

@@ -17,9 +17,13 @@ class FingerGeometry:
     length_m: float = 0.045
     open_width_m: float = 0.075
     margin_m: float = 0.001
+    symmetric: bool = False
 
     def boxes(self) -> tuple[tuple[np.ndarray, np.ndarray], ...]:
         half = np.asarray([self.thickness_m, self.breadth_m, self.length_m]) * 0.5
+        if self.symmetric:
+            x = (self.open_width_m + self.thickness_m) * .5
+            return tuple((np.asarray([sign*x, 0., -self.length_m/2]), half) for sign in (-1, 1))
         # EE lies at the fixed finger centreline at the tip, +Z into object.
         return ((np.asarray([0.0, 0.0, -self.length_m / 2]), half),
                 (np.asarray([-self.open_width_m - self.thickness_m, 0.0, -self.length_m / 2]), half))
@@ -46,3 +50,11 @@ class FingerGeometry:
             pose[:3, 3] = (1 - fraction) * start[:3, 3] + fraction * end[:3, 3]
             maximum = max(maximum, self.collision_count(points_base, pose))
         return maximum
+
+
+def configured_finger_geometry(*, open_width_m=None) -> FingerGeometry:
+    from mr_liu.config import robot_config
+    values = dict(robot_config().get("finger_geometry", {}))
+    if open_width_m is not None:
+        values["open_width_m"] = float(open_width_m)
+    return FingerGeometry(**values)

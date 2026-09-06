@@ -1,4 +1,4 @@
-"""SO-101 Articulation wrapper. No planning or CV."""
+"""Configuration driven Isaac arm wrapper (SO-101 and Franka Panda)."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from mr_liu.config import robot_config
 from mr_liu.robot.joints import assert_joint_mapping
 
 
-class So101Arm:
+class RobotArm:
     def __init__(self, prim_path: str | None = None) -> None:
         cfg = robot_config()
         candidates = [
@@ -32,7 +32,7 @@ class So101Arm:
             except Exception as exc:  # noqa: BLE001 - try the next candidate
                 last_error = exc
         if self._articulation is None:
-            raise RuntimeError(f"Could not wrap SO-101 articulation: {last_error}")
+            raise RuntimeError(f"Could not wrap {cfg.get('name', 'robot')} articulation: {last_error}")
 
     @property
     def articulation(self) -> Articulation:
@@ -51,7 +51,7 @@ class So101Arm:
         assert_joint_mapping(usd_dof_names=self.dof_names)
 
     def apply_configured_pose(self) -> None:
-        """Move the arm to configs/robot_so101.yaml default_joint_positions."""
+        """Move the arm to the active profile's default joint positions."""
         defaults = robot_config()["default_joint_positions"]
         names = self.dof_names
         positions = [float(defaults.get(name, 0.0)) for name in names]
@@ -95,6 +95,10 @@ class So101Arm:
             np.asarray(cfg["tool_from_parent_translation"], dtype=np.float64),
         )
         return T_base_parent @ T_parent_ee
+
+
+# Backwards compatible import used by the SO-101 tools and tests.
+So101Arm = RobotArm
 
 
 def _first_numpy(value) -> np.ndarray:

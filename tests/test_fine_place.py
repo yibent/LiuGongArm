@@ -68,6 +68,7 @@ class FinePlaceTests(unittest.TestCase):
         exec(compile(ast.Module(body=[method],type_ignores=[]),str(source),'exec'),env)
         executor=SimpleNamespace(arm=SimpleNamespace(T_base_ee=lambda:np.eye(4)),
             controller=SimpleNamespace(set_track_orientation=Mock()),plan_orientation=True,
+            orientation_mode='full',
             _plan=Mock(return_value=PathPlan()),_drive_joint_waypoint=Mock(return_value=True),
             _plan_cache={1:2},_target_reached=Mock(return_value=True),max_move_steps=120)
         target=np.eye(4);target[0,3]=.004
@@ -79,6 +80,25 @@ class FinePlaceTests(unittest.TestCase):
         self.assertEqual(executor._plan.call_count,1)
         target[0,3]=.004;executor._plan.return_value=None
         self.assertFalse(env['move_place_step'](executor,target,speed_scale=.2))
+
+    def test_rotation_dominant_place_step_uses_full_pose_endpoint_not_translation_progress(self):
+        source=Path(__file__).resolve().parents[1]/'source/mr_liu/grasp/adapters/isaac_motion.py'
+        tree=ast.parse(source.read_text(encoding='utf-8'))
+        cls=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='IsaacCumotionExecutor')
+        method=next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name=='move_place_step')
+        class PathPlan:
+            waypoints=[np.zeros(1),np.array([.02])]
+        env={'np':np,'_JointWaypointPath':PathPlan}
+        exec(compile(ast.Module(body=[method],type_ignores=[]),str(source),'exec'),env)
+        executor=SimpleNamespace(arm=SimpleNamespace(T_base_ee=lambda:np.eye(4)),
+            controller=SimpleNamespace(set_track_orientation=Mock()),plan_orientation=True,
+            orientation_mode='full',_plan=Mock(return_value=PathPlan()),
+            _drive_joint_waypoint=Mock(return_value=True),_plan_cache={1:2},
+            _target_reached=Mock(return_value=True),max_move_steps=120)
+        target=np.eye(4);angle=np.deg2rad(4.)
+        target[:2,:2]=[[np.cos(angle),-np.sin(angle)],[np.sin(angle),np.cos(angle)]]
+        self.assertTrue(env['move_place_step'](executor,target,speed_scale=.2))
+        self.assertEqual(executor._drive_joint_waypoint.call_args.kwargs['minimum_cartesian_progress_m'],0.)
 
     def test_small_place_step_requires_physical_progress_despite_joint_tolerance(self):
         source=Path(__file__).resolve().parents[1]/'source/mr_liu/grasp/adapters/isaac_motion.py'

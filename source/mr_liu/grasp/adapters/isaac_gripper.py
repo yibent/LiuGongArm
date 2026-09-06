@@ -171,3 +171,74 @@ class IsaacGripperController:
             return torque_nm / max(self.calibration.jaw_lever_arm_m, 1e-6)
         except (AttributeError, RuntimeError, ValueError):
             return None
+
+
+class IsaacParallelGripperController:
+    """Two measured prismatic fingers; widths in metres, efforts in newtons."""
+
+    def __init__(self, articulation, *, advance_frame, physics_dt_s, clock=time.monotonic):
+        self.articulation = articulation
+        self.advance_frame, self.physics_dt_s, self.clock = advance_frame, physics_dt_s, clock
+        self.indices = [list(articulation.dof_names).index(name)
+                        for name in ("panda_finger_joint1", "panda_finger_joint2")]
+        self._stalled = False
+        self.max_width_m = .08
+
+    def _positions(self):
+        values = self.articulation.get_dof_positions()
+        values = values.numpy() if hasattr(values, "numpy") else values
+        return np.asarray(values, float).reshape(-1)[self.indices]
+
+    def state(self):
+        effort = None
+        try:
+            values = self.articulation.get_dof_efforts(dof_indices=self.indices)
+            values = values.numpy() if hasattr(values, "numpy") else values
+            effort = float(np.min(np.abs(values)))
+        except (AttributeError, RuntimeError, ValueError):
+            pass
+        return GripperState(self.clock(), float(self._positions().sum()), effort,
+                            contact=None, stalled=self._stalled)
+
+    def open(self, width_m, *, speed_mps):
+        self.articulation.set_dof_max_efforts([20., 20.], dof_indices=self.indices)
+        return self._move(width_m, speed_mps, False)
+
+    def close(self, width_m, *, force_n, speed_mps):
+        force = float(np.clip(force_n, 0., 20.))
+        self.articulation.set_dof_max_efforts([force, force], dof_indices=self.indices)
+        return self._move(width_m, speed_mps, True)
+
+    def _move(self, width, speed, closing):
+        target = float(np.clip(width, 0., self.max_width_m)) * .5
+        current = self._positions()
+        command = current.copy()
+        step = max(float(speed), .001) * .5 * self.physics_dt_s
+        steps = int(np.ceil(np.max(np.abs(target-current))/step)) + 240
+        still = np.zeros(2, dtype=int)
+        self._stalled = False
+        for _ in range(steps):
+            if np.max(np.abs(current-target)) <= .0002:
+                return True
+            command += np.clip(target-command, -step, step)
+            self.articulation.set_dof_position_targets(command.tolist(), dof_indices=self.indices)
+            self.advance_frame()
+            measured = self._positions()
+            loaded = np.abs(command-measured) > .0008
+            still = np.where((np.abs(measured-current)<1e-6)&loaded, still+1, 0)
+            current = measured
+            if np.all(still>=30):
+                self._stalled = True
+                # Maintain preload after a stall. Future arm stops must leave
+                # these independent drive targets intact until release.
+                if closing:
+                    self.articulation.set_dof_position_targets([target, target], dof_indices=self.indices)
+                return bool(closing)
+        return False
+
+
+def create_isaac_gripper(articulation, **kwargs):
+    from mr_liu.config import robot_config
+    if robot_config().get("gripper_type") == "parallel_prismatic":
+        return IsaacParallelGripperController(articulation, **kwargs)
+    return IsaacGripperController(articulation, **kwargs)

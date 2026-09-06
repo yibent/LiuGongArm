@@ -1,0 +1,12 @@
+{
+  "name":"sphere_seed1",
+  "shape":"sphere",
+  "dimensions_m":[0.034,0.034,0.034],
+  "position_m":[0.3222,-0.2007,1.067],
+  "seed":1,
+  "yaw_deg":12,
+  "mass_kg":0.035,
+  "color_rgb":[0.18,0.62,0.20],
+  "material":"matte",
+  "expected_feasible":true
+}

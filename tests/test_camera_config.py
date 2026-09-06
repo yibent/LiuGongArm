@@ -43,6 +43,13 @@ class CameraConfigTests(unittest.TestCase):
         self.assertGreater(float(scene["position"][2]), float(scene["target"][2]))
         self.assertEqual(scene["position"][:2], scene["target"][:2])
 
+    def test_placement_camera_is_dedicated_fixed_rgbd_observer(self) -> None:
+        placement = self.cfg["placement"]
+        self.assertEqual(placement["prim_path"], "/World/Cameras/PlacementRGB")
+        self.assertEqual(set(placement["annotators"]), {"rgb", "distance_to_image_plane", "semantic_segmentation"})
+        self.assertGreater(float(placement["position"][2]), float(placement["target"][2]))
+        self.assertNotEqual(placement["prim_path"], self.cfg["scene"]["prim_path"])
+
     def test_wrist_camera_is_attached_rgbd(self) -> None:
         wrist = self.cfg["wrist"]
         self.assertEqual(wrist["parent_prim_path"], "/World/SO101/gripper")

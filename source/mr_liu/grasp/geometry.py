@@ -33,6 +33,188 @@ class TranslationRegistration:
     reliable: bool
 
 
+@dataclass(frozen=True)
+class RigidRegistration:
+    """Bounded 6D correction from an expected pose to a fresh RGB-D cloud."""
+
+    T_reference_current: np.ndarray
+    residual_m: float
+    inlier_ratio: float
+    translation_m: float
+    rotation_rad: float
+    reliable: bool
+
+
+def register_object_rigid(
+    reference_points_base: np.ndarray,
+    current_points_base: np.ndarray,
+    *,
+    max_points: int = 2048,
+    max_correspondence_m: float = 0.012,
+    min_inliers: int = 48,
+    max_iterations: int = 10,
+    max_translation_m: float = 0.012,
+    max_rotation_rad: float = np.deg2rad(12.0),
+) -> RigidRegistration:
+    """Estimate a small rigid deviation around an already predicted pose.
+
+    Placement supplies the object pose predicted from current Franka FK and
+    the measured grasp attachment, so this routine is intentionally local. It
+    detects translational and rotational slip; it is not a global pose finder.
+    Current-to-reference matching tolerates a fresh view containing only part
+    of the original measured surface.
+    """
+    reference = np.asarray(reference_points_base, dtype=np.float64).reshape(-1, 3)
+    current = np.asarray(current_points_base, dtype=np.float64).reshape(-1, 3)
+    reference = reference[np.all(np.isfinite(reference), axis=1)]
+    current = current[np.all(np.isfinite(current), axis=1)]
+    identity = np.eye(4, dtype=np.float64)
+    if (
+        max_points < min_inliers
+        or reference.shape[0] < min_inliers
+        or current.shape[0] < min_inliers
+    ):
+        return RigidRegistration(identity, float("inf"), 0.0, 0.0, 0.0, False)
+
+    def sampled(points: np.ndarray) -> np.ndarray:
+        if points.shape[0] <= max_points:
+            return points
+        indices = np.linspace(0, points.shape[0] - 1, max_points, dtype=np.int64)
+        return points[indices]
+
+    reference, current = sampled(reference), sampled(current)
+
+    def has_observable_rotation(points: np.ndarray) -> bool:
+        """Reject clouds whose rotation is underconstrained (point/line-like)."""
+        centered = points - np.median(points, axis=0)
+        singular_values = np.linalg.svd(centered, compute_uv=False)
+        if singular_values.size < 2:
+            return False
+        # A plane is sufficient for a local point-to-point registration, but a
+        # line cannot constrain rotation about itself.  The absolute floor also
+        # prevents sensor noise around a line from masquerading as geometry.
+        normalizer = max(float(np.sqrt(points.shape[0] - 1)), 1.0)
+        principal_std = singular_values[:2] / normalizer
+        return bool(
+            principal_std[0] >= 5e-4
+            and principal_std[1] >= max(5e-4, 0.01 * principal_std[0])
+        )
+
+    if not has_observable_rotation(reference) or not has_observable_rotation(current):
+        return RigidRegistration(identity, float("inf"), 0.0, 0.0, 0.0, False)
+
+    reference_center = np.mean(reference, axis=0)
+    current_center = np.mean(current, axis=0)
+    tree = cKDTree(reference)
+
+    def solve(initial_translation: np.ndarray) -> tuple[
+        np.ndarray, np.ndarray, np.ndarray, np.ndarray, bool
+    ]:
+        R_current_reference = np.eye(3, dtype=np.float64)
+        t_current_reference = np.asarray(initial_translation, dtype=np.float64).copy()
+        correspondence_geometry_valid = False
+        for _ in range(max_iterations):
+            aligned = current @ R_current_reference.T + t_current_reference
+            distances, indices = tree.query(aligned, k=1)
+            inliers = distances <= max_correspondence_m
+            if int(inliers.sum()) < min_inliers:
+                break
+            source = aligned[inliers]
+            target = reference[indices[inliers]]
+            correspondence_geometry_valid = (
+                has_observable_rotation(source) and has_observable_rotation(target)
+            )
+            if not correspondence_geometry_valid:
+                break
+            source_center, target_center = source.mean(0), target.mean(0)
+            U, _values, Vt = np.linalg.svd(
+                (source - source_center).T @ (target - target_center),
+                full_matrices=False,
+            )
+            rotation = Vt.T @ U.T
+            if np.linalg.det(rotation) < 0:
+                Vt[-1] *= -1
+                rotation = Vt.T @ U.T
+            translation = target_center - rotation @ source_center
+            R_current_reference = rotation @ R_current_reference
+            t_current_reference = rotation @ t_current_reference + translation
+            rotation_step = np.arccos(
+                np.clip((np.trace(rotation) - 1.0) * 0.5, -1.0, 1.0)
+            )
+            if np.linalg.norm(translation) < 1e-5 and rotation_step < np.deg2rad(0.02):
+                break
+
+        aligned = current @ R_current_reference.T + t_current_reference
+        distances, indices = tree.query(aligned, k=1)
+        inliers = distances <= max_correspondence_m
+        if int(inliers.sum()) >= min_inliers:
+            correspondence_geometry_valid = (
+                has_observable_rotation(aligned[inliers])
+                and has_observable_rotation(reference[indices[inliers]])
+            )
+        else:
+            correspondence_geometry_valid = False
+        return (
+            R_current_reference,
+            t_current_reference,
+            distances,
+            inliers,
+            correspondence_geometry_valid,
+        )
+
+    # Identity is the expected local seed.  A second centre-aligned seed avoids
+    # the well-known ICP failure where two overlapping dense objects settle on
+    # the overlap instead of recovering even a modest translation.  Running
+    # both retains the partial-view behaviour for which centroids can be biased.
+    seeds = (np.zeros(3, dtype=np.float64), reference_center - current_center)
+    solutions = [solve(seed) for seed in seeds]
+
+    def solution_score(solution: tuple) -> tuple[float, float]:
+        distances, inliers = solution[2], solution[3]
+        count = int(inliers.sum())
+        if count < min_inliers or not solution[4]:
+            return (float("inf"), float("inf"))
+        return (float(np.median(distances[inliers])), -float(count))
+
+    (
+        R_current_reference,
+        t_current_reference,
+        distances,
+        inliers,
+        correspondence_geometry_valid,
+    ) = min(solutions, key=solution_score)
+    count = int(inliers.sum())
+    ratio = float(count / max(current.shape[0], 1))
+    residual = float(np.median(distances[inliers])) if count else float("inf")
+    # Invert the estimated current->reference transform.
+    R_reference_current = R_current_reference.T
+    t_reference_current = -R_reference_current @ t_current_reference
+    transform = np.eye(4, dtype=np.float64)
+    transform[:3, :3] = R_reference_current
+    transform[:3, 3] = t_reference_current
+    # The homogeneous translation is origin-dependent: rotating an object at
+    # x=0.5 m about its own centre can produce a large matrix translation even
+    # though that centre did not move.  Bound the displacement at the observed
+    # object centre instead, which is the physical slip quantity callers need.
+    corrected_reference_center = (
+        R_reference_current @ reference_center + t_reference_current
+    )
+    translation_m = float(np.linalg.norm(corrected_reference_center - reference_center))
+    rotation_rad = float(np.arccos(np.clip(
+        (np.trace(R_reference_current) - 1.0) * 0.5, -1.0, 1.0
+    )))
+    reliable = (
+        correspondence_geometry_valid
+        and count >= min_inliers
+        and ratio >= 0.20
+        and residual <= 0.004
+        and translation_m <= max_translation_m
+        and rotation_rad <= max_rotation_rad
+    )
+    return RigidRegistration(transform, residual, ratio, translation_m,
+                             rotation_rad, reliable)
+
+
 def register_object_translation(
     reference_points_base: np.ndarray,
     current_points_base: np.ndarray,

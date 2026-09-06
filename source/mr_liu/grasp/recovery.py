@@ -7,7 +7,7 @@ import time
 import numpy as np
 
 from mr_liu.grasp.contracts import FailureCode, FineGraspPhase, FineGraspResult
-from mr_liu.grasp.contact import FingerGeometry
+from mr_liu.grasp.contact import FingerGeometry, configured_finger_geometry
 
 
 @dataclass(frozen=True)
@@ -177,7 +177,7 @@ class RecoveringGraspNode:
                 break
             retreat[:3, 3] += direction * self.config.retreat_m
             checker = getattr(self.motion, "is_observation_path_safe", None)
-            finger = FingerGeometry(open_width_m=state.width_m if state.width_m is not None else 0.075)
+            finger = configured_finger_geometry(open_width_m=state.width_m if state.width_m is not None else 0.075)
             if (not callable(checker) or not checker(retreat, confirm.points_base, finger)
                     or self._cancelled or self.clock() >= deadline):
                 stop_reason = "retreat_path_unverified"

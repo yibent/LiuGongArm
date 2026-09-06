@@ -149,7 +149,8 @@ class IsaacGraspSession:
         from pxr import UsdPhysics
         from mr_liu.config import fine_grasp_config
         from mr_liu.grasp.adapters.isaac_camera import IsaacWristCamera, IsaacSceneCamera
-        from mr_liu.grasp.adapters.isaac_gripper import IsaacGripperController
+        from mr_liu.grasp.adapters.isaac_gripper import create_isaac_gripper
+        from mr_liu.config import robot_config
         from mr_liu.grasp.adapters.isaac_motion import IsaacCumotionExecutor
         from mr_liu.grasp.backends.factory import create_grasp_backend
         from mr_liu.grasp.contracts import FineGraspRequest, TargetSpec
@@ -192,7 +193,7 @@ class IsaacGraspSession:
             max_servo_steps=max(240, int(4/self.physics_dt)),
         )
         motion = GuardedAdapter(self.executor, self.check)
-        gripper = GuardedAdapter(IsaacGripperController(
+        gripper = GuardedAdapter(create_isaac_gripper(
             self.arm.articulation, advance_frame=self.advance, physics_dt_s=self.physics_dt,
         ), self.check)
         point = self.grounded["object_position_world_m"]
@@ -224,11 +225,11 @@ class IsaacGraspSession:
             raise ValueError("夹爪未到达观察开度，抓取已停止。")
         camera = GuardedAdapter(IsaacWristCamera(
             self.wrist, ee_pose_provider=self.arm.T_base_ee, advance_frame=self.advance,
-            robot_mask_provider=lambda: self.wrist.instance_mask("/World/SO101", leaf_paths=True),
+            robot_mask_provider=lambda: self.wrist.instance_mask(robot_config()["usd_prim_path"], leaf_paths=True),
         ), self.check)
         scene_camera = GuardedAdapter(IsaacSceneCamera(
             self.scene, T_base_world=np.eye(4), advance_frame=self.advance,
-            robot_mask_provider=lambda: self.scene.instance_mask("/World/SO101", leaf_paths=True),
+            robot_mask_provider=lambda: self.scene.instance_mask(robot_config()["usd_prim_path"], leaf_paths=True),
         ), self.check) if self.scene is not None else None
         report_progress = GraspProgressReporter(self.progress)
 

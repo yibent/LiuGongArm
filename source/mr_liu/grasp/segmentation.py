@@ -191,6 +191,10 @@ class AppearanceDepthTrackerSegmenter:
         self._last_center_uv: np.ndarray | None = None
         self._last_area_px: int | None = None
         self._last_depth_m: float | None = None
+        self._last_center_base: np.ndarray | None = None
+        self._last_focal_area: float | None = None
+        self._expected_area_px: float | None = None
+        self._expected_depth_m: float | None = None
 
     def reset(self) -> None:
         self._object_id = None
@@ -198,11 +202,14 @@ class AppearanceDepthTrackerSegmenter:
         self._last_center_uv = None
         self._last_area_px = None
         self._last_depth_m = None
+        self._last_center_base = None
+        self._last_focal_area = None
 
     def segment(self, observation: RGBDObservation, target: TargetSpec) -> np.ndarray | None:
         if target.object_id != self._object_id:
             self.reset()
             self._object_id = target.object_id
+        self._predict_reference(observation)
         rgb = np.asarray(observation.rgb[:, :, :3], dtype=np.float32)
         chromaticity = rgb / np.maximum(rgb.sum(axis=2, keepdims=True), 12.0)
         seeded = self.seed_segmenter.segment(observation, target)
@@ -210,7 +217,7 @@ class AppearanceDepthTrackerSegmenter:
             if seeded is None or int(np.asarray(seeded, dtype=bool).sum()) < self.min_component_pixels:
                 return None
             mask = np.asarray(seeded, dtype=bool)
-            self._update_reference(chromaticity, observation.depth_m, mask, replace=True)
+            self._update_reference(chromaticity, observation, mask, replace=True)
             return mask
 
         # Reprojection is not an open-loop mask: it uses the current wrist pose
@@ -222,7 +229,7 @@ class AppearanceDepthTrackerSegmenter:
             seeded_mask = np.asarray(seeded, dtype=bool)
             if self._is_consistent(seeded_mask, observation.depth_m):
                 self._update_reference(
-                    chromaticity, observation.depth_m, seeded_mask, replace=False
+                    chromaticity, observation, seeded_mask, replace=False
                 )
                 return seeded_mask
 
@@ -240,7 +247,7 @@ class AppearanceDepthTrackerSegmenter:
                 continue
             center = centers[label]
             travel = 0.0 if self._last_center_uv is None else float(np.linalg.norm(center - self._last_center_uv))
-            area_ratio = 1.0 if self._last_area_px is None else area / max(self._last_area_px, 1)
+            area_ratio = 1.0 if self._expected_area_px is None else area / max(self._expected_area_px, 1)
             if not 1.0 / self.max_area_growth_per_frame <= area_ratio <= self.max_area_growth_per_frame:
                 continue
             component = labels == label
@@ -249,8 +256,8 @@ class AppearanceDepthTrackerSegmenter:
             median_depth = float(np.median(component_depth)) if component_depth.size else None
             if (
                 median_depth is not None
-                and self._last_depth_m is not None
-                and abs(median_depth - self._last_depth_m) > self.max_depth_change_m
+                and self._expected_depth_m is not None
+                and abs(median_depth - self._expected_depth_m) > self.max_depth_change_m
             ):
                 continue
             # Preserve identity under eye-in-hand scale change.  A large area
@@ -266,14 +273,30 @@ class AppearanceDepthTrackerSegmenter:
             return None
         selected_label = max(candidates)[1]
         mask = labels == selected_label
-        self._update_reference(chromaticity, observation.depth_m, mask, replace=False)
+        self._update_reference(chromaticity, observation, mask, replace=False)
         return mask
+
+    def _predict_reference(self, observation: RGBDObservation) -> None:
+        self._expected_area_px = self._last_area_px
+        self._expected_depth_m = self._last_depth_m
+        if self._last_center_base is None or self._last_depth_m is None:
+            return
+        center = observation.metadata.get("tracking_hint_base_m", self._last_center_base)
+        current = transform_points(invert_transform(observation.T_base_camera), np.asarray(center).reshape(1, 3))[0]
+        if current[2] <= 0.01:
+            return
+        # Compare appearance at the scale/depth predicted by measured camera
+        # motion. The mask still comes from this frame's RGB-D; thresholds for
+        # unexplained scale change and background takeover stay unchanged.
+        self._expected_depth_m = float(current[2])
+        focal_area = observation.intrinsics.fx * observation.intrinsics.fy
+        self._expected_area_px = self._last_area_px * (self._last_depth_m / current[2]) ** 2 * focal_area / self._last_focal_area
 
     def _is_consistent(self, mask: np.ndarray, depth_m: np.ndarray) -> bool:
         area = int(mask.sum())
         if area < self.min_component_pixels:
             return False
-        area_ratio = 1.0 if self._last_area_px is None else area / max(self._last_area_px, 1)
+        area_ratio = 1.0 if self._expected_area_px is None else area / max(self._expected_area_px, 1)
         if not 1.0 / self.max_area_growth_per_frame <= area_ratio <= self.max_area_growth_per_frame:
             return False
         depths = np.asarray(depth_m[mask], dtype=np.float64)
@@ -281,14 +304,14 @@ class AppearanceDepthTrackerSegmenter:
         if depths.size == 0:
             return False
         median_depth = float(np.median(depths))
-        return self._last_depth_m is None or (
-            abs(median_depth - self._last_depth_m) <= self.max_depth_change_m
+        return self._expected_depth_m is None or (
+            abs(median_depth - self._expected_depth_m) <= self.max_depth_change_m
         )
 
     def _update_reference(
         self,
         chromaticity: np.ndarray,
-        depth_m: np.ndarray,
+        observation: RGBDObservation,
         mask: np.ndarray,
         *,
         replace: bool,
@@ -302,9 +325,15 @@ class AppearanceDepthTrackerSegmenter:
         rows, columns = np.nonzero(mask)
         self._last_center_uv = np.asarray([np.median(columns), np.median(rows)], dtype=np.float64)
         self._last_area_px = int(mask.sum())
-        depths = np.asarray(depth_m[mask], dtype=np.float64)
+        depths = np.asarray(observation.depth_m[mask], dtype=np.float64)
         depths = depths[np.isfinite(depths) & (depths > 0)]
         self._last_depth_m = float(np.median(depths)) if depths.size else None
+        if self._last_depth_m is not None:
+            k = observation.intrinsics
+            u, v = self._last_center_uv
+            center = np.array([(u-k.cx)/k.fx, (v-k.cy)/k.fy, 1.]) * self._last_depth_m
+            self._last_center_base = transform_points(observation.T_base_camera, center.reshape(1, 3))[0]
+            self._last_focal_area = k.fx * k.fy
 
 
 def _connected_component_from_nearest_seed(

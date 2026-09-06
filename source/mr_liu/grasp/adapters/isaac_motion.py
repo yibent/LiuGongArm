@@ -98,16 +98,17 @@ class IsaacCumotionExecutor:
         # reachable manifold; each one is checked here with cuMotion.
         self.plan_orientation = bool(track_orientation)
         self.tracks_orientation = self.plan_orientation
-        self.orientation_mode = "approach_axis" if self.plan_orientation else "none"
+        cfg = robot_config()
+        self.orientation_mode = cfg.get("orientation_mode", "approach_axis") if self.plan_orientation else "none"
         self.max_move_steps = int(max_move_steps)
         self.max_servo_steps = int(max_servo_steps)
         self.waypoint_settle_steps = int(waypoint_settle_steps)
         self.clock = clock
-        self.pinch_center_x_per_width = float(pinch_center_x_per_width)
+        self.pinch_center_x_per_width = float(cfg.get("pinch_center_x_per_width", pinch_center_x_per_width))
         # ``gripper_frame_link`` lies on the fixed finger centreline, not its
         # inner contact face.  Half the 9 mm finger thickness must remain
         # outside the target silhouette during a top-down insertion.
-        self.fixed_finger_center_offset_m = float(fixed_finger_center_offset_m)
+        self.fixed_finger_center_offset_m = float(cfg.get("fixed_finger_center_offset_m", fixed_finger_center_offset_m))
         self._stopped = False
         self._time_s = 0.0
         # Candidate filtering asks about both pregrasp and contact poses.  Keep
@@ -474,9 +475,23 @@ class IsaacCumotionExecutor:
         path = self._plan(T_base_ee)
         if not isinstance(path, _JointWaypointPath):
             return False
+        current_pose = self.arm.T_base_ee()
+        rotation_delta = np.arccos(np.clip(
+            (np.trace(T_base_ee[:3,:3] @ current_pose[:3,:3].T) - 1.) / 2.,
+            -1., 1.,
+        ))
+        # A rotation-dominant Panda step can already be inside the Cartesian
+        # tolerance and legitimately move slightly around the wrist centre.
+        # In that case the full-orientation endpoint check below is the progress
+        # contract; requiring 1 mm of translational progress rejects a reached
+        # 6D pose. Translation-dominant corrections keep the existing bound.
+        minimum_translation_progress = (
+            0.0 if self.orientation_mode == "full" and rotation_delta >= np.deg2rad(1.)
+            else .001
+        )
         completed = self._drive_joint_waypoint(
             path.waypoints[-1], speed_scale=speed_scale, max_steps=self.max_move_steps,
-            minimum_cartesian_progress_m=.001,
+            minimum_cartesian_progress_m=minimum_translation_progress,
         )
         self._plan_cache.clear()
         return completed and self._target_reached(T_base_ee)
@@ -553,7 +568,7 @@ class IsaacCumotionExecutor:
         local_distance = float(np.linalg.norm(target[:3, 3] - self.arm.T_base_ee()[:3, 3]))
         if self._active_grasp_q is not None and local_distance <= 0.008:
             path = self._plan_active_grasp_step(q, target)
-        elif self.orientation_mode == "approach_axis":
+        elif self.orientation_mode in {"approach_axis", "full"}:
             path = self._plan_axis_constrained(q, target, key)
         elif self.plan_orientation:
             path = self.planner.plan_to_pose_target(
@@ -657,12 +672,11 @@ class IsaacCumotionExecutor:
     def _plan_axis_constrained(
         self, q: np.ndarray, target: np.ndarray, target_key: tuple[float, ...]
     ):
-        """Solve five-axis IK, then collision-check the c-space path.
+        """Solve profile-aware IK, then collision-check the c-space path.
 
-        SO-101 has five arm joints.  Constraining XYZ plus the directed tool Z
-        axis uses exactly five task dimensions.  cuMotion supplies calibrated
-        FK/Jacobians and performs the collision-aware graph plan; the small
-        least-squares solve avoids pretending that a sixth wrist DOF exists.
+        The SO-101 profile uses the historical five-joint axis constrained
+        solve.  Franka has seven arm joints, so keep the same task objective
+        while allowing its redundant wrist joints to regularize smoothly.
         """
         self.last_plan_diagnostic = {"reason": "ik_no_solution"}
         self.controller.synchronize_world()
@@ -701,8 +715,20 @@ class IsaacCumotionExecutor:
         upper = np.asarray(
             [kinematics.cspace_coord_limits(i).upper for i in range(len(q))], dtype=np.float64
         )
-        regularization = np.asarray([0.02, 0.02, 0.02, 0.03, 0.25], dtype=np.float64)
-        closing_axis_weight = 0.30
+        full_orientation = self.orientation_mode == "full"
+        if full_orientation:
+            regularization = np.full(len(q), .005, dtype=np.float64)
+        else:
+            # Preserve the SO-101 weighting (the final joint is the least
+            # preferred branch variable) and extend it to Panda's redundant
+            # wrist joints without assuming a five-element vector.
+            regularization = np.full(len(q), .02, dtype=np.float64)
+            if len(q) >= 4:
+                regularization[3] = .03
+            if len(q) >= 5:
+                regularization[4:] = .05
+                regularization[-1] = .25
+        closing_axis_weight = 1.0 if full_orientation else 0.30
 
         def residual(q_trial: np.ndarray) -> np.ndarray:
             pose = kinematics.pose(q_trial, tool_frame)
@@ -784,6 +810,8 @@ class IsaacCumotionExecutor:
             if (
                 float(np.linalg.norm(goal_position - position_base)) > 0.003
                 or axis_alignment_error(goal_axis, approach_axis_base) > np.deg2rad(5.0)
+                or (full_orientation and axis_alignment_error(
+                    np.asarray(goal_pose.rotation.matrix())[:, 0], closing_axis_base) > np.deg2rad(2.0))
             ):
                 continue
             path = self._linear_cspace_path(q, q_goal)
@@ -903,11 +931,13 @@ class IsaacCumotionExecutor:
 
     def _target_reached(self, target: np.ndarray) -> bool:
         current = self.arm.T_base_ee()
-        translation, _ = pose_error(current, target)
+        translation, rotation = pose_error(current, target)
         if float(np.linalg.norm(translation)) > max(self.position_tolerance_m * 2.0, 0.003):
             return False
         if self.orientation_mode == "approach_axis":
             return axis_alignment_error(current[:3, 2], target[:3, 2]) <= np.deg2rad(5.0)
+        if self.orientation_mode == "full":
+            return float(np.linalg.norm(rotation)) <= np.deg2rad(2.0)
         return True
 
     def _set_target_pose(self, T_base_ee: np.ndarray) -> None:
@@ -950,6 +980,9 @@ class IsaacCumotionExecutor:
         kinematics = self.controller.cumotion_robot.kinematics
         tool_frame = str(robot_config()["tool_frame"])
         target_xyz = np.asarray(kinematics.position(target, tool_frame), dtype=np.float64)
+        target_rotation = None
+        if getattr(self, "orientation_mode", "none") == "full" and hasattr(kinematics, "pose"):
+            target_rotation = np.asarray(kinematics.pose(target, tool_frame).rotation.matrix())
         speed = max(min(float(speed_scale), 1.0), 0.05)
         max_delta_per_step = 0.035 * speed
         initial = self.articulation.get_dof_positions()
@@ -984,6 +1017,12 @@ class IsaacCumotionExecutor:
                 np.linalg.norm(target_xyz - current_xyz)
             )
             pose_reached = float(np.max(np.abs(delta))) <= tolerance or cartesian_reached
+            if getattr(self, "orientation_mode", "none") == "full" and target_rotation is not None and hasattr(kinematics, "pose"):
+                current_rotation = np.asarray(kinematics.pose(q, tool_frame).rotation.matrix())
+                angle = np.arccos(np.clip((np.trace(target_rotation.T @ current_rotation) - 1.) / 2., -1., 1.))
+                # Translation may settle before a redundant wrist joint. A
+                # Panda endpoint must satisfy orientation before returning.
+                pose_reached = cartesian_reached and angle <= np.deg2rad(1.)
             progress_reached = cartesian_progress + 1e-6 >= progress_required
             pose_stable_frames = pose_stable_frames + 1 if pose_reached and progress_reached else 0
             if (

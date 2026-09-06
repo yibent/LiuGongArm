@@ -40,6 +40,53 @@ class AnyPlaceBackendTests(unittest.TestCase):
         with self.assertRaisesRegex(PlaceError,'rotation_requires_pose_controller'):
             backend.select(PlaceRequest('region'),rig.held,evidence,rig.pose,.013)
 
+    def test_full_pose_controller_keeps_rotation_and_returns_xy(self):
+        rig,evidence,backend=self.rig()
+        backend=AnyPlaceBackend(supports_full_pose=True)
+        backend.parent_cloud=lambda e:e.scene_points
+        final=rig.pose.copy()
+        final[:2,:2]=[[0.,-1.],[1.,0.]]
+        final[2,3]=1.021
+        relative=final@invert_transform(rig.pose@rig.held.T_ee_object)
+        backend.client=SimpleNamespace(infer=lambda **kw:{'protocol':1,
+                                                         'sequence':evidence.observation.sequence,
+                                                         'transforms':[relative.tolist()]})
+        result=backend.select(PlaceRequest('region'),rig.held,evidence,rig.pose,.013)
+        np.testing.assert_allclose(result,[0.,0.])
+        np.testing.assert_allclose(backend.selected_object_pose,final)
+        np.testing.assert_allclose(backend.last_metrics['selected_object_pose'],final)
+        self.assertEqual(backend.last_metrics['selected_object_pose_frame'],'base')
+        self.assertTrue(backend.last_metrics['supports_full_pose'])
+        self.assertFalse(backend.last_metrics['rotation_gate_enforced'])
+        self.assertAlmostEqual(backend.last_metrics['selected_rotation_change_deg'],90.)
+
+    def test_full_pose_still_rejects_unsafe_height(self):
+        rig,evidence,backend=self.rig()
+        backend=AnyPlaceBackend(supports_full_pose=True)
+        backend.parent_cloud=lambda e:e.scene_points
+        final=rig.pose.copy()
+        final[2,3]=1.04  # The box bottom remains above the support envelope.
+        relative=final@invert_transform(rig.pose@rig.held.T_ee_object)
+        backend.client=SimpleNamespace(infer=lambda **kw:{'protocol':1,
+                                                         'sequence':evidence.observation.sequence,
+                                                         'transforms':[relative.tolist()]})
+        with self.assertRaisesRegex(PlaceError,'model_height_not_supported'):
+            backend.select(PlaceRequest('region'),rig.held,evidence,rig.pose,.013)
+
+    def test_full_pose_still_rejects_unsupported_footprint(self):
+        rig,evidence,backend=self.rig()
+        backend=AnyPlaceBackend(supports_full_pose=True)
+        backend.parent_cloud=lambda e:e.scene_points
+        final=rig.pose.copy()
+        final[:2,:2]=[[0.,-1.],[1.,0.]]
+        final[:3,3]=[.095,0.,1.021]
+        relative=final@invert_transform(rig.pose@rig.held.T_ee_object)
+        backend.client=SimpleNamespace(infer=lambda **kw:{'protocol':1,
+                                                         'sequence':evidence.observation.sequence,
+                                                         'transforms':[relative.tolist()]})
+        with self.assertRaisesRegex(PlaceError,'unsupported_footprint'):
+            backend.select(PlaceRequest('region'),rig.held,evidence,rig.pose,.013)
+
     def test_stale_response_rejected(self):
         rig,evidence,backend=self.rig()
         backend.client=SimpleNamespace(infer=lambda **kw:{'protocol':1,'sequence':-1,'transforms':[]})

@@ -160,8 +160,8 @@ class IsaacSceneCamera:
     """
     def __init__(self, camera, *, T_base_world, advance_frame, clock=time.monotonic,
                  robot_mask_provider=None):
-        if camera.which != "scene" or not camera.has_depth:
-            raise ValueError("External observer requires the configured scene RGB-D camera")
+        if camera.which not in {"scene", "placement"} or not camera.has_depth:
+            raise ValueError("External observer requires a configured fixed RGB-D camera")
         self.camera, self.advance_frame, self.clock = camera, advance_frame, clock
         self.T_base_world = assert_transform(T_base_world, name="T_base_world").copy()
         self.robot_mask_provider = robot_mask_provider
@@ -189,7 +189,8 @@ class IsaacSceneCamera:
             return RGBDObservation(
                 sequence=self._sequence, timestamp_s=self.clock(), rgb=sample.rgba[:, :, :3],
                 depth_m=sample.depth_m, intrinsics=CameraIntrinsics(width, height, k[0, 0], k[1, 1], k[0, 2], k[1, 2]),
-                T_base_camera=self.T_base_world @ sample.T_world_camera, camera_frame="overhead_camera",
+                T_base_camera=self.T_base_world @ sample.T_world_camera,
+                camera_frame=f"{self.camera.which}_camera",
                 metadata={"mount_type": "fixed", "sim_rendering_time": sample.rendering_time_s,
                           "robot_self_mask": self.robot_mask_provider() if self.robot_mask_provider else None},
             )

@@ -9,6 +9,67 @@ MOUNT_JOINT_PATH = "/World/SO101Mount"
 TABLETOP_PROPS_ROOT = "/World/TabletopProps"
 
 
+def apply_grasp_contact_materials(*, target_path: str | None = None) -> dict[str, object]:
+    """Bind the explicit Panda contact material used by grasp experiments."""
+    import omni.usd
+    from pxr import Usd, UsdPhysics, UsdShade, PhysxSchema, Tf
+
+    from mr_liu.config import robot_config
+    cfg = robot_config()
+    if cfg.get("name") != "franka":
+        return {"enabled": False, "reason": "non_franka_profile"}
+    stage = omni.usd.get_context().get_stage()
+    robot_root = stage.GetPrimAtPath(cfg.get("usd_prim_path", "/World/Franka"))
+    # Official Panda is shipped as an instanceable reference. De-instance the
+    # single benchmark copy before authoring per-finger physics bindings.
+    if robot_root.IsValid() and robot_root.IsInstance():
+        robot_root.SetInstanceable(False)
+    settings = cfg.get("contact_material", {})
+    material_path = "/World/PhysicsMaterials/PandaGraspContact"
+    material = UsdShade.Material.Define(stage, material_path)
+    material_prim = material.GetPrim()
+    physics = UsdPhysics.MaterialAPI.Apply(material_prim)
+    physics.CreateStaticFrictionAttr().Set(float(settings.get("static_friction", 1.2)))
+    physics.CreateDynamicFrictionAttr().Set(float(settings.get("dynamic_friction", 1.0)))
+    physics.CreateRestitutionAttr().Set(float(settings.get("restitution", 0.0)))
+    PhysxSchema.PhysxMaterialAPI.Apply(material_prim)
+    roots = ["/World/Franka/panda_leftfinger", "/World/Franka/panda_rightfinger"]
+    if target_path:
+        roots.append(str(target_path))
+    bound = []
+    for root_path in roots:
+        root = stage.GetPrimAtPath(root_path)
+        if not root.IsValid():
+            continue
+        for prim in Usd.PrimRange(root, Usd.TraverseInstanceProxies()):
+            if not prim.HasAPI(UsdPhysics.CollisionAPI):
+                continue
+            try:
+                UsdShade.MaterialBindingAPI.Apply(prim).Bind(
+                    material, bindingStrength=UsdShade.Tokens.strongerThanDescendants,
+                    materialPurpose="physics")
+                bound.append(str(prim.GetPath()))
+            except Tf.ErrorException:
+                # Referenced Panda geometry is commonly an instance proxy and
+                # cannot be edited in place. Bind the nearest editable link/root
+                # so the material still propagates to its collision descendants.
+                editable = root
+                while editable.IsInstanceProxy() and editable.GetParent().IsValid():
+                    editable = editable.GetParent()
+                UsdShade.MaterialBindingAPI.Apply(editable).Bind(
+                    material, bindingStrength=UsdShade.Tokens.strongerThanDescendants,
+                    materialPurpose="physics")
+                bound.append(str(editable.GetPath()))
+    return {
+        "enabled": True,
+        "material_path": material_path,
+        "static_friction": float(physics.GetStaticFrictionAttr().Get()),
+        "dynamic_friction": float(physics.GetDynamicFrictionAttr().Get()),
+        "restitution": float(physics.GetRestitutionAttr().Get()),
+        "bound_collision_prims": bound,
+    }
+
+
 def apply_environment_map() -> None:
     from isaacsim.core.experimental.objects import DomeLight
     from pxr import Sdf
@@ -30,7 +91,8 @@ def _find_so101_base(stage):
 
     robot_cfg = robot_config()
     prim_root = robot_cfg["usd_prim_path"]
-    for path in (f"{prim_root}/base", f"{prim_root}/base_link"):
+    base_name = robot_cfg.get("base_link_name", "base")
+    for path in (f"{prim_root}/{base_name}", f"{prim_root}/base_link"):
         prim = stage.GetPrimAtPath(path)
         if prim.IsValid() and prim.HasAPI(UsdPhysics.RigidBodyAPI):
             return prim
@@ -56,16 +118,24 @@ def mount_so101_to_table() -> None:
         raise RuntimeError("SO-101 base rigid body not found. Load the robot first.")
 
     cfg = robot_config()
+    mount_path = "/World/FrankaMount" if cfg.get("name") == "franka" else MOUNT_JOINT_PATH
     root = stage.GetPrimAtPath(cfg["articulation_prim_path"])
+    if cfg.get("name") == "franka":
+        for prim in stage.Traverse():
+            if (str(prim.GetPath()).startswith(cfg["usd_prim_path"] + "/")
+                    and prim.IsA(UsdPhysics.FixedJoint)
+                    and not UsdPhysics.FixedJoint(prim).GetBody0Rel().GetTargets()):
+                root = prim
+                break
     # The asset already has a world-fixed articulation root. Reuse it instead
     # of constraining the base a second time at a different world frame.
     if root.IsValid() and root.IsA(UsdPhysics.FixedJoint):
         joint = UsdPhysics.FixedJoint(root)
-        duplicate = stage.GetPrimAtPath(MOUNT_JOINT_PATH)
+        duplicate = stage.GetPrimAtPath(mount_path)
         if duplicate.IsValid():
             duplicate.SetActive(False)
     else:
-        joint = UsdPhysics.FixedJoint.Define(stage, MOUNT_JOINT_PATH)
+        joint = UsdPhysics.FixedJoint.Define(stage, mount_path)
         root = joint.GetPrim()
         UsdPhysics.ArticulationRootAPI.Apply(root)
     joint.CreateBody0Rel().ClearTargets(True)
@@ -85,6 +155,9 @@ def mount_so101_to_table() -> None:
         if str(prim.GetPath()).startswith(cfg["usd_prim_path"]+"/") and prim.IsA(UsdPhysics.RevoluteJoint):
             cap = cfg.get("gripper_max_velocity_deg_s", 120) if prim.GetName() == cfg["gripper_joint"] else cfg.get("drive_max_velocity_deg_s", 60)
             PhysxSchema.PhysxJointAPI.Apply(prim).CreateMaxJointVelocityAttr().Set(float(cap))
+        elif str(prim.GetPath()).startswith(cfg["usd_prim_path"]+"/") and prim.IsA(UsdPhysics.PrismaticJoint):
+            PhysxSchema.PhysxJointAPI.Apply(prim).CreateMaxJointVelocityAttr().Set(
+                float(cfg.get("gripper_max_velocity_m_s", .04)))
     print(f"[mr_liu] Mounted {base.GetPath()} using single fixed joint {joint.GetPath()}")
 
 
@@ -238,7 +311,10 @@ def spawn_table_and_so101(*, include_tabletop_props: bool = True) -> None:
     table_usd = resolve_isaac_asset(scene["table_usd_rel"])
     so101_usd = resolve_isaac_asset(robot["usd_asset_rel"])
     stage_utils.add_reference_to_stage(usd_path=table_usd, path="/World/Table")
-    stage_utils.add_reference_to_stage(usd_path=so101_usd, path=robot["usd_prim_path"])
+    kwargs = {"usd_path": so101_usd, "path": robot["usd_prim_path"]}
+    if robot.get("usd_variants"):
+        kwargs["variants"] = [tuple(pair) for pair in robot["usd_variants"]]
+    stage_utils.add_reference_to_stage(**kwargs)
 
     XformPrim(
         "/World/Table",
@@ -253,7 +329,10 @@ def spawn_table_and_so101(*, include_tabletop_props: bool = True) -> None:
         reset_xform_op_properties=True,
     )
     print(f"[mr_liu] Table: {table_usd}")
-    print(f"[mr_liu] SO-101: {so101_usd}")
+    print(f"[mr_liu] {robot['name']}: {so101_usd}")
     mount_so101_to_table()
     if include_tabletop_props:
         spawn_tabletop_props()
+
+
+spawn_table_and_robot = spawn_table_and_so101

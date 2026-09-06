@@ -17,6 +17,20 @@ scene:
   recovery_oblique:
     position: [0.65, -0.65, 1.75]
     target: [0.35, -0.15, 1.08]
+placement:
+  # Dedicated fixed observer used only after grasp handoff. Keeping this
+  # sensor separate from the coarse/recovery camera prevents a placement
+  # re-aim from invalidating the scene tracker and its render-pose contract.
+  prim_path: /World/Cameras/PlacementRGB
+  enabled: false
+  resolution: [640, 480]
+  frequency: 15
+  position: [0.35, 0.55, 1.60]
+  target: [0.28, -0.18, 1.09]
+  look_at: true
+  focal_length: 1.8
+  clipping_range: [0.01, 10.0]
+  annotators: [rgb, distance_to_image_plane, semantic_segmentation]
 wrist:
   parent_prim_path: /World/SO101/gripper
   prim_path: /World/SO101/gripper/WristRGBD

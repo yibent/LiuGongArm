@@ -1,0 +1,13 @@
+{
+  "protocol": 1,
+  "controller": "isaacsim.robot.manipulators.examples.franka.PickPlaceController",
+  "cases": [
+    {"name":"b01_024","object":"standard cube","cube_position":[0.24,0.24,0.02575],"target_position":[-0.24,-0.24,0.02575],"cube_size":[0.0515,0.0515,0.0515]},
+    {"name":"b02_025","object":"standard cube","cube_position":[0.25,0.25,0.02575],"target_position":[-0.25,-0.25,0.02575],"cube_size":[0.0515,0.0515,0.0515]},
+    {"name":"b03_027","object":"standard cube","cube_position":[0.27,0.27,0.02575],"target_position":[-0.27,-0.27,0.02575],"cube_size":[0.0515,0.0515,0.0515]},
+    {"name":"b04_left_front_near","object":"standard cube","cube_position":[0.05,0.42,0.02575],"target_position":[-0.30,-0.10,0.02575],"cube_size":[0.0515,0.0515,0.0515]},
+    {"name":"b05_left_front_center","object":"standard cube","cube_position":[0.05,0.42,0.02575],"target_position":[-0.25,-0.15,0.02575],"cube_size":[0.0515,0.0515,0.0515]},
+    {"name":"b06_yaw90_known","object":"90 degree rectangular part","cube_position":[0.30,0.24,0.020],"cube_orientation":[0.7071068,0.0,0.0,0.7071068],"gripper_yaw_deg":90.0,"target_position":[-0.28,-0.20,0.020],"cube_size":[0.070,0.035,0.040]},
+    {"name":"b07_yaw90_noalign","object":"90 degree rectangular part","cube_position":[0.30,0.24,0.020],"cube_orientation":[0.7071068,0.0,0.0,0.7071068],"target_position":[-0.28,-0.20,0.020],"cube_size":[0.070,0.035,0.040]}
+  ]
+}

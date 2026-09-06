@@ -1,0 +1,438 @@
+{
+  "protocol": 1,
+  "purpose": "development_comparison_not_acceptance",
+  "robot": "franka",
+  "contact_material": "profile",
+  "cases": [
+    {
+      "name": "01_m2t2_cube_seed1",
+      "object": {
+        "name": "cube",
+        "shape": "cube",
+        "dimensions_m": [
+          0.036,
+          0.036,
+          0.036
+        ],
+        "position_m": [
+          0.3245244535744196,
+          -0.19747465129467145,
+          1.068
+        ],
+        "seed": 1,
+        "yaw_deg": 12.883898935476868,
+        "mass_kg": 0.035,
+        "color_rgb": [
+          0.85,
+          0.12,
+          0.08
+        ],
+        "material": "matte",
+        "fragile": false,
+        "thin": false,
+        "reflective": false,
+        "expected_feasible": true,
+        "mesh_path": null,
+        "light_scale": 1.0,
+        "metadata": {}
+      },
+      "label": "red cube",
+      "place_backend": "m2t2",
+      "grasp_backend": "m2t2",
+      "fixture": "region",
+      "relation": "on",
+      "destination": "blue square",
+      "x": 0.25,
+      "y": -0.198,
+      "init_current_orientation": false,
+      "clutter": 0
+    },
+    {
+      "name": "02_anyplace_cube_current",
+      "object": {
+        "name": "cube_default",
+        "shape": "cube",
+        "dimensions_m": [
+          0.036,
+          0.036,
+          0.036
+        ],
+        "position_m": [
+          0.324,
+          -0.198,
+          1.068
+        ],
+        "seed": 0,
+        "yaw_deg": 0.0,
+        "mass_kg": 0.035,
+        "color_rgb": [
+          0.85,
+          0.12,
+          0.08
+        ],
+        "material": "matte",
+        "fragile": false,
+        "thin": false,
+        "reflective": false,
+        "expected_feasible": true,
+        "mesh_path": null,
+        "light_scale": 1.0,
+        "metadata": {}
+      },
+      "label": "red cube",
+      "place_backend": "anyplace",
+      "grasp_backend": "graspgenx",
+      "fixture": "region",
+      "relation": "on",
+      "destination": "blue square",
+      "x": 0.25,
+      "y": -0.198,
+      "init_current_orientation": true,
+      "clutter": 0
+    },
+    {
+      "name": "03_m2t2_tray_seed1",
+      "object": {
+        "name": "cube",
+        "shape": "cube",
+        "dimensions_m": [
+          0.036,
+          0.036,
+          0.036
+        ],
+        "position_m": [
+          0.3245244535744196,
+          -0.19747465129467145,
+          1.068
+        ],
+        "seed": 1,
+        "yaw_deg": 12.883898935476868,
+        "mass_kg": 0.035,
+        "color_rgb": [
+          0.85,
+          0.12,
+          0.08
+        ],
+        "material": "matte",
+        "fragile": false,
+        "thin": false,
+        "reflective": false,
+        "expected_feasible": true,
+        "mesh_path": null,
+        "light_scale": 1.0,
+        "metadata": {}
+      },
+      "label": "red cube",
+      "place_backend": "m2t2",
+      "grasp_backend": "m2t2",
+      "fixture": "tray",
+      "relation": "inside",
+      "destination": "blue tray",
+      "x": 0.23,
+      "y": -0.198,
+      "init_current_orientation": false,
+      "clutter": 0
+    },
+    {
+      "name": "04_m2t2_cylinder_seed1",
+      "object": {
+        "name": "cylinder",
+        "shape": "cylinder",
+        "dimensions_m": [
+          0.032,
+          0.032,
+          0.046
+        ],
+        "position_m": [
+          0.32539678495613517,
+          -0.1966812161523785,
+          1.073
+        ],
+        "seed": 1,
+        "yaw_deg": -5.519933481025191,
+        "mass_kg": 0.035,
+        "color_rgb": [
+          0.85,
+          0.12,
+          0.08
+        ],
+        "material": "matte",
+        "fragile": false,
+        "thin": false,
+        "reflective": false,
+        "expected_feasible": true,
+        "mesh_path": null,
+        "light_scale": 1.0,
+        "metadata": {}
+      },
+      "label": "red cylinder",
+      "place_backend": "m2t2",
+      "grasp_backend": "m2t2",
+      "fixture": "region",
+      "relation": "on",
+      "destination": "blue square",
+      "x": 0.25,
+      "y": -0.18,
+      "init_current_orientation": false,
+      "clutter": 0
+    },
+    {
+      "name": "05_m2t2_sphere_seed1",
+      "object": {
+        "name": "sphere",
+        "shape": "sphere",
+        "dimensions_m": [
+          0.034,
+          0.034,
+          0.034
+        ],
+        "position_m": [
+          0.3254438007279294,
+          -0.19994771059707278,
+          1.067
+        ],
+        "seed": 1,
+        "yaw_deg": 10.510322361709793,
+        "mass_kg": 0.035,
+        "color_rgb": [
+          0.18,
+          0.62,
+          0.2
+        ],
+        "material": "matte",
+        "fragile": false,
+        "thin": false,
+        "reflective": false,
+        "expected_feasible": true,
+        "mesh_path": null,
+        "light_scale": 1.0,
+        "metadata": {}
+      },
+      "label": "green ball",
+      "place_backend": "m2t2",
+      "grasp_backend": "m2t2",
+      "fixture": "region",
+      "relation": "on",
+      "destination": "blue square",
+      "x": 0.24,
+      "y": -0.198,
+      "init_current_orientation": false,
+      "clutter": 0
+    },
+    {
+      "name": "06_anyplace_cube_random",
+      "object": {
+        "name": "cube_default",
+        "shape": "cube",
+        "dimensions_m": [
+          0.036,
+          0.036,
+          0.036
+        ],
+        "position_m": [
+          0.324,
+          -0.198,
+          1.068
+        ],
+        "seed": 0,
+        "yaw_deg": 0.0,
+        "mass_kg": 0.035,
+        "color_rgb": [
+          0.85,
+          0.12,
+          0.08
+        ],
+        "material": "matte",
+        "fragile": false,
+        "thin": false,
+        "reflective": false,
+        "expected_feasible": true,
+        "mesh_path": null,
+        "light_scale": 1.0,
+        "metadata": {}
+      },
+      "label": "red cube",
+      "place_backend": "anyplace",
+      "grasp_backend": "graspgenx",
+      "fixture": "region",
+      "relation": "on",
+      "destination": "blue square",
+      "x": 0.25,
+      "y": -0.198,
+      "init_current_orientation": false,
+      "clutter": 0
+    },
+    {
+      "name": "07_m2t2_large_cube",
+      "object": {
+        "name": "large_cube",
+        "shape": "cube",
+        "dimensions_m": [
+          0.044,
+          0.044,
+          0.044
+        ],
+        "position_m": [
+          0.329,
+          -0.19,
+          1.072
+        ],
+        "seed": 2,
+        "yaw_deg": 12,
+        "mass_kg": 0.035,
+        "color_rgb": [
+          0.85,
+          0.12,
+          0.08
+        ],
+        "material": "matte",
+        "fragile": false,
+        "thin": false,
+        "reflective": false,
+        "expected_feasible": true,
+        "mesh_path": null,
+        "light_scale": 1.0,
+        "metadata": {}
+      },
+      "label": "red cube",
+      "place_backend": "m2t2",
+      "grasp_backend": "m2t2",
+      "fixture": "region",
+      "relation": "on",
+      "destination": "blue square",
+      "x": 0.24,
+      "y": -0.18,
+      "init_current_orientation": false,
+      "clutter": 0
+    },
+    {
+      "name": "08_anyplace_tray_current",
+      "object": {
+        "name": "cube_default",
+        "shape": "cube",
+        "dimensions_m": [
+          0.036,
+          0.036,
+          0.036
+        ],
+        "position_m": [
+          0.324,
+          -0.198,
+          1.068
+        ],
+        "seed": 0,
+        "yaw_deg": 0.0,
+        "mass_kg": 0.035,
+        "color_rgb": [
+          0.85,
+          0.12,
+          0.08
+        ],
+        "material": "matte",
+        "fragile": false,
+        "thin": false,
+        "reflective": false,
+        "expected_feasible": true,
+        "mesh_path": null,
+        "light_scale": 1.0,
+        "metadata": {}
+      },
+      "label": "red cube",
+      "place_backend": "anyplace",
+      "grasp_backend": "graspgenx",
+      "fixture": "tray",
+      "relation": "inside",
+      "destination": "blue tray",
+      "x": 0.23,
+      "y": -0.198,
+      "init_current_orientation": true,
+      "clutter": 0
+    },
+    {
+      "name": "09_m2t2_cube_clutter1",
+      "object": {
+        "name": "cube_default",
+        "shape": "cube",
+        "dimensions_m": [
+          0.036,
+          0.036,
+          0.036
+        ],
+        "position_m": [
+          0.324,
+          -0.198,
+          1.068
+        ],
+        "seed": 0,
+        "yaw_deg": 0.0,
+        "mass_kg": 0.035,
+        "color_rgb": [
+          0.85,
+          0.12,
+          0.08
+        ],
+        "material": "matte",
+        "fragile": false,
+        "thin": false,
+        "reflective": false,
+        "expected_feasible": true,
+        "mesh_path": null,
+        "light_scale": 1.0,
+        "metadata": {}
+      },
+      "label": "red cube",
+      "place_backend": "m2t2",
+      "grasp_backend": "m2t2",
+      "fixture": "region",
+      "relation": "on",
+      "destination": "blue square",
+      "x": 0.24,
+      "y": -0.18,
+      "init_current_orientation": false,
+      "clutter": 1
+    },
+    {
+      "name": "10_anyplace_cube_clutter2",
+      "object": {
+        "name": "cube_default",
+        "shape": "cube",
+        "dimensions_m": [
+          0.036,
+          0.036,
+          0.036
+        ],
+        "position_m": [
+          0.324,
+          -0.198,
+          1.068
+        ],
+        "seed": 0,
+        "yaw_deg": 0.0,
+        "mass_kg": 0.035,
+        "color_rgb": [
+          0.85,
+          0.12,
+          0.08
+        ],
+        "material": "matte",
+        "fragile": false,
+        "thin": false,
+        "reflective": false,
+        "expected_feasible": true,
+        "mesh_path": null,
+        "light_scale": 1.0,
+        "metadata": {}
+      },
+      "label": "red cube",
+      "place_backend": "anyplace",
+      "grasp_backend": "graspgenx",
+      "fixture": "region",
+      "relation": "on",
+      "destination": "blue square",
+      "x": 0.24,
+      "y": -0.18,
+      "init_current_orientation": true,
+      "clutter": 2
+    }
+  ]
+}

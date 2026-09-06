@@ -5,10 +5,14 @@ import json
 import traceback
 from datetime import datetime
 from pathlib import Path
+import os
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--output", type=Path, help="New directory for captures and report.json")
+parser.add_argument("--robot", choices=("so101", "franka"), default=os.environ.get("MR_LIU_ROBOT", "so101"),
+                    help="Robot profile whose camera overrides are validated")
 args = parser.parse_args()
+os.environ["MR_LIU_ROBOT"] = args.robot
 ROOT = Path(__file__).resolve().parents[1]
 output_dir = args.output or ROOT / "output" / "camera_verify" / datetime.now().strftime("%Y%m%d_%H%M%S")
 # Do not overwrite evidence from an earlier run.
@@ -41,7 +45,10 @@ def main() -> None:
     simulation_app.update()
 
     cameras = spawn_configured_cameras()
-    assert set(cameras) == {"scene", "wrist"}, f"Unexpected cameras: {sorted(cameras)}"
+    cfg = cameras_config()
+    expected = {name for name in ("scene", "placement", "wrist")
+                if name in cfg and cfg[name].get("enabled", True)}
+    assert set(cameras) == expected, f"Unexpected cameras: {sorted(cameras)}"
     app_utils.play()
     for _ in range(30):
         simulation_app.update()

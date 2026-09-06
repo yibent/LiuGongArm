@@ -8,6 +8,10 @@ fusion:
 active_views:
   enabled: false
 backends:
+  m2t2:
+    url: http://127.0.0.1:5580
+    width_margin_m: 0.010
+    input_surface_range_m: 0.0
   graspgenx:
     # Run the weight-bearing server from the isolated GraspGenX environment.
     # BusAgent/Isaac stays a small torch-free ZMQ client.

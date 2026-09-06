@@ -16,7 +16,7 @@ class PlaceError(RuntimeError):
 @dataclass(frozen=True)
 class PlaceRequest:
     destination_label: str
-    relation: str = "on"                 # on a visible region, inside, or relative
+    relation: str = "on"
     offset_base_m: tuple[float, float] = (0., 0.)
     request_id: str = "place"
     dry_run: bool = False
@@ -24,7 +24,7 @@ class PlaceRequest:
     def __post_init__(self):
         if not self.destination_label.strip() or len(self.destination_label) > 256:
             raise ValueError("A destination label is required")
-        if self.relation not in {"on", "inside", "relative"}:
+        if self.relation not in {"on", "inside", "relative", "insert", "hang"}:
             raise ValueError("Unsupported relation")
         offset = np.asarray(self.offset_base_m, float)
         if offset.shape != (2,) or not np.isfinite(offset).all() or np.linalg.norm(offset) > .4:
@@ -65,12 +65,15 @@ class PlaceSettings:
     stationary_release_max_age_s: float = .35
     timeout_s: float = 120.
     max_step_m: float = .006
+    max_rotation_step_deg: float = 4.
     max_fine_travel_m: float = .12
     preplace_height_m: float = .045
     release_gap_m: float = .003
     release_gap_tolerance_m: float = .002
     xy_tolerance_m: float = .003
     max_object_tilt_deg: float = 5.
+    orientation_tolerance_deg: float = 3.
+    max_payload_rotation_slip_deg: float = 5.
     boundary_margin_m: float = .010
     max_destination_shift_m: float = .012
     max_slip_m: float = .008
@@ -88,6 +91,10 @@ class PlaceSettings:
                 raise ValueError(f"Invalid positive setting: {name}")
         if self.max_step_m > .01 or self.release_gap_m + self.release_gap_tolerance_m > .008:
             raise ValueError("Fine-place steps/release gap exceed bounded V1 envelope")
+        if self.max_rotation_step_deg > 8. or self.orientation_tolerance_deg > 5.:
+            raise ValueError("Fine-place rotation step/tolerance exceed bounded 6D envelope")
+        if self.max_payload_rotation_slip_deg > 12.:
+            raise ValueError("Payload rotation-slip envelope exceeds local 6D registration")
         if self.settle_frames < 3 or self.max_iterations < 1:
             raise ValueError("Insufficient verification/iteration budget")
         if not self.max_age_s <= self.stationary_release_max_age_s <= 1.:
@@ -111,6 +118,7 @@ class PayloadEvidence:
     T_base_object: np.ndarray
     points_base: np.ndarray
     residual_m: float
+    orientation_residual_rad: float = 0.0
 
 
 @dataclass

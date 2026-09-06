@@ -1,0 +1,95 @@
+{
+  "protocol": 1,
+  "controller": "isaacsim.robot.manipulators.examples.franka.PickPlaceController",
+  "cases": [
+    {
+      "name": "01_baseline_cube",
+      "object": "standard cube",
+      "cube_position": [0.30, 0.30, 0.02575],
+      "target_position": [-0.30, -0.30, 0.02575],
+      "cube_size": [0.0515, 0.0515, 0.0515]
+    },
+    {
+      "name": "02_mirrored_cube",
+      "object": "standard cube",
+      "cube_position": [0.30, -0.30, 0.02575],
+      "target_position": [-0.30, 0.30, 0.02575],
+      "cube_size": [0.0515, 0.0515, 0.0515]
+    },
+    {
+      "name": "03_cross_workspace_cube",
+      "object": "standard cube",
+      "cube_position": [0.45, 0.00, 0.02575],
+      "target_position": [-0.25, 0.25, 0.02575],
+      "cube_size": [0.0515, 0.0515, 0.0515]
+    },
+    {
+      "name": "04_small_cube",
+      "object": "small cube",
+      "cube_position": [0.35, 0.20, 0.0175],
+      "target_position": [-0.25, -0.25, 0.0175],
+      "cube_size": [0.035, 0.035, 0.035]
+    },
+    {
+      "name": "05_large_cube",
+      "object": "large cube",
+      "cube_position": [0.32, -0.20, 0.0325],
+      "target_position": [-0.28, 0.22, 0.0325],
+      "cube_size": [0.065, 0.065, 0.065]
+    },
+    {
+      "name": "06_tall_block",
+      "object": "tall rectangular block",
+      "cube_position": [0.25, 0.30, 0.040],
+      "target_position": [-0.30, 0.15, 0.040],
+      "cube_size": [0.040, 0.040, 0.080]
+    },
+    {
+      "name": "07_flat_block",
+      "object": "flat rectangular block",
+      "cube_position": [0.35, -0.18, 0.015],
+      "target_position": [-0.25, 0.28, 0.015],
+      "cube_size": [0.060, 0.045, 0.030]
+    },
+    {
+      "name": "08_rotated_block",
+      "object": "yaw-rotated rectangular block",
+      "cube_position": [0.30, 0.24, 0.020],
+      "cube_orientation": [0.9238795, 0.0, 0.0, 0.3826834],
+      "gripper_yaw_deg": 45.0,
+      "target_position": [-0.28, -0.20, 0.020],
+      "cube_size": [0.070, 0.035, 0.040]
+    },
+    {
+      "name": "09_elevated_platform",
+      "object": "small cube onto raised platform",
+      "cube_position": [0.35, 0.15, 0.020],
+      "target_position": [-0.25, -0.15, 0.080],
+      "cube_size": [0.040, 0.040, 0.040],
+      "target_platform_height": 0.060,
+      "target_platform_size": [0.18, 0.18]
+    },
+    {
+      "name": "10_heavier_cube",
+      "object": "120 gram cube",
+      "cube_position": [0.28, -0.28, 0.02575],
+      "target_position": [-0.28, 0.28, 0.02575],
+      "cube_size": [0.0515, 0.0515, 0.0515],
+      "mass_kg": 0.12
+    },
+    {
+      "name": "11_outer_workspace",
+      "object": "standard cube near workspace edge",
+      "cube_position": [0.48, 0.05, 0.02575],
+      "target_position": [-0.42, -0.12, 0.02575],
+      "cube_size": [0.0515, 0.0515, 0.0515]
+    },
+    {
+      "name": "12_short_transfer",
+      "object": "standard cube short transfer",
+      "cube_position": [0.28, 0.18, 0.02575],
+      "target_position": [0.10, -0.25, 0.02575],
+      "cube_size": [0.0515, 0.0515, 0.0515]
+    }
+  ]
+}

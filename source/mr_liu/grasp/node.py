@@ -33,7 +33,7 @@ from mr_liu.grasp.geometry import (
 )
 from mr_liu.grasp.policy import ExecutionPolicy, policy_for_target
 from mr_liu.grasp.fusion import LocalSurfaceFusion, propose_wrist_views
-from mr_liu.grasp.contact import FingerGeometry
+from mr_liu.grasp.contact import FingerGeometry, configured_finger_geometry
 from mr_liu.grasp.selection import SelectionResult, select_grasp
 from mr_liu.grasp.servo import PoseServo
 from mr_liu.grasp.settings import FineGraspSettings
@@ -77,7 +77,7 @@ class GeneralGraspNode:
         self._cancelled = False
         self._last_sequence = -1
         self._fusion = LocalSurfaceFusion(settings.fusion)
-        self._finger_geometry = FingerGeometry(open_width_m=settings.gripper.max_width_m)
+        self._finger_geometry = configured_finger_geometry(open_width_m=settings.gripper.max_width_m)
 
     def cancel(self) -> None:
         self._cancelled = True
@@ -169,7 +169,7 @@ class GeneralGraspNode:
                     self.settings.selection,
                     failed_grasps=self.failed_grasps,
                     local_path_check=(
-                        lambda start, end, width: FingerGeometry(open_width_m=min(
+                        lambda start, end, width: configured_finger_geometry(open_width_m=min(
                             self.settings.gripper.max_width_m, width + 0.006)).path_collision_count(
                                 geometry.points_base, start, end) == 0
                     ) if self.settings.fusion.enabled else None,

@@ -8,7 +8,7 @@ from dataclasses import replace
 import cv2
 import numpy as np
 from scipy.spatial import cKDTree
-from mr_liu.grasp.contact import FingerGeometry
+from mr_liu.grasp.contact import FingerGeometry, configured_finger_geometry
 from mr_liu.grasp.transforms import invert_transform, transform_points
 from .geometry import box_corners, scene_cloud
 from .appearance import appearance_matches
@@ -22,7 +22,10 @@ class HeldSweep:
         self.opening = opening
         self.reference_pose,self.max_distance_m=reference_pose,max_distance_m
         self._tree_points=None;self._last_pose=None;self._last_count=0
+        self._last_breakdown={"finger_count": 0, "payload_count": 0,
+                              "finger_points": 0, "payload_points": 0}
         self.contact_mask=contact_mask
+        self.geometry = configured_finger_geometry()
         if not 0 < contact_uncertainty_m <= .003:
             raise ValueError('Contact uncertainty must be in (0,3 mm]')
         self.contact_uncertainty_m=contact_uncertainty_m
@@ -32,7 +35,7 @@ class HeldSweep:
         # transform validation for every point subset at every path sample.
         local=(points-pose[:3,3])@pose[:3,:3]
         depths=[np.min(half-np.abs(local-center),axis=1)
-                for center,half in FingerGeometry(open_width_m=self.width).boxes()]
+                for center,half in replace(self.geometry, open_width_m=self.width).boxes()]
         return np.maximum.reduce(depths)
 
     def collision_count(self, points, pose):
@@ -55,12 +58,12 @@ class HeldSweep:
                                        &(initial<=self.contact_uncertainty_m))
         if self._last_pose is not None and np.array_equal(pose,self._last_pose):
             return self._last_count
-        widths = np.unique(np.linspace(self.width,.075,12)) if self.opening else [self.width]
+        widths = np.unique(np.linspace(self.width,self.geometry.open_width_m,12)) if self.opening else [self.width]
         # Exact conservative broad phase: each sphere contains its entire box,
         # including the original margin. Keep the unchanged narrow-phase test.
         centers,radii=[],[]
         for width in widths:
-            finger=FingerGeometry(open_width_m=float(width))
+            finger=replace(self.geometry,open_width_m=float(width))
             for center,half in finger.boxes():
                 centers.append(pose[:3,:3]@center+pose[:3,3])
                 radii.append(np.linalg.norm(half+finger.margin_m)+1e-9)
@@ -76,19 +79,26 @@ class HeldSweep:
             indices=indices[~escaping]
         nearby=points[indices]
         local=(nearby-pose[:3,3])@pose[:3,:3]
-        count=0
+        finger_count=0
         for width in widths:
-            finger=FingerGeometry(open_width_m=float(width))
+            finger=replace(self.geometry,open_width_m=float(width))
             occupied=np.zeros(len(local),bool)
             for center,half in finger.boxes():
                 occupied |= np.all(np.abs(local-center)<half+finger.margin_m,axis=1)
-            count=max(count,int(occupied.sum()))
+            finger_count=max(finger_count,int(occupied.sum()))
+        payload_count=0
         if self.held is not None:
             object_pose=pose@self.held.T_ee_object
             local = (nearby-object_pose[:3,3])@object_pose[:3,:3]
-            count += int(np.all(np.abs(local)<self.held.half_extents_m+.001,axis=1).sum())
-        self._last_pose=pose.copy();self._last_count=count
-        return count
+            payload_count=int(np.all(np.abs(local)<self.held.half_extents_m+.001,axis=1).sum())
+        self._last_breakdown={
+            "finger_count": int(finger_count),
+            "payload_count": int(payload_count),
+            "finger_points": int(finger_count),
+            "payload_points": int(payload_count),
+        }
+        self._last_pose=pose.copy();self._last_count=finger_count+payload_count
+        return self._last_count
 
     def path_collision_count(self, points, start, end):
         # Caller samples the actual FK path densely (<= .005 rad); do not
@@ -101,6 +111,7 @@ class HeldSweep:
         owned = np.zeros(len(points),bool) if self.contact_mask is None else self.contact_mask
         chosen = indices[:32]
         return {'raw_hits':len(indices),'owned_hits':int(np.asarray(owned)[indices].sum()),
+                'collision_breakdown':dict(self._last_breakdown),
                 'points_base':points[chosen].tolist(),'depth_m':depth[chosen].tolist(),
                 'initial_depth_m':self._contact_depth(points[chosen],self.reference_pose).tolist(),
                 'pose':pose.tolist(),'reference_pose':self.reference_pose.tolist(),
@@ -118,6 +129,10 @@ class IsaacPlaceMotion:
         self._points_observation=None
         self._points_cache={}
         self.executor.clear_grasp_plan()
+
+    @property
+    def tracks_orientation(self):
+        return bool(getattr(self.executor, 'tracks_orientation', False))
 
     def robot_state(self):
         return self.executor.robot_state()
@@ -161,6 +176,22 @@ class IsaacPlaceMotion:
         local=transform_points(invert_transform(pose),points)
         candidate=(np.all(np.abs(local)<held.half_extents_m+.012,axis=1)
                    & appearance_matches(evidence.observation.rgb[rows,cols],held.chromaticity))
+        # RGB appearance can disappear when the Panda rotates a payload: the
+        # jaw, specular highlights, and the fixed camera can hide a whole
+        # face.  The held-object cloud accumulated at handoff is an additional
+        # measured identity cue.  Associate only scene samples that are close
+        # to those measured surface points in the *current* 6D attachment
+        # pose; this does not erase arbitrary points inside the box volume.
+        model_associated = np.zeros(len(points), dtype=bool)
+        model = np.asarray(getattr(held, "reference_points_object", np.empty((0, 3))),
+                           dtype=np.float64)
+        if model.ndim == 2 and model.shape[1] == 3 and len(model):
+            model_base = transform_points(pose, model)
+            model_distance = cKDTree(model_base).query(points, k=1)[0]
+            model_associated = (
+                (model_distance <= max(.0035, float(held.uncertainty_m) + .0005))
+                & np.all(np.abs(local) < held.half_extents_m + .006, axis=1)
+            )
         mask=np.zeros(evidence.observation.depth_m.shape,np.uint8)
         mask[rows[candidate],cols[candidate]]=1
         count,labels,stats,_=cv2.connectedComponentsWithStats(mask,8)
@@ -169,6 +200,7 @@ class IsaacPlaceMotion:
             from .contracts import PlaceError
             raise PlaceError("held_collision_mask_uncertain")
         own=labels[rows,cols]==components[0]
+        own |= model_associated
         owned_mask=labels==components[0]
         if self.mask_refiner is not None:
             # Refinement adds contour evidence; it must not discard the unique

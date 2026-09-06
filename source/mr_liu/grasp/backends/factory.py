@@ -23,6 +23,12 @@ def create_grasp_backend(
     name = str(config.get("backend", "graspgenx")).strip().lower()
     if name == "geometric":
         return GeometricAntipodalBackend()
+    if name == "m2t2":
+        from mr_liu.grasp.backends.m2t2 import M2T2Backend, M2T2Client
+        section = config.get("backends", {}).get("m2t2", {})
+        return M2T2Backend(M2T2Client(section.get("url", "http://127.0.0.1:5580")),
+                           width_margin_m=float(section.get("width_margin_m", .010)),
+                           input_surface_range_m=float(section.get("input_surface_range_m", 0.)))
     if name != "graspgenx":
         raise ValueError(f"Unknown fine-grasp backend {name!r}")
 

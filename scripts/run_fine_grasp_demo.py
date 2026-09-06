@@ -25,19 +25,25 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--record-video", action="store_true",
                         help="Record overview + two RGB-D RGB panels to demo.mp4 (adds render cost)")
     parser.add_argument(
-        "--backend", choices=("geometric", "graspgenx"), default="geometric"
+        "--backend", choices=("geometric", "graspgenx", "m2t2"), default="geometric"
     )
     parser.add_argument("--graspgenx-port", type=int, default=5556)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--contact-material", choices=("asset", "profile"), default="asset")
     parser.add_argument("--label", help="Opt-in label -> external RGB-D/LK coarse approach -> wrist FineGrasp")
     parser.add_argument("--locator-port", type=int, default=5570)
     parser.add_argument("--localization-mode", choices=("florence", "florence_yoloe"), default="florence_yoloe")
     parser.add_argument("--coarse-only", action="store_true", help="Test label approach and wrist handoff without closing")
     parser.add_argument("--place-label", help="Opt-in Florence/RGB-D fine placement after verified grasp")
-    parser.add_argument('--place-backend',choices=('geometric','anyplace'),default='geometric')
+    parser.add_argument('--place-backend',choices=('geometric','anyplace','m2t2'),default='geometric')
     parser.add_argument('--anyplace-url',default='http://127.0.0.1:5590')
-    parser.add_argument("--place-fixture", choices=("region","tray"), default="region")
-    parser.add_argument("--place-relation", choices=("on","inside"), default="on")
+    parser.add_argument('--anyplace-init-current-orientation',action='store_true')
+    parser.add_argument('--m2t2-url', default='http://127.0.0.1:5580')
+    parser.add_argument('--m2t2-surface-range-m', type=float, default=.02)
+    parser.add_argument('--m2t2-scene-radius-m', type=float, default=.2)
+    parser.add_argument("--place-fixture", choices=("region","tray","socket","rack"), default="region")
+    parser.add_argument("--place-relation", choices=("on","inside","insert","hang"), default="on")
+    parser.add_argument("--place-clutter", type=int, choices=(0,1,2), default=0)
     parser.add_argument('--release-max-age-s',type=float,default=.35)
     parser.add_argument('--place-fixture-x',type=float,default=.25)
     parser.add_argument('--place-fixture-y',type=float,default=-.198)
@@ -72,6 +78,8 @@ def _parse_args() -> argparse.Namespace:
         parser.error("--coarse-only requires --label")
     if args.place_label and (args.coarse_only or args.dry_run):
         parser.error("Placement requires an executed, verified grasp")
+    if args.place_label and dict(region="on",tray="inside",socket="insert",rack="hang")[args.place_fixture] != args.place_relation:
+        parser.error("Fixture and requested relation do not match")
     if args.test_coarse_shift_m and (not args.label or not abs(args.test_coarse_shift_m) <= .05):
         parser.error("--test-coarse-shift-m requires --label and magnitude <=5 cm")
     if (args.keep_open or args.start_delay_s) and args.headless:
@@ -99,9 +107,9 @@ from isaacsim.core.simulation_manager import SimulationManager
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "source"))
 
-from mr_liu.config import fine_grasp_config, motion_config, scene_config
+from mr_liu.config import fine_grasp_config, motion_config, scene_config, robot_config
 from mr_liu.grasp.adapters.isaac_camera import IsaacWristCamera, IsaacSceneCamera, T_world_opencv_from_ros_pose
-from mr_liu.grasp.adapters.isaac_gripper import IsaacGripperController
+from mr_liu.grasp.adapters.isaac_gripper import create_isaac_gripper
 from mr_liu.grasp.adapters.isaac_motion import IsaacCumotionExecutor
 from mr_liu.grasp.backends.factory import create_grasp_backend
 from mr_liu.grasp.benchmark import (
@@ -123,7 +131,7 @@ from mr_liu.grasp.transforms import invert_transform, transform_points, look_at_
 from mr_liu.grasp.verification import VisionGripperVerifier
 from mr_liu.perception.camera import spawn_configured_cameras
 from mr_liu.robot.so101 import So101Arm
-from mr_liu.sim.spawn import spawn_table_and_so101
+from mr_liu.sim.spawn import spawn_table_and_so101, apply_grasp_contact_materials
 from mr_liu.sim.grasp_faults import OneShotPreCloseShift, OneShotCoarseShift
 
 
@@ -143,6 +151,8 @@ def _jsonable(value):
         return value.value
     if isinstance(value, np.ndarray):
         return value.tolist()
+    if isinstance(value, np.generic):
+        return value.item()
     if is_dataclass(value):
         return {key: _jsonable(item) for key, item in asdict(value).items()}
     if isinstance(value, dict):
@@ -194,9 +204,12 @@ def _arm_drive_report(arm: So101Arm) -> dict[str, object]:
 
 
 def _configure_arm_drives(arm: So101Arm, config: dict[str, object]) -> None:
-    """Tune only the five arm drives; the gripper keeps its force controller."""
+    """Apply profile tuning, or retain the asset's calibrated arm drives."""
+    if config.get("preserve_asset_arm_drives", False):
+        return
     names = list(arm.articulation.dof_names)
-    arm_indices = [index for index, name in enumerate(names) if name != "gripper"]
+    gripper_names = set(robot_config().get("gripper_joints", [robot_config().get("gripper_joint", "gripper")]))
+    arm_indices = [index for index, name in enumerate(names) if name not in gripper_names]
     count = len(arm_indices)
     arm.articulation.set_dof_gains(
         stiffnesses=[float(config["arm_drive_stiffness_nm_per_rad"])] * count,
@@ -215,6 +228,27 @@ def main() -> int:
         np.random.seed(CASE.seed)
     grasp_cfg = fine_grasp_config().copy()
     grasp_cfg["backend"] = ARGS.backend
+    if ARGS.backend == "m2t2":
+        grasp_cfg.setdefault("backends", {}).setdefault("m2t2", {})
+        grasp_cfg["backends"]["m2t2"]["url"] = ARGS.m2t2_url
+        grasp_cfg["backends"]["m2t2"]["input_surface_range_m"] = ARGS.m2t2_surface_range_m
+        # M2T2 inference is deliberately isolated from Isaac, and its first
+        # request may include model initialization. Give the same closed-loop
+        # safety checks enough wall time to finish instead of misclassifying a
+        # slow model as a servo failure.
+        grasp_cfg.setdefault("loop", {})["max_total_s"] = max(
+            float(grasp_cfg.get("loop", {}).get("max_total_s", 45.0)), 120.0
+        )
+    # Panda's validated Cartesian servo segments are deliberately small.  On
+    # Isaac CPU/Fabric synchronization each segment can take ~0.7 s, so the
+    # original 45 s grasp-only budget can expire just before the required
+    # stable frames are collected.  Placement runs are already bounded by the
+    # recovery supervisor; reserve enough time for one complete grasp attempt
+    # without changing the convergence or safety criteria.
+    if ARGS.place_label:
+        grasp_cfg.setdefault("loop", {})["max_total_s"] = max(
+            float(grasp_cfg.get("loop", {}).get("max_total_s", 45.0)), 100.0
+        )
     grasp_cfg["backends"]["graspgenx"]["planner"] = ARGS.planner
     if ARGS.perception == "multiview":
         grasp_cfg["fusion"] = {"enabled": True}
@@ -233,8 +267,12 @@ def main() -> int:
     place_obstacle_paths = []
     if ARGS.place_label:
         from mr_liu.place.isaac_session import spawn_place_fixture
-        place_obstacle_paths = spawn_place_fixture(ARGS.place_fixture,x=ARGS.place_fixture_x,y=ARGS.place_fixture_y)
+        place_obstacle_paths = spawn_place_fixture(ARGS.place_fixture,x=ARGS.place_fixture_x,y=ARGS.place_fixture_y,
+                                                  clutter=ARGS.place_clutter)
     target_rigid = _spawn_target()
+    contact_material_report = (apply_grasp_contact_materials(target_path=TARGET_PATH)
+                               if ARGS.contact_material == "profile" else
+                               {"enabled": False, "reason": "asset_material_baseline"})
     simulation_app.update()
     # Keep large/tall benchmark objects out of the arm's startup sweep.  They
     # are restored only after the wrist reaches the fine-loop handoff pose.
@@ -300,15 +338,20 @@ def main() -> int:
     sim_drive_config = grasp_cfg["isaac_sim"]
     _configure_arm_drives(arm, sim_drive_config)
     arm_drive = _arm_drive_report(arm)
-    print(f"[mr_liu] Imported SO-101 drive configuration: {json.dumps(imported_arm_drive)}")
-    print(f"[mr_liu] Tuned SO-101 drive configuration: {json.dumps(arm_drive)}")
+    print(f"[mr_liu] Imported {robot_config()['name']} drive configuration: {json.dumps(imported_arm_drive)}")
+    print(f"[mr_liu] Tuned {robot_config()['name']} drive configuration: {json.dumps(arm_drive)}")
     if ARGS.label:
         # Scene initialization only: a generic parked pose, independent of
         # target pose/shape. All subsequent transit uses measured RGB-D + IK.
         arm.apply_configured_pose()
-    else:
+    elif robot_config()['name'] == 'so101':
         arm.articulation.set_dof_positions(list(FINE_ENTRY_JOINTS))
         arm.articulation.set_dof_position_targets(list(FINE_ENTRY_JOINTS))
+    else:
+        defaults = robot_config()["default_joint_positions"]
+        pose = [float(defaults.get(name, 0.0)) for name in arm.articulation.dof_names]
+        arm.articulation.set_dof_positions(pose)
+        arm.articulation.set_dof_position_targets(pose)
     for _ in range(45):
         simulation_app.update()
 
@@ -373,7 +416,7 @@ def main() -> int:
         np.asarray(preopen_position), np.asarray(preopen_orientation)
     )
 
-    gripper = IsaacGripperController(
+    gripper = create_isaac_gripper(
         arm.articulation,
         advance_frame=advance_control_physics,
         physics_dt_s=physics_dt,
@@ -414,7 +457,7 @@ def main() -> int:
                 coarse_recorder.trace(injected)
         external = IsaacSceneCamera(cameras["scene"], T_base_world=np.eye(4),
             advance_frame=advance_observation_frame,
-            robot_mask_provider=lambda: cameras["scene"].instance_mask("/World/SO101", leaf_paths=True))
+            robot_mask_provider=lambda: cameras["scene"].instance_mask(robot_config()["usd_prim_path"], leaf_paths=True))
         semantic_tracker = SemanticFlowTarget(external,
             LocalSemanticLocator(ARGS.locator_port, ARGS.localization_mode), target,
             grasp_cfg["selection"]["table_height_m"], trace=coarse_trace, recorder=coarse_recorder)
@@ -447,7 +490,7 @@ def main() -> int:
         ee_pose_provider=arm.T_base_ee,
         advance_frame=advance_observation_frame,
         model_seed=CASE.seed,
-        robot_mask_provider=(lambda: wrist_scene_camera.instance_mask("/World/SO101", leaf_paths=True))
+        robot_mask_provider=(lambda: wrist_scene_camera.instance_mask(robot_config()["usd_prim_path"], leaf_paths=True))
                             if ARGS.recovery != "off" or ARGS.label else None,
     )
     initial_observation = camera.capture(target)
@@ -567,7 +610,7 @@ def main() -> int:
         import copy
         external_camera = IsaacSceneCamera(
             cameras["scene"], T_base_world=np.eye(4), advance_frame=advance_observation_frame,
-            robot_mask_provider=lambda: cameras["scene"].instance_mask("/World/SO101", leaf_paths=True),
+            robot_mask_provider=lambda: cameras["scene"].instance_mask(robot_config()["usd_prim_path"], leaf_paths=True),
         )
         observer = SceneTargetObserver(external_camera,
             table_height_m=grasp_cfg["selection"]["table_height_m"],
@@ -661,6 +704,7 @@ def main() -> int:
         "test_target_shift_m": ARGS.test_target_shift_m,
         "test_target_shift_applied": fault.applied,
         "attempt_results": _jsonable(getattr(node, "attempt_results", [])),
+        "contact_material": contact_material_report,
         "attempt_physics": attempt_physics,
         "effective_config": grasp_cfg,
         "result": _jsonable(result),
@@ -686,15 +730,24 @@ def main() -> int:
         from mr_liu.place.contracts import PlaceResult
         from mr_liu.place.contracts import PlaceSettings
         place_settings=PlaceSettings(stationary_release_max_age_s=ARGS.release_max_age_s)
-        place_scene = IsaacSceneCamera(cameras["scene"],T_base_world=np.eye(4),advance_frame=advance_observation_frame,
-            robot_mask_provider=lambda:cameras["scene"].instance_mask("/World/SO101",leaf_paths=True))
+        # Stage handoff to a dedicated fixed placement sensor. The scene
+        # tracker remains at its recovery view, while the placement observer
+        # gets its own render-pose/freshness sequence and robot mask.
+        placement_camera = cameras.get("placement", cameras["scene"])
+        for _ in range(8):
+            advance_observation_frame()
+        place_scene = IsaacSceneCamera(placement_camera,T_base_world=np.eye(4),advance_frame=advance_observation_frame,
+            robot_mask_provider=lambda:placement_camera.instance_mask(robot_config()["usd_prim_path"],leaf_paths=True))
         try:
             place_result = run_place_after_grasp(result=result,initial_observation=initial_observation,
                 initial_mask=initial_mask,target=target,camera=camera,scene=place_scene,executor=executor,
                 gripper=gripper,port=ARGS.locator_port,label=ARGS.place_label,relation=ARGS.place_relation,
-                output=OUTPUT/"place",trace=trace_event,stable_base_asserted=CASE.shape=="cube",
+                output=OUTPUT/"place",trace=trace_event,stable_base_asserted=CASE.shape in {"cube","cylinder"},
                 grasp_attachment_ee=grasp_attachment_ee,graspgenx_port=ARGS.graspgenx_port,
-                place_backend=ARGS.place_backend,anyplace_url=ARGS.anyplace_url,settings=place_settings)
+                place_backend=ARGS.place_backend,anyplace_url=ARGS.anyplace_url,
+                m2t2_url=ARGS.m2t2_url,m2t2_surface_range_m=ARGS.m2t2_surface_range_m,
+                m2t2_scene_radius_m=ARGS.m2t2_scene_radius_m,settings=place_settings,
+                anyplace_init_current_orientation=ARGS.anyplace_init_current_orientation)
         except Exception as exc:
             executor.stop()
             place_result = PlaceResult(False,"handoff","isaac-fine-place",
@@ -711,7 +764,8 @@ def main() -> int:
             "grasp_source_sha256":report["provenance"]["source_sha256"],
             "destination_label":ARGS.place_label,"relation":ARGS.place_relation,
             "settings":_jsonable(place_settings),
-            "fixture":{"kind":ARGS.place_fixture,"x":ARGS.place_fixture_x,"y":ARGS.place_fixture_y},
+            "fixture":{"kind":ARGS.place_fixture,"x":ARGS.place_fixture_x,"y":ARGS.place_fixture_y,
+                       "clutter":ARGS.place_clutter},
             "simulation_truth_is_control_input":False,
         }
         (OUTPUT/"place_report.json").write_text(json.dumps(placement_report,indent=2),encoding="utf-8")

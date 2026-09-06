@@ -1,0 +1,180 @@
+{
+  "protocol": 1,
+  "purpose": "complex_task_capability_audit",
+  "robot": "franka",
+  "contact_material": "profile",
+  "cases": [
+    {
+      "name": "01_m2t2_socket_insert",
+      "object": {
+        "name": "cube_default",
+        "shape": "cube",
+        "dimensions_m": [
+          0.036,
+          0.036,
+          0.036
+        ],
+        "position_m": [
+          0.324,
+          -0.198,
+          1.068
+        ],
+        "seed": 0,
+        "yaw_deg": 0.0,
+        "mass_kg": 0.035,
+        "color_rgb": [
+          0.85,
+          0.12,
+          0.08
+        ],
+        "material": "matte",
+        "fragile": false,
+        "thin": false,
+        "reflective": false,
+        "expected_feasible": true,
+        "mesh_path": null,
+        "light_scale": 1.0,
+        "metadata": {}
+      },
+      "label": "red cube",
+      "place_backend": "m2t2",
+      "grasp_backend": "m2t2",
+      "fixture": "socket",
+      "relation": "insert",
+      "destination": "blue socket",
+      "x": 0.25,
+      "y": -0.198,
+      "init_current_orientation": false,
+      "clutter": 0
+    },
+    {
+      "name": "02_anyplace_socket_insert",
+      "object": {
+        "name": "cube_default",
+        "shape": "cube",
+        "dimensions_m": [
+          0.036,
+          0.036,
+          0.036
+        ],
+        "position_m": [
+          0.324,
+          -0.198,
+          1.068
+        ],
+        "seed": 0,
+        "yaw_deg": 0.0,
+        "mass_kg": 0.035,
+        "color_rgb": [
+          0.85,
+          0.12,
+          0.08
+        ],
+        "material": "matte",
+        "fragile": false,
+        "thin": false,
+        "reflective": false,
+        "expected_feasible": true,
+        "mesh_path": null,
+        "light_scale": 1.0,
+        "metadata": {}
+      },
+      "label": "red cube",
+      "place_backend": "anyplace",
+      "grasp_backend": "graspgenx",
+      "fixture": "socket",
+      "relation": "insert",
+      "destination": "blue socket",
+      "x": 0.25,
+      "y": -0.198,
+      "init_current_orientation": true,
+      "clutter": 1
+    },
+    {
+      "name": "03_m2t2_rack_hang",
+      "object": {
+        "name": "cube_default",
+        "shape": "cube",
+        "dimensions_m": [
+          0.036,
+          0.036,
+          0.036
+        ],
+        "position_m": [
+          0.324,
+          -0.198,
+          1.068
+        ],
+        "seed": 0,
+        "yaw_deg": 0.0,
+        "mass_kg": 0.035,
+        "color_rgb": [
+          0.85,
+          0.12,
+          0.08
+        ],
+        "material": "matte",
+        "fragile": false,
+        "thin": false,
+        "reflective": false,
+        "expected_feasible": true,
+        "mesh_path": null,
+        "light_scale": 1.0,
+        "metadata": {}
+      },
+      "label": "red cube",
+      "place_backend": "m2t2",
+      "grasp_backend": "m2t2",
+      "fixture": "rack",
+      "relation": "hang",
+      "destination": "blue rack",
+      "x": 0.25,
+      "y": -0.198,
+      "init_current_orientation": false,
+      "clutter": 1
+    },
+    {
+      "name": "04_anyplace_rack_hang",
+      "object": {
+        "name": "cube_default",
+        "shape": "cube",
+        "dimensions_m": [
+          0.036,
+          0.036,
+          0.036
+        ],
+        "position_m": [
+          0.324,
+          -0.198,
+          1.068
+        ],
+        "seed": 0,
+        "yaw_deg": 0.0,
+        "mass_kg": 0.035,
+        "color_rgb": [
+          0.85,
+          0.12,
+          0.08
+        ],
+        "material": "matte",
+        "fragile": false,
+        "thin": false,
+        "reflective": false,
+        "expected_feasible": true,
+        "mesh_path": null,
+        "light_scale": 1.0,
+        "metadata": {}
+      },
+      "label": "red cube",
+      "place_backend": "anyplace",
+      "grasp_backend": "graspgenx",
+      "fixture": "rack",
+      "relation": "hang",
+      "destination": "blue rack",
+      "x": 0.25,
+      "y": -0.198,
+      "init_current_orientation": true,
+      "clutter": 2
+    }
+  ]
+}
