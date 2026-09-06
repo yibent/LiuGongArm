@@ -8,6 +8,8 @@ from argparse import Namespace
 
 import numpy as np
 from mr_liu.arena.arrays import numpy_data
+from mr_liu.arena.entities import scene_entities
+from mr_liu.arena.evaluation import support_metrics
 from scipy.spatial.transform import Rotation
 
 import isaaclab.sim as sim
@@ -48,37 +50,43 @@ class PandaTask(NoTask):
         return ViewerCfg(eye=(1.3, 1.2, 1.1), lookat=(.4, 0., .05))
 
     def support_contact(self, env, name, destination):
-        sensor = env.scene[f"{name}_{destination['name']}_contact"]
-        forces = numpy_data(sensor.data.force_matrix_w)
-        return bool(np.any(np.linalg.norm(forces, axis=-1) > 0.))
+        return bool(np.linalg.norm(self.support_force(env, name, destination)) > 0.)
+
+    def support_force(self, env, name, destination):
+        sensor = env.scene[f"{name}_support_contact"]
+        index = self.contact_targets[name].index(destination['name'])
+        return numpy_data(sensor.data.force_matrix_w)[0, 0, index]
 
     def evaluate(self, env, name, initial_z, destination, *, released, max_lift, stability):
         body = env.scene[name]
         position = numpy_data(body.data.root_pos_w)[0]
         velocity = numpy_data(body.data.root_lin_vel_w)[0]
-        xy_error = None
-        supported = False
+        support = {'destination_xy_error_m': None, 'supported_region': False, 'support_linear_speed_mps': 0.}
         support_gap = None
         if destination is not None:
-            xy_error = float(np.linalg.norm(position[:2] - np.asarray(destination["position"])[:2]))
-            half = np.asarray(destination["size"])[:2] / 2
+            base = env.scene[destination['name']].data
+            support_position = numpy_data(base.root_pos_w)[0]
+            support_rotation = Rotation.from_quat(numpy_data(base.root_quat_w)[0]).as_matrix()
+            support = support_metrics(position, support_position, self.support_force(env, name, destination),
+                                      numpy_data(base.root_lin_vel_w)[0])
             size = np.asarray(self.object_sizes[name])
             rotation = Rotation.from_quat(numpy_data(body.data.root_quat_w)[0]).as_matrix()
             world_half = np.abs(rotation) @ (size / 2)
-            support_gap = float(position[2] - world_half[2] - destination["position"][2] - destination["size"][2] / 2)
-            supported = bool(np.all(np.abs(position[:2] - np.asarray(destination["position"])[:2]) + world_half[:2] < half)
-                             and abs(support_gap) < .006)
+            support_half = np.abs(support_rotation) @ (np.asarray(destination['size']) / 2)
+            # Bounding-box gap is diagnostic only; contact determines support.
+            support_gap = float(position[2] - world_half[2] - support_position[2] - support_half[2])
         robot = env.scene["robot"]
         finger_ids, _ = robot.find_joints("panda_finger_joint.*")
         opening = float(numpy_data(robot.data.joint_pos)[0, finger_ids].sum())
         tcp = numpy_data(env.scene["ee_frame"].data.target_pos_w)[0, 0]
         released = bool(released and opening > .065 and np.linalg.norm(tcp - position) > .08)
         lifted = max_lift >= .04
-        success = bool(lifted and (released and supported and stability < .003 and np.linalg.norm(velocity) < .03
+        success = bool(lifted and (released and support['supported_region'] and stability < .003
+                                   and np.linalg.norm(velocity) < .03 and support['support_linear_speed_mps'] < .03
                                    if destination is not None else position[2] - initial_z > .04))
         return {"physical_success": success, "lifted": bool(lifted), "released": bool(released),
                 "max_lift_m": float(max_lift), "final_position_world_m": position.tolist(),
-                "destination_xy_error_m": xy_error, "supported_region": supported,
+                **support,
                 "support_gap_m": support_gap, "gripper_opening_m": opening,
                 "settle_displacement_m": float(stability), "linear_speed_mps": float(np.linalg.norm(velocity)),
                 "evaluation_source": "arena_task_simulation_ground_truth"}
@@ -125,7 +133,7 @@ def build_environment(config, *, device="cuda:0"):
     embodiment.action_config.arm_action.scale = 1.
     embodiment.action_config.arm_action.body_offset.pos = [0., 0., .1034]
     assets = []
-    for row in config["objects"] + config["destinations"]:
+    for row in scene_entities(config):
         dynamic = row in config["objects"]
         shape = dict(
             activate_contact_sensors=True,
@@ -152,13 +160,15 @@ def build_environment(config, *, device="cuda:0"):
     ]
     task = PandaTask()
     task.object_sizes = {row["name"]: row["size"] for row in config["objects"]}
+    task.contact_targets = {row['name']: [other['name'] for other in scene_entities(config)
+                            if other['name'] != row['name']] for row in config['objects']}
 
     def configure(cfg):
         for obj in config["objects"]:
-            for destination in config["destinations"]:
-                setattr(cfg.scene, f"{obj['name']}_{destination['name']}_contact", ContactSensorCfg(
-                    prim_path="{ENV_REGEX_NS}/" + obj["name"],
-                    filter_prim_paths_expr=["{ENV_REGEX_NS}/" + destination["name"]], update_period=0.))
+            setattr(cfg.scene, f"{obj['name']}_support_contact", ContactSensorCfg(
+                prim_path="{ENV_REGEX_NS}/" + obj["name"],
+                filter_prim_paths_expr=["{ENV_REGEX_NS}/" + name for name in task.contact_targets[obj['name']]],
+                update_period=0.))
         width, height = config["camera"]["width"], config["camera"]["height"]
         camera = config["camera"]
         for name in ("scene", "side"):

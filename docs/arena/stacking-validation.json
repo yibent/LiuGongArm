@@ -1,0 +1,498 @@
+{
+  "date": "2026-09-06",
+  "transport": "BusAgent WebSocket /v1/stt user.text -> instruction.parsed -> pick_place -> Arena result -> dialogue reply",
+  "scene_reset_between_tasks": false,
+  "initial_objects": [
+    {
+      "name": "red_block",
+      "label": "red block",
+      "aliases": [
+        "red cube",
+        "红色方块",
+        "红方块"
+      ],
+      "shape": "cuboid",
+      "size": [
+        0.045,
+        0.045,
+        0.045
+      ],
+      "position": [
+        0.48,
+        -0.12,
+        0.025
+      ],
+      "color": [
+        0.8,
+        0.05,
+        0.025
+      ],
+      "mass": 0.06
+    },
+    {
+      "name": "yellow_cylinder",
+      "label": "yellow cylinder",
+      "aliases": [
+        "黄色圆柱",
+        "圆柱"
+      ],
+      "shape": "cylinder",
+      "size": [
+        0.04,
+        0.04,
+        0.05
+      ],
+      "position": [
+        0.57,
+        -0.18,
+        0.028
+      ],
+      "color": [
+        0.9,
+        0.65,
+        0.025
+      ],
+      "mass": 0.06
+    }
+  ],
+  "tests": {
+    "python_selected": 33,
+    "busagent_backend": 207,
+    "busagent_backend_build": "passed"
+  },
+  "tasks": [
+    {
+      "instruction": "把黄色圆柱放到蓝色区域",
+      "events": [
+        {
+          "event": "instruction.parsed",
+          "payload": {
+            "intent": "pick_place",
+            "target": {
+              "category": "cylinder",
+              "attributes": {
+                "color": "yellow"
+              },
+              "spatial_ref": null,
+              "ordinal": null,
+              "quantity": 1
+            },
+            "destination": {
+              "type": "named_region",
+              "label": "blue pad"
+            },
+            "constraints": {
+              "order": null,
+              "avoid": []
+            },
+            "needs_clarification": false,
+            "clarification_question": null,
+            "source_text": "把黄色圆柱放到蓝色区域",
+            "manipulation": {
+              "mode": "auto"
+            }
+          },
+          "task_id": "task_evt_0da6fda2-3b8b-4c1a-a178-c4747612708a",
+          "elapsed_ms": 1603
+        },
+        {
+          "event": "execution.started",
+          "payload": {
+            "skill": "pick_place",
+            "params": {
+              "target": {
+                "category": "cylinder",
+                "attributes": {
+                  "color": "yellow"
+                },
+                "spatial_ref": null,
+                "ordinal": null,
+                "quantity": 1
+              },
+              "destination": {
+                "type": "named_region",
+                "label": "blue pad"
+              },
+              "mode": "auto"
+            },
+            "step_id": 1,
+            "command_id": "evt_54f9a096-f640-485d-8049-40b3fdde28f1:1",
+            "message": "Arena executing"
+          },
+          "task_id": "task_evt_0da6fda2-3b8b-4c1a-a178-c4747612708a",
+          "elapsed_ms": 1831
+        },
+        {
+          "event": "execution.completed",
+          "payload": {
+            "skill": "pick_place",
+            "step_id": 1,
+            "command_id": "evt_54f9a096-f640-485d-8049-40b3fdde28f1:1",
+            "message": "Physical task verified",
+            "result": {
+              "ok": true,
+              "evaluation": {
+                "physical_success": true,
+                "lifted": true,
+                "released": true,
+                "max_lift_m": 0.15017060190439224,
+                "final_position_world_m": [
+                  0.4583880305290222,
+                  0.20056508481502533,
+                  0.04100000858306885
+                ],
+                "destination_xy_error_m": 0.0017081539845094085,
+                "destination_position_world_m": [
+                  0.46000000834465027,
+                  0.20000000298023224,
+                  0.00800000037997961
+                ],
+                "support_contact": true,
+                "support_force_world_n": [
+                  -8.816287788704358e-08,
+                  6.650277839526098e-08,
+                  0.5886656641960144
+                ],
+                "supported_region": true,
+                "support_linear_speed_mps": 0,
+                "support_gap_m": -2.4343054280673293e-08,
+                "gripper_opening_m": 0.07999998331069946,
+                "settle_displacement_m": 8.0331633436858e-08,
+                "linear_speed_mps": 9.293002221966162e-05,
+                "evaluation_source": "arena_task_simulation_ground_truth"
+              },
+              "route": {
+                "decision": "busagent",
+                "grasp": "official_pick_place",
+                "placement": "official_pick_place",
+                "execution": "isaaclab_arena.franka_ik",
+                "robot": "franka_panda"
+              },
+              "attempts": [
+                {
+                  "backend": "official_pick_place",
+                  "ok": true,
+                  "elapsed_s": 21.006983015686274
+                }
+              ],
+              "fallback_used": false,
+              "message": "Physical task verified",
+              "state": "completed",
+              "command_id": "evt_54f9a096-f640-485d-8049-40b3fdde28f1:1",
+              "skill": "pick_place",
+              "elapsed_s": 21.008124351501465,
+              "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-210036-766b37fd"
+            }
+          },
+          "task_id": "task_evt_0da6fda2-3b8b-4c1a-a178-c4747612708a",
+          "elapsed_ms": 22718
+        }
+      ],
+      "replies": [
+        {
+          "text": "正在理解任务。",
+          "elapsed_ms": 445
+        },
+        {
+          "text": "已开始执行，正前往抓取黄色圆柱。",
+          "elapsed_ms": 2087
+        },
+        {
+          "text": "正在稳定夹持黄色圆柱，准备移向蓝色区域。",
+          "elapsed_ms": 8492
+        },
+        {
+          "text": "正在将黄色圆柱运送到蓝色区域。",
+          "elapsed_ms": 14265
+        },
+        {
+          "text": "正在退回到安全位置。",
+          "elapsed_ms": 20489
+        },
+        {
+          "text": "抓取与放置完成，物理验证通过。",
+          "elapsed_ms": 22723
+        }
+      ],
+      "result": {
+        "command_id": "evt_54f9a096-f640-485d-8049-40b3fdde28f1:1",
+        "ok": true,
+        "state": "completed",
+        "skill": "pick_place",
+        "elapsed_s": 21.008124351501465,
+        "evaluation": {
+          "physical_success": true,
+          "lifted": true,
+          "released": true,
+          "max_lift_m": 0.15017060190439224,
+          "final_position_world_m": [
+            0.4583880305290222,
+            0.20056508481502533,
+            0.04100000858306885
+          ],
+          "destination_xy_error_m": 0.0017081539845094085,
+          "destination_position_world_m": [
+            0.46000000834465027,
+            0.20000000298023224,
+            0.00800000037997961
+          ],
+          "support_contact": true,
+          "support_force_world_n": [
+            -8.816287788704358e-08,
+            6.650277839526098e-08,
+            0.5886656641960144
+          ],
+          "supported_region": true,
+          "support_linear_speed_mps": 0,
+          "support_gap_m": -2.4343054280673293e-08,
+          "gripper_opening_m": 0.07999998331069946,
+          "settle_displacement_m": 8.0331633436858e-08,
+          "linear_speed_mps": 9.293002221966162e-05,
+          "evaluation_source": "arena_task_simulation_ground_truth"
+        },
+        "route": {
+          "decision": "busagent",
+          "grasp": "official_pick_place",
+          "placement": "official_pick_place",
+          "execution": "isaaclab_arena.franka_ik",
+          "robot": "franka_panda"
+        },
+        "attempts": [
+          {
+            "backend": "official_pick_place",
+            "ok": true,
+            "elapsed_s": 21.006983015686274
+          }
+        ],
+        "fallback_used": false,
+        "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-210036-766b37fd"
+      },
+      "vision_models_observed": [
+        "lk",
+        "sam2_tiny",
+        "sam3",
+        "yoloe"
+      ],
+      "vision_request_count": 52
+    },
+    {
+      "instruction": "把红色方块放到黄色柱子上",
+      "events": [
+        {
+          "event": "instruction.parsed",
+          "payload": {
+            "intent": "pick_place",
+            "target": {
+              "category": "block",
+              "attributes": {
+                "color": "red"
+              },
+              "spatial_ref": null,
+              "ordinal": null,
+              "quantity": 1
+            },
+            "destination": {
+              "type": "named_region",
+              "label": "yellow cylinder"
+            },
+            "constraints": {
+              "order": null,
+              "avoid": []
+            },
+            "needs_clarification": false,
+            "clarification_question": null,
+            "source_text": "把红色方块放到黄色柱子上",
+            "manipulation": {
+              "mode": "auto"
+            }
+          },
+          "task_id": "task_evt_93210c2c-8386-4e43-852d-8fd9dd26ab95",
+          "elapsed_ms": 2454
+        },
+        {
+          "event": "execution.started",
+          "payload": {
+            "skill": "pick_place",
+            "params": {
+              "target": {
+                "category": "block",
+                "attributes": {
+                  "color": "red"
+                },
+                "spatial_ref": null,
+                "ordinal": null,
+                "quantity": 1
+              },
+              "destination": {
+                "type": "named_region",
+                "label": "yellow cylinder"
+              },
+              "mode": "auto"
+            },
+            "step_id": 1,
+            "command_id": "evt_78631577-ab39-4915-b49f-0323a1ac6264:1",
+            "message": "Arena executing"
+          },
+          "task_id": "task_evt_93210c2c-8386-4e43-852d-8fd9dd26ab95",
+          "elapsed_ms": 2657
+        },
+        {
+          "event": "execution.completed",
+          "payload": {
+            "skill": "pick_place",
+            "step_id": 1,
+            "command_id": "evt_78631577-ab39-4915-b49f-0323a1ac6264:1",
+            "message": "Physical task verified",
+            "result": {
+              "ok": true,
+              "evaluation": {
+                "physical_success": true,
+                "lifted": true,
+                "released": true,
+                "max_lift_m": 0.20007627829909325,
+                "final_position_world_m": [
+                  0.4555630087852478,
+                  0.20200294256210327,
+                  0.08850014954805374
+                ],
+                "destination_xy_error_m": 0.00316983787342906,
+                "destination_position_world_m": [
+                  0.4583885669708252,
+                  0.20056624710559845,
+                  0.041000064462423325
+                ],
+                "support_contact": true,
+                "support_force_world_n": [
+                  2.489322696419549e-06,
+                  -3.702750518641551e-06,
+                  0.581188976764679
+                ],
+                "supported_region": true,
+                "support_linear_speed_mps": 0.0014151076320558786,
+                "support_gap_m": -2.6675478760791738e-06,
+                "gripper_opening_m": 0.07999995350837708,
+                "settle_displacement_m": 1.6412430086665368e-06,
+                "linear_speed_mps": 0.00333006982691586,
+                "evaluation_source": "arena_task_simulation_ground_truth"
+              },
+              "route": {
+                "decision": "busagent",
+                "grasp": "official_pick_place",
+                "placement": "official_pick_place",
+                "execution": "isaaclab_arena.franka_ik",
+                "robot": "franka_panda"
+              },
+              "attempts": [
+                {
+                  "backend": "official_pick_place",
+                  "ok": true,
+                  "elapsed_s": 19.73097695596516
+                }
+              ],
+              "fallback_used": false,
+              "message": "Physical task verified",
+              "state": "completed",
+              "command_id": "evt_78631577-ab39-4915-b49f-0323a1ac6264:1",
+              "skill": "pick_place",
+              "elapsed_s": 19.732325792312622,
+              "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-210103-6f6e150c"
+            }
+          },
+          "task_id": "task_evt_93210c2c-8386-4e43-852d-8fd9dd26ab95",
+          "elapsed_ms": 22351
+        }
+      ],
+      "replies": [
+        {
+          "text": "正在理解任务。",
+          "elapsed_ms": 371
+        },
+        {
+          "text": "已开始抓取红色方块，正前往黄色柱子。",
+          "elapsed_ms": 3052
+        },
+        {
+          "text": "正在靠近红色方块。",
+          "elapsed_ms": 9141
+        },
+        {
+          "text": "正在将红色方块运送到黄色柱子上方。",
+          "elapsed_ms": 15183
+        },
+        {
+          "text": "正在将红色方块放置到黄色柱子上。",
+          "elapsed_ms": 21399
+        },
+        {
+          "text": "抓取与放置完成，物理验证通过。",
+          "elapsed_ms": 22356
+        }
+      ],
+      "result": {
+        "command_id": "evt_78631577-ab39-4915-b49f-0323a1ac6264:1",
+        "ok": true,
+        "state": "completed",
+        "skill": "pick_place",
+        "elapsed_s": 19.732325792312622,
+        "evaluation": {
+          "physical_success": true,
+          "lifted": true,
+          "released": true,
+          "max_lift_m": 0.20007627829909325,
+          "final_position_world_m": [
+            0.4555630087852478,
+            0.20200294256210327,
+            0.08850014954805374
+          ],
+          "destination_xy_error_m": 0.00316983787342906,
+          "destination_position_world_m": [
+            0.4583885669708252,
+            0.20056624710559845,
+            0.041000064462423325
+          ],
+          "support_contact": true,
+          "support_force_world_n": [
+            2.489322696419549e-06,
+            -3.702750518641551e-06,
+            0.581188976764679
+          ],
+          "supported_region": true,
+          "support_linear_speed_mps": 0.0014151076320558786,
+          "support_gap_m": -2.6675478760791738e-06,
+          "gripper_opening_m": 0.07999995350837708,
+          "settle_displacement_m": 1.6412430086665368e-06,
+          "linear_speed_mps": 0.00333006982691586,
+          "evaluation_source": "arena_task_simulation_ground_truth"
+        },
+        "route": {
+          "decision": "busagent",
+          "grasp": "official_pick_place",
+          "placement": "official_pick_place",
+          "execution": "isaaclab_arena.franka_ik",
+          "robot": "franka_panda"
+        },
+        "attempts": [
+          {
+            "backend": "official_pick_place",
+            "ok": true,
+            "elapsed_s": 19.73097695596516
+          }
+        ],
+        "fallback_used": false,
+        "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-210103-6f6e150c"
+      },
+      "vision_models_observed": [
+        "lk",
+        "sam2_tiny",
+        "sam3",
+        "yoloe"
+      ],
+      "vision_request_count": 55
+    }
+  ],
+  "limits": [
+    "One sequential scene regression, not a success-rate or precision benchmark.",
+    "Vision models remain active on the fast motion route; no GraspGenX or AnyPlace call was needed.",
+    "Hanging, insertion and general collision-free motion planning are not implemented."
+  ]
+}

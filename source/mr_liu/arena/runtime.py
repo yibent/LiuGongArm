@@ -14,6 +14,7 @@ from scipy.spatial.transform import Rotation, Slerp
 import torch
 
 from mr_liu.arena.perception import PerceptionBridge
+from mr_liu.arena.entities import scene_entities, resolve_entity
 from mr_liu.vision.worker import VisionWorker
 from mr_liu.arena.cascade import run_cascade
 from mr_liu.arena.fast import fast_pick_place
@@ -62,12 +63,7 @@ class ArenaRuntime:
         return pose_matrix(numpy_data(data.root_pos_w)[0], numpy_data(data.root_quat_w)[0])
 
     def resolve(self, label, kind="objects"):
-        label = str(label).strip().lower().replace("_", " ")
-        matches = [row for row in self.config[kind] if label in
-                   [str(value).lower().replace("_", " ") for value in [row["name"], row["label"], *row.get("aliases", [])]]]
-        if len(matches) != 1:
-            raise ValueError(f"Task {kind} binding is unsupported or ambiguous: {label}. Configured {kind}: {[r['label'] for r in self.config[kind]]}. This is not a visual detection result.")
-        return matches[0]
+        return resolve_entity(self.config, label, graspable=kind == 'objects')
 
     def capabilities(self):
         return {"robot": "franka_panda", "execution": "isaaclab_arena.franka_ik",
@@ -81,7 +77,7 @@ class ArenaRuntime:
                     "slow_localizer": self.config['vision'].get('slow_localizer'),
                     "scene_description": "florence2", "planned_disabled": ["qwen_multimodal"]},
                 "frame": "world", "quaternion": "xyzw", "units": "metres",
-                "objects": self.config["objects"], "destinations": self.config["destinations"]}
+                "objects": self.config["objects"], "destinations": scene_entities(self.config)}
 
     def refresh_snapshot(self):
         robot = self.env.scene["robot"]
@@ -262,6 +258,8 @@ class ArenaRuntime:
             raise ValueError("A previous object may still be held; do not start another grasp")
         row = self.resolve(request.target)
         destination = self.resolve(request.destination, "destinations") if request.destination else None
+        if destination and destination['name'] == row['name']:
+            raise ValueError('抓取对象和支撑对象相同，请指定另一个放置对象。')
         self.target_name = row["name"]
         self.selected_target = row["label"]
         self.initial_z = float(self.object_pose(row["name"])[2, 3]); self.max_lift = 0.

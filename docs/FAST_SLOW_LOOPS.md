@@ -83,4 +83,6 @@ RGB、深度、掩码、裁剪与视觉嵌入留在本地。上层语言模型�
 
 实现细节与验证方式见 [Arena 图像链路](ARENA_VISION_PIPELINE.md)。运动环沿用现有 Panda 级联。任意新物体的视觉查询已与任务目录解绑，但可执行抓放与物理评测仍需要相应任务资产；悬挂、插入尚未接通。
 
+普通顶面堆放也优先快速运动环，支撑目标可以是当前场景中的可移动物体。已验证先移动黄色圆柱，再将红方块放到它上面；目标位置从当前观测获取，支撑关系由 Arena 接触传感器和释放后稳定性评测，取消仅蓝垫可放置和底面完全包含两条限制。见 [堆放验证](arena/stacking-validation.json)。
+
 官方能力依据：[YOLOE](https://docs.ultralytics.com/models/yoloe/)、[SAM2 图像与视频接口](https://github.com/facebookresearch/sam2)、[SAM3 概念提示能力](https://ai.meta.com/sam3/)。
