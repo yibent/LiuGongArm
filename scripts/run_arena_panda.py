@@ -1,6 +1,7 @@
 """Run the Arena Panda service or a bounded physical smoke test."""
 import argparse
 import json
+import os
 from pathlib import Path
 import sys
 import traceback
@@ -15,7 +16,7 @@ sys.path.insert(0, str(ROOT / "source"))
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("--config", type=Path, default=ROOT / "configs/arena_panda.json")
+parser.add_argument("--config", type=Path, default=Path(os.environ.get('ARENA_PANDA_CONFIG', ROOT / 'configs/arena_panda.json')))
 parser.add_argument("--output", type=Path, default=ROOT / "output/arena")
 parser.add_argument("--smoke", action="store_true")
 parser.add_argument("--smoke-fault", choices=["miss_grasp", "after_lift"],

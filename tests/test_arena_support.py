@@ -5,16 +5,14 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'source'))
-from mr_liu.arena.entities import scene_entities, resolve_entity
 from mr_liu.arena.evaluation import support_metrics
 
 
-def test_dynamic_objects_are_placement_targets_without_duplicating_config():
+def test_scene_construction_needs_no_semantic_target_catalogue():
     config = json.loads((ROOT/'configs/arena_panda.json').read_text())
-    assert {row['name'] for row in scene_entities(config)} == {'red_block', 'yellow_cylinder', 'blue_pad'}
-    assert resolve_entity(config, 'yellow cylinder')['name'] == 'yellow_cylinder'
-    assert resolve_entity(config, '红色方块')['name'] == 'red_block'
-    assert resolve_entity(config, 'blue pad')['name'] == 'blue_pad'
+    assert 'objects' not in config and 'destinations' not in config
+    assert all('label' not in row and 'aliases' not in row for row in config['entities'])
+    assert {row['name'] for row in config['entities']} == {'part_01', 'part_02', 'surface_01'}
 
 
 def test_overhanging_cube_supported_by_smaller_cylinder_is_not_rejected():

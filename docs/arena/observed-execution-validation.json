@@ -1,0 +1,2050 @@
+{
+  "date": "2026-09-06",
+  "scope": "Live Isaac/Arena HTTP execution; BusAgent unchanged. Limited scene regression, not a general manipulation success-rate benchmark.",
+  "scene": "configs/arena_panda_generalization.json",
+  "configuration": {
+    "labels_or_aliases": false,
+    "semantic_asset_catalogue": false,
+    "new_object_query": "green object",
+    "query_in_inventory_vocabulary": false
+  },
+  "python_tests_passed": 38,
+  "runs": {
+    "holding_red": {
+      "passed": true,
+      "target": "red cube",
+      "destination": "blue pad",
+      "commands": [
+        {
+          "command_id": "holding-test-96026dfaefc2448682390953815f92ad",
+          "skill": "place_held",
+          "ok": false,
+          "state": "failed",
+          "message": "当前没有确认仍在夹爪中的物体，未执行放置。",
+          "elapsed_s": 0.001102447509765625,
+          "held_object": null,
+          "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-213252-41b866f4",
+          "events": []
+        },
+        {
+          "command_id": "holding-test-6170a144f05a43d08b8a2a6f758e8d37",
+          "skill": "grasp",
+          "ok": true,
+          "state": "completed",
+          "message": "Physical task verified",
+          "elapsed_s": 8.982572078704834,
+          "route": {
+            "decision": "busagent",
+            "grasp": "official_pick_place",
+            "placement": null,
+            "execution": "isaaclab_arena.franka_ik",
+            "robot": "franka_panda"
+          },
+          "evaluation": {
+            "physical_success": true,
+            "lifted": true,
+            "released": false,
+            "max_lift_m": 0.10915928706526756,
+            "final_position_world_m": [
+              0.47971871495246887,
+              -0.12116997689008713,
+              0.13165929913520813
+            ],
+            "destination_xy_error_m": null,
+            "supported_region": false,
+            "support_linear_speed_mps": 0.0,
+            "support_gap_m": null,
+            "gripper_opening_m": 0.04504867643117905,
+            "settle_displacement_m": 0.0,
+            "linear_speed_mps": 0.14732016623020172,
+            "evaluation_source": "arena_task_simulation_ground_truth"
+          },
+          "attempts": [
+            {
+              "backend": "official_pick_place",
+              "ok": true,
+              "elapsed_s": 8.98035397566855
+            }
+          ],
+          "fallback_used": false,
+          "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-213253-243d7078",
+          "events": [
+            {
+              "phase": "attempt_started",
+              "sequence": 348,
+              "time": 1788701573.2545156,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "instance_observed",
+              "sequence": 362,
+              "time": 1788701574.0913746,
+              "label": "red cube",
+              "instance_id": "part_01",
+              "observation_ref": "49e0ff983fd1463ab3b126b28a6719bd",
+              "witness_votes": {
+                "part_01": 1753
+              },
+              "association_source": "model_mask_to_rendered_physical_instance"
+            },
+            {
+              "phase": "planning",
+              "sequence": 362,
+              "time": 1788701574.0933158,
+              "route": {
+                "decision": "busagent",
+                "grasp": "official_pick_place",
+                "placement": null,
+                "execution": "isaaclab_arena.franka_ik",
+                "robot": "franka_panda"
+              },
+              "object_points": 1740,
+              "algorithm": "isaacsim PickPlaceController / Arena IK"
+            },
+            {
+              "phase": "pregrasp",
+              "sequence": 362,
+              "time": 1788701574.0941281,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "approach",
+              "sequence": 422,
+              "time": 1788701576.5405388,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "close_gripper",
+              "sequence": 480,
+              "time": 1788701578.9985008,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "lift",
+              "sequence": 505,
+              "time": 1788701580.225652,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "attempt_finished",
+              "sequence": 555,
+              "time": 1788701582.2348661,
+              "backend": "official_pick_place",
+              "ok": true,
+              "elapsed_s": 8.98035397566855
+            }
+          ]
+        },
+        {
+          "command_id": "holding-test-0143ebd5d3d34e16bb948e8b62917ab4",
+          "skill": "place_held",
+          "ok": false,
+          "state": "failed",
+          "message": "本次画面未找到目标：purple flying elephant",
+          "elapsed_s": 0.7281770706176758,
+          "held_object": "part_01",
+          "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-213302-7a39a850",
+          "events": []
+        },
+        {
+          "command_id": "holding-test-e7858396273b47398e8a7dc1e1dc61ec",
+          "skill": "place_held",
+          "ok": true,
+          "state": "completed",
+          "message": "Physical placement verified",
+          "elapsed_s": 12.023242473602295,
+          "route": {
+            "decision": "busagent",
+            "grasp": "retained_from_previous_command",
+            "placement": "official_pick_place",
+            "execution": "isaaclab_arena.franka_ik",
+            "robot": "franka_panda"
+          },
+          "evaluation": {
+            "physical_success": true,
+            "lifted": true,
+            "released": true,
+            "max_lift_m": 0.1456468515098095,
+            "final_position_world_m": [
+              0.4506922960281372,
+              0.19945916533470154,
+              0.03850001096725464
+            ],
+            "destination_xy_error_m": 0.00932341255247593,
+            "destination_position_world_m": [
+              0.46000000834465027,
+              0.20000000298023224,
+              0.00800000037997961
+            ],
+            "support_contact": true,
+            "support_force_world_n": [
+              0.0,
+              0.0,
+              0.5885987877845764
+            ],
+            "supported_region": true,
+            "support_linear_speed_mps": 0.0,
+            "support_gap_m": null,
+            "gripper_opening_m": 0.07999996095895767,
+            "settle_displacement_m": 3.332000937312528e-08,
+            "linear_speed_mps": 8.855542546370998e-05,
+            "evaluation_source": "arena_task_simulation_ground_truth"
+          },
+          "attempts": [
+            {
+              "backend": "official_pick_place",
+              "ok": true,
+              "elapsed_s": 11.277980037033558
+            }
+          ],
+          "fallback_used": false,
+          "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-213303-236504e4",
+          "events": [
+            {
+              "phase": "instance_observed",
+              "sequence": 587,
+              "time": 1788701583.962645,
+              "label": "blue pad",
+              "instance_id": "surface_01",
+              "observation_ref": "739fc91f4bdc48a4957da493553a3fdc",
+              "witness_votes": {
+                "surface_01": 15029
+              },
+              "association_source": "model_mask_to_rendered_physical_instance"
+            },
+            {
+              "phase": "holding_resumed",
+              "sequence": 587,
+              "time": 1788701583.964829,
+              "instance_id": "part_01",
+              "label": "red cube",
+              "grasp_command_id": "holding-test-6170a144f05a43d08b8a2a6f758e8d37",
+              "initial_z": 0.022500012069940567,
+              "max_lift_m": 0.10915928706526756,
+              "tcp_to_object_at_grasp": [
+                [
+                  0.9999622203006947,
+                  0.0003858987408869175,
+                  0.008683838636620277,
+                  -0.002157150277664277
+                ],
+                [
+                  0.00037329761813637816,
+                  -0.9999988751920743,
+                  0.0014526745933698987,
+                  1.8268649513708546e-05
+                ],
+                [
+                  0.008684389454266254,
+                  -0.0014493780554812412,
+                  -0.9999612395903449,
+                  0.006870914080186891
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "verified": true,
+              "gripper_opening_m": 0.04504850506782532,
+              "relative_translation_drift_m": 2.4018902208976185e-06
+            },
+            {
+              "phase": "attempt_started",
+              "sequence": 587,
+              "time": 1788701583.9670823,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "planning",
+              "sequence": 602,
+              "time": 1788701584.8522139,
+              "route": {
+                "decision": "busagent",
+                "grasp": "retained_from_previous_command",
+                "placement": "official_pick_place",
+                "execution": "isaaclab_arena.franka_ik",
+                "robot": "franka_panda"
+              },
+              "algorithm": "isaacsim PickPlaceController transport/release/retreat",
+              "object_points": 10564
+            },
+            {
+              "phase": "transport",
+              "sequence": 602,
+              "time": 1788701584.854217,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "place_approach",
+              "sequence": 683,
+              "time": 1788701588.3666534,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "release",
+              "sequence": 733,
+              "time": 1788701590.5084643,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "retreat",
+              "sequence": 758,
+              "time": 1788701591.667545,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "attempt_finished",
+              "sequence": 844,
+              "time": 1788701595.2450645,
+              "backend": "official_pick_place",
+              "ok": true,
+              "elapsed_s": 11.277980037033558
+            }
+          ]
+        }
+      ]
+    },
+    "holding_green": {
+      "passed": true,
+      "target": "green object",
+      "destination": "yellow cylinder",
+      "commands": [
+        {
+          "command_id": "holding-test-5440a7397ad443998639ec3cdfb24f4b",
+          "skill": "place_held",
+          "ok": false,
+          "state": "failed",
+          "message": "当前没有确认仍在夹爪中的物体，未执行放置。",
+          "elapsed_s": 0.0011179447174072266,
+          "held_object": null,
+          "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-213439-eb633b52",
+          "events": []
+        },
+        {
+          "command_id": "holding-test-657f008e2e48485cb7b411475e87bf10",
+          "skill": "grasp",
+          "ok": true,
+          "state": "completed",
+          "message": "Physical task verified",
+          "elapsed_s": 8.985811233520508,
+          "route": {
+            "decision": "busagent",
+            "grasp": "official_pick_place",
+            "placement": null,
+            "execution": "isaaclab_arena.franka_ik",
+            "robot": "franka_panda"
+          },
+          "evaluation": {
+            "physical_success": true,
+            "lifted": true,
+            "released": false,
+            "max_lift_m": 0.10800773091614246,
+            "final_position_world_m": [
+              0.6004079580307007,
+              0.044376399368047714,
+              0.12400773167610168
+            ],
+            "destination_xy_error_m": null,
+            "supported_region": false,
+            "support_linear_speed_mps": 0.0,
+            "support_gap_m": null,
+            "gripper_opening_m": 0.0541158989071846,
+            "settle_displacement_m": 0.0,
+            "linear_speed_mps": 0.15427063405513763,
+            "evaluation_source": "arena_task_simulation_ground_truth"
+          },
+          "attempts": [
+            {
+              "backend": "official_pick_place",
+              "ok": true,
+              "elapsed_s": 8.983476182445884
+            }
+          ],
+          "fallback_used": false,
+          "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-213439-22fd6893",
+          "events": [
+            {
+              "phase": "attempt_started",
+              "sequence": 2916,
+              "time": 1788701679.8830714,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "instance_observed",
+              "sequence": 2936,
+              "time": 1788701680.878234,
+              "label": "green object",
+              "instance_id": "part_03",
+              "observation_ref": "9017579cf4794aee8e82ff8745a20722",
+              "witness_votes": {
+                "floor": 5,
+                "part_03": 1429
+              },
+              "association_source": "model_mask_to_rendered_physical_instance"
+            },
+            {
+              "phase": "planning",
+              "sequence": 2936,
+              "time": 1788701680.8802848,
+              "route": {
+                "decision": "busagent",
+                "grasp": "official_pick_place",
+                "placement": null,
+                "execution": "isaaclab_arena.franka_ik",
+                "robot": "franka_panda"
+              },
+              "object_points": 1415,
+              "algorithm": "isaacsim PickPlaceController / Arena IK"
+            },
+            {
+              "phase": "pregrasp",
+              "sequence": 2936,
+              "time": 1788701680.881135,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "approach",
+              "sequence": 2996,
+              "time": 1788701683.326604,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "close_gripper",
+              "sequence": 3054,
+              "time": 1788701685.6609907,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "lift",
+              "sequence": 3079,
+              "time": 1788701686.8309216,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "attempt_finished",
+              "sequence": 3129,
+              "time": 1788701688.8665404,
+              "backend": "official_pick_place",
+              "ok": true,
+              "elapsed_s": 8.983476182445884
+            }
+          ]
+        },
+        {
+          "command_id": "holding-test-468ed083457d4a5aa4cb1ff187ef0757",
+          "skill": "place_held",
+          "ok": false,
+          "state": "failed",
+          "message": "本次画面未找到目标：purple flying elephant",
+          "elapsed_s": 0.83371901512146,
+          "held_object": "part_03",
+          "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-213449-82678e38",
+          "events": []
+        },
+        {
+          "command_id": "holding-test-be6791fd9d174ae9bb33e5ddd821ba9a",
+          "skill": "place_held",
+          "ok": true,
+          "state": "completed",
+          "message": "Physical placement verified",
+          "elapsed_s": 13.229486227035522,
+          "route": {
+            "decision": "busagent",
+            "grasp": "retained_from_previous_command",
+            "placement": "official_pick_place",
+            "execution": "isaaclab_arena.franka_ik",
+            "robot": "franka_panda"
+          },
+          "evaluation": {
+            "physical_success": true,
+            "lifted": true,
+            "released": true,
+            "max_lift_m": 0.18111011572182178,
+            "final_position_world_m": [
+              0.5656064748764038,
+              -0.17867128551006317,
+              0.06600016355514526
+            ],
+            "destination_xy_error_m": 0.004590150900185108,
+            "destination_position_world_m": [
+              0.5700002312660217,
+              -0.17999958992004395,
+              0.025000130757689476
+            ],
+            "support_contact": true,
+            "support_force_world_n": [
+              -3.337868577091285e-07,
+              -4.964008439856116e-06,
+              0.5896516442298889
+            ],
+            "supported_region": true,
+            "support_linear_speed_mps": 0.00038597427192144096,
+            "support_gap_m": null,
+            "gripper_opening_m": 0.0799999013543129,
+            "settle_displacement_m": 2.0942493995774354e-06,
+            "linear_speed_mps": 0.0012996698496863246,
+            "evaluation_source": "arena_task_simulation_ground_truth"
+          },
+          "attempts": [
+            {
+              "backend": "official_pick_place",
+              "ok": true,
+              "elapsed_s": 11.57936967164278
+            }
+          ],
+          "fallback_used": false,
+          "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-213450-29011070",
+          "events": [
+            {
+              "phase": "instance_observed",
+              "sequence": 3180,
+              "time": 1788701691.743189,
+              "label": "yellow cylinder",
+              "instance_id": "part_02",
+              "observation_ref": "3569b3787c2f4b8fad0611827e0be59a",
+              "witness_votes": {
+                "part_02": 1193,
+                "floor": 1
+              },
+              "association_source": "model_mask_to_rendered_physical_instance"
+            },
+            {
+              "phase": "holding_resumed",
+              "sequence": 3180,
+              "time": 1788701691.7462282,
+              "instance_id": "part_03",
+              "label": "green object",
+              "grasp_command_id": "holding-test-657f008e2e48485cb7b411475e87bf10",
+              "initial_z": 0.01600000075995922,
+              "max_lift_m": 0.10800773091614246,
+              "tcp_to_object_at_grasp": [
+                [
+                  0.9993630418148157,
+                  0.0005364597664349046,
+                  0.03568224860567909,
+                  -0.0013666331056955139
+                ],
+                [
+                  0.0004531195263644474,
+                  -0.999997150948385,
+                  0.002343667597416138,
+                  1.535698134054464e-05
+                ],
+                [
+                  0.035683404228483005,
+                  -0.002326006455568786,
+                  -0.9993604376583233,
+                  0.007288017875529407
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "verified": true,
+              "gripper_opening_m": 0.05409373715519905,
+              "relative_translation_drift_m": 2.5501171521534198e-05
+            },
+            {
+              "phase": "attempt_started",
+              "sequence": 3180,
+              "time": 1788701691.7489667,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "planning",
+              "sequence": 3196,
+              "time": 1788701692.581661,
+              "route": {
+                "decision": "busagent",
+                "grasp": "retained_from_previous_command",
+                "placement": "official_pick_place",
+                "execution": "isaaclab_arena.franka_ik",
+                "robot": "franka_panda"
+              },
+              "algorithm": "isaacsim PickPlaceController transport/release/retreat",
+              "object_points": 10795
+            },
+            {
+              "phase": "transport",
+              "sequence": 3196,
+              "time": 1788701692.5838695,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "place_approach",
+              "sequence": 3277,
+              "time": 1788701696.1015358,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "release",
+              "sequence": 3327,
+              "time": 1788701698.3535504,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "retreat",
+              "sequence": 3352,
+              "time": 1788701699.556378,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "attempt_finished",
+              "sequence": 3438,
+              "time": 1788701703.3283374,
+              "backend": "official_pick_place",
+              "ok": true,
+              "elapsed_s": 11.57936967164278
+            }
+          ]
+        }
+      ]
+    },
+    "observed-table": {
+      "command_id": "observed-test-0ceb629d9b034b1a9f49dfddd885e14d",
+      "skill": "pick_place",
+      "ok": true,
+      "state": "completed",
+      "message": "Physical task verified",
+      "elapsed_s": 21.264273166656494,
+      "route": {
+        "decision": "busagent",
+        "grasp": "official_pick_place",
+        "placement": "official_pick_place",
+        "execution": "isaaclab_arena.franka_ik",
+        "robot": "franka_panda"
+      },
+      "evaluation": {
+        "physical_success": true,
+        "lifted": true,
+        "released": true,
+        "max_lift_m": 0.14540225267410278,
+        "final_position_world_m": [
+          0.31891930103302,
+          0.01139853522181511,
+          0.022500012069940567
+        ],
+        "destination_xy_error_m": 0.022087691351771355,
+        "destination_position_world_m": [
+          0.30000001192092896,
+          0.0,
+          -0.019999999552965164
+        ],
+        "support_contact": true,
+        "support_force_world_n": [
+          0.0,
+          0.0,
+          0.5885998010635376
+        ],
+        "supported_region": true,
+        "support_linear_speed_mps": 0.0,
+        "support_gap_m": null,
+        "gripper_opening_m": 0.07999970018863678,
+        "settle_displacement_m": 1.862645149230957e-09,
+        "linear_speed_mps": 9.100366878556088e-05,
+        "evaluation_source": "arena_task_simulation_ground_truth"
+      },
+      "attempts": [
+        {
+          "backend": "official_pick_place",
+          "ok": true,
+          "elapsed_s": 21.26305692270398
+        }
+      ],
+      "fallback_used": false,
+      "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-213849-d619ef80",
+      "events": [
+        {
+          "phase": "attempt_started",
+          "sequence": 8936,
+          "time": 1788701929.3289735,
+          "backend": "official_pick_place"
+        },
+        {
+          "phase": "instance_observed",
+          "sequence": 8953,
+          "time": 1788701930.2051437,
+          "label": "red cube",
+          "instance_id": "part_01",
+          "observation_ref": "711cc56048534462abdf88a2a8ca46b5",
+          "witness_votes": {
+            "part_01": 1974
+          },
+          "association_source": "model_mask_to_rendered_physical_instance"
+        },
+        {
+          "phase": "instance_observed",
+          "sequence": 8968,
+          "time": 1788701931.623865,
+          "label": "table",
+          "instance_id": "floor",
+          "observation_ref": "efe4c1bb03284f95bd3c2b83c509c313",
+          "witness_votes": {
+            "floor": 461971,
+            "surface_01": 413
+          },
+          "association_source": "model_mask_to_rendered_physical_instance"
+        },
+        {
+          "phase": "planning",
+          "sequence": 8968,
+          "time": 1788701931.6271987,
+          "route": {
+            "decision": "busagent",
+            "grasp": "official_pick_place",
+            "placement": "official_pick_place",
+            "execution": "isaaclab_arena.franka_ik",
+            "robot": "franka_panda"
+          },
+          "object_points": 1972,
+          "algorithm": "isaacsim PickPlaceController / Arena IK"
+        },
+        {
+          "phase": "pregrasp",
+          "sequence": 8968,
+          "time": 1788701931.6281104,
+          "backend": "official_pick_place"
+        },
+        {
+          "phase": "approach",
+          "sequence": 9028,
+          "time": 1788701934.1937625,
+          "backend": "official_pick_place"
+        },
+        {
+          "phase": "close_gripper",
+          "sequence": 9086,
+          "time": 1788701936.6974616,
+          "backend": "official_pick_place"
+        },
+        {
+          "phase": "lift",
+          "sequence": 9111,
+          "time": 1788701937.8725111,
+          "backend": "official_pick_place"
+        },
+        {
+          "phase": "transport",
+          "sequence": 9161,
+          "time": 1788701940.0646002,
+          "backend": "official_pick_place"
+        },
+        {
+          "phase": "place_approach",
+          "sequence": 9242,
+          "time": 1788701943.5961576,
+          "backend": "official_pick_place"
+        },
+        {
+          "phase": "release",
+          "sequence": 9292,
+          "time": 1788701945.7581377,
+          "backend": "official_pick_place"
+        },
+        {
+          "phase": "retreat",
+          "sequence": 9317,
+          "time": 1788701946.9841926,
+          "backend": "official_pick_place"
+        },
+        {
+          "phase": "attempt_finished",
+          "sequence": 9403,
+          "time": 1788701950.5920322,
+          "backend": "official_pick_place",
+          "ok": true,
+          "elapsed_s": 21.26305692270398
+        }
+      ]
+    },
+    "model-held-grasp": {
+      "command_id": "observed-test-1446393757b746c69201e4d7ca38603b",
+      "skill": "grasp",
+      "ok": true,
+      "state": "completed",
+      "message": "Physical task verified",
+      "elapsed_s": 9.399967193603516,
+      "route": {
+        "decision": "busagent",
+        "grasp": "official_pick_place",
+        "placement": null,
+        "execution": "isaaclab_arena.franka_ik",
+        "robot": "franka_panda"
+      },
+      "evaluation": {
+        "physical_success": true,
+        "lifted": true,
+        "released": false,
+        "max_lift_m": 0.10819917358458042,
+        "final_position_world_m": [
+          0.6001421213150024,
+          0.044398996978998184,
+          0.12419917434453964
+        ],
+        "destination_xy_error_m": null,
+        "supported_region": false,
+        "support_linear_speed_mps": 0.0,
+        "support_gap_m": null,
+        "gripper_opening_m": 0.05404689162969589,
+        "settle_displacement_m": 0.0,
+        "linear_speed_mps": 0.1461155265569687,
+        "evaluation_source": "arena_task_simulation_ground_truth"
+      },
+      "attempts": [
+        {
+          "backend": "official_pick_place",
+          "ok": true,
+          "elapsed_s": 9.397626148536801
+        }
+      ],
+      "fallback_used": false,
+      "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-215057-58e43010",
+      "events": [
+        {
+          "phase": "attempt_started",
+          "sequence": 561,
+          "time": 1788702657.928664,
+          "backend": "official_pick_place"
+        },
+        {
+          "phase": "visual_relocalization",
+          "sequence": 578,
+          "time": 1788702658.7348363,
+          "reason": "不同视角定位到了不同实例，需要重新识别，不能合并这些点云。",
+          "previous_observation_ref": "f0f3f8a89a094ef6a5c938ebca80136b",
+          "provider": "sam3"
+        },
+        {
+          "phase": "instance_observed",
+          "sequence": 593,
+          "time": 1788702659.4030333,
+          "label": "green object",
+          "instance_id": "part_03",
+          "observation_ref": "09b45340c69441e1a9ea515c2b3dc98d",
+          "witness_votes": {
+            "floor": 3,
+            "part_03": 1416
+          },
+          "association_source": "model_mask_to_rendered_physical_instance"
+        },
+        {
+          "phase": "planning",
+          "sequence": 593,
+          "time": 1788702659.4061148,
+          "route": {
+            "decision": "busagent",
+            "grasp": "official_pick_place",
+            "placement": null,
+            "execution": "isaaclab_arena.franka_ik",
+            "robot": "franka_panda"
+          },
+          "object_points": 1400,
+          "algorithm": "isaacsim PickPlaceController / Arena IK"
+        },
+        {
+          "phase": "pregrasp",
+          "sequence": 593,
+          "time": 1788702659.4069245,
+          "backend": "official_pick_place"
+        },
+        {
+          "phase": "approach",
+          "sequence": 653,
+          "time": 1788702661.7387652,
+          "backend": "official_pick_place"
+        },
+        {
+          "phase": "close_gripper",
+          "sequence": 711,
+          "time": 1788702664.0018413,
+          "backend": "official_pick_place"
+        },
+        {
+          "phase": "lift",
+          "sequence": 736,
+          "time": 1788702665.2772322,
+          "backend": "official_pick_place"
+        },
+        {
+          "phase": "attempt_finished",
+          "sequence": 786,
+          "time": 1788702667.326286,
+          "backend": "official_pick_place",
+          "ok": true,
+          "elapsed_s": 9.397626148536801
+        }
+      ]
+    },
+    "model-held-place": {
+      "command_id": "observed-test-ce060cdeac414dbc8ac06d7a0feff3a9",
+      "skill": "place_held",
+      "ok": true,
+      "state": "completed",
+      "message": "Physical placement verified",
+      "elapsed_s": 23.713377714157104,
+      "route": {
+        "decision": "busagent",
+        "grasp": "retained_from_previous_command",
+        "placement": "anyplace",
+        "execution": "isaaclab_arena.franka_ik",
+        "robot": "franka_panda"
+      },
+      "evaluation": {
+        "physical_success": true,
+        "lifted": true,
+        "released": true,
+        "max_lift_m": 0.1364161390811205,
+        "final_position_world_m": [
+          0.4704214334487915,
+          0.197748601436615,
+          0.03200000151991844
+        ],
+        "destination_xy_error_m": 0.010661844164133072,
+        "destination_position_world_m": [
+          0.46000000834465027,
+          0.20000000298023224,
+          0.00800000037997961
+        ],
+        "support_contact": true,
+        "support_force_world_n": [
+          0.0,
+          0.0,
+          0.5885979533195496
+        ],
+        "supported_region": true,
+        "support_linear_speed_mps": 0.0,
+        "support_gap_m": null,
+        "gripper_opening_m": 0.07999996840953827,
+        "settle_displacement_m": 0.0,
+        "linear_speed_mps": 0.00012058273568982258,
+        "evaluation_source": "arena_task_simulation_ground_truth"
+      },
+      "attempts": [
+        {
+          "backend": "models",
+          "ok": true,
+          "elapsed_s": 22.554129105061293
+        }
+      ],
+      "fallback_used": false,
+      "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-215107-3419267e",
+      "events": [
+        {
+          "phase": "instance_observed",
+          "sequence": 814,
+          "time": 1788702668.7918112,
+          "label": "blue pad",
+          "instance_id": "surface_01",
+          "observation_ref": "73248a9a278b4e3aaede8c60949eca0e",
+          "witness_votes": {
+            "surface_01": 11738
+          },
+          "association_source": "model_mask_to_rendered_physical_instance"
+        },
+        {
+          "phase": "holding_resumed",
+          "sequence": 814,
+          "time": 1788702668.7937098,
+          "instance_id": "part_03",
+          "label": "green object",
+          "grasp_command_id": "observed-test-1446393757b746c69201e4d7ca38603b",
+          "initial_z": 0.01600000075995922,
+          "max_lift_m": 0.10819917358458042,
+          "tcp_to_object_at_grasp": [
+            [
+              0.9992752022010629,
+              0.001874024531467921,
+              0.03802049839337174,
+              -0.0016583191646333262
+            ],
+            [
+              0.0017617812282638985,
+              -0.999993991536043,
+              0.0029854679225197055,
+              -4.325263014524905e-05
+            ],
+            [
+              0.03802586478870223,
+              -0.002916320261581985,
+              -0.9992724997132681,
+              0.007238016739791603
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ],
+          "verified": true,
+          "gripper_opening_m": 0.05404669791460037,
+          "relative_translation_drift_m": 1.4606766221168642e-06
+        },
+        {
+          "phase": "attempt_started",
+          "sequence": 814,
+          "time": 1788702668.7956843,
+          "backend": "models"
+        },
+        {
+          "phase": "placement_candidates",
+          "sequence": 912,
+          "time": 1788702676.6803224,
+          "backend": "anyplace",
+          "count": 20,
+          "inference_s": 6.35760847851634,
+          "checkpoint_sha256": "d3d33f0a279633c25f252960a208d4b4447a756f0cff8e94be0faadc20dc5be5"
+        },
+        {
+          "phase": "transport",
+          "sequence": 912,
+          "time": 1788702676.6970475,
+          "target_world": [
+            [
+              0.8531814435644943,
+              0.24694641310878854,
+              0.4594546326546064,
+              0.45834933257988447
+            ],
+            [
+              0.15561160694957435,
+              -0.9612232403292428,
+              0.22767323581007512,
+              0.19721703148626757
+            ],
+            [
+              0.497861420090462,
+              -0.12275018686404872,
+              -0.8585256004221513,
+              0.1566612422466278
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "phase": "place_approach",
+          "sequence": 1024,
+          "time": 1788702681.5805817,
+          "target_world": [
+            [
+              0.8531814435644943,
+              0.24694641310878854,
+              0.4594546326546064,
+              0.45834933257988447
+            ],
+            [
+              0.15561160694957435,
+              -0.9612232403292428,
+              0.22767323581007512,
+              0.19721703148626757
+            ],
+            [
+              0.497861420090462,
+              -0.12275018686404872,
+              -0.8585256004221513,
+              0.010566452255264723
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "phase": "release",
+          "sequence": 1072,
+          "time": 1788702683.6658702
+        },
+        {
+          "phase": "retreat",
+          "sequence": 1122,
+          "time": 1788702685.8207862,
+          "target_world": [
+            [
+              0.8579622072222295,
+              0.23008797672814046,
+              0.4593042280923514,
+              0.4599383771419525
+            ],
+            [
+              0.14089841292093158,
+              -0.9651973322425751,
+              0.22032191690383113,
+              0.19505472481250763
+            ],
+            [
+              0.4940126397317408,
+              -0.12431264134015772,
+              -0.8605218643290307,
+              0.1768522608280182
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "phase": "attempt_finished",
+          "sequence": 1255,
+          "time": 1788702691.3498197,
+          "backend": "models",
+          "ok": true,
+          "elapsed_s": 22.554129105061293
+        }
+      ]
+    },
+    "cross-view-failure": {
+      "command_id": "observed-test-d1d7273f67ff4556bca850671771b732",
+      "skill": "grasp",
+      "ok": false,
+      "state": "failed",
+      "message": "Arena IK did not reach approach: position error 0.0127 m, rotation error 3.02 deg",
+      "elapsed_s": 32.112940311431885,
+      "attempts": [
+        {
+          "backend": "official_pick_place",
+          "ok": false,
+          "error": "Fast grasp did not lift the target",
+          "elapsed_s": 8.644378211349249
+        },
+        {
+          "backend": "models",
+          "ok": false,
+          "error": "Arena IK did not reach approach: position error 0.0127 m, rotation error 3.02 deg",
+          "elapsed_s": 19.765483926981688
+        }
+      ],
+      "fallback_used": true,
+      "held_object": null,
+      "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-214345-d842c44d",
+      "events": [
+        {
+          "phase": "attempt_started",
+          "sequence": 780,
+          "time": 1788702225.4098725,
+          "backend": "official_pick_place"
+        },
+        {
+          "phase": "instance_observed",
+          "sequence": 799,
+          "time": 1788702226.3057745,
+          "label": "green object",
+          "instance_id": "surface_01",
+          "observation_ref": "33d398f2f220413596c29f9b6cbcc527",
+          "witness_votes": {
+            "floor": 5,
+            "part_03": 595,
+            "surface_01": 10526
+          },
+          "association_source": "model_mask_to_rendered_physical_instance"
+        },
+        {
+          "phase": "planning",
+          "sequence": 799,
+          "time": 1788702226.3079216,
+          "route": {
+            "decision": "busagent",
+            "grasp": "official_pick_place",
+            "placement": null,
+            "execution": "isaaclab_arena.franka_ik",
+            "robot": "franka_panda"
+          },
+          "object_points": 11126,
+          "algorithm": "isaacsim PickPlaceController / Arena IK"
+        },
+        {
+          "phase": "pregrasp",
+          "sequence": 799,
+          "time": 1788702226.3087683,
+          "backend": "official_pick_place"
+        },
+        {
+          "phase": "approach",
+          "sequence": 859,
+          "time": 1788702228.6794586,
+          "backend": "official_pick_place"
+        },
+        {
+          "phase": "close_gripper",
+          "sequence": 917,
+          "time": 1788702230.9900317,
+          "backend": "official_pick_place"
+        },
+        {
+          "phase": "lift",
+          "sequence": 942,
+          "time": 1788702231.995916,
+          "backend": "official_pick_place"
+        },
+        {
+          "phase": "attempt_finished",
+          "sequence": 992,
+          "time": 1788702234.054259,
+          "backend": "official_pick_place",
+          "ok": false,
+          "error": "Fast grasp did not lift the target",
+          "elapsed_s": 8.644378211349249
+        },
+        {
+          "phase": "model_fallback",
+          "sequence": 992,
+          "time": 1788702234.0551229,
+          "reason": "Fast grasp did not lift the target"
+        },
+        {
+          "phase": "attempt_started",
+          "sequence": 1085,
+          "time": 1788702237.7557106,
+          "backend": "models"
+        },
+        {
+          "phase": "instance_observed",
+          "sequence": 1098,
+          "time": 1788702238.4101698,
+          "label": "green object",
+          "instance_id": "surface_01",
+          "observation_ref": "e05743ce81b44a9da9c5ff2928dd7564",
+          "witness_votes": {
+            "floor": 8,
+            "part_03": 600,
+            "surface_01": 10504
+          },
+          "association_source": "model_mask_to_rendered_physical_instance"
+        },
+        {
+          "phase": "planning",
+          "sequence": 1098,
+          "time": 1788702238.4115295,
+          "route": {
+            "decision": "busagent",
+            "grasp": "graspgenx",
+            "placement": null,
+            "execution": "isaaclab_arena.franka_ik",
+            "robot": "franka_panda"
+          },
+          "object_points": 11112
+        },
+        {
+          "phase": "grasp_candidates",
+          "sequence": 1105,
+          "time": 1788702239.0652902,
+          "backend": "graspgenx",
+          "count": 64,
+          "scores": [
+            0.9292576909065247,
+            0.8991788625717163,
+            0.8947167992591858,
+            0.894199788570404,
+            0.8932228088378906,
+            0.8797182440757751,
+            0.8747785091400146,
+            0.867107093334198,
+            0.8643389940261841,
+            0.8609420657157898,
+            0.8565257787704468,
+            0.8520545363426208,
+            0.8501774072647095,
+            0.8374670743942261,
+            0.8360902667045593,
+            0.8346015810966492,
+            0.827564537525177,
+            0.8260501027107239,
+            0.8183402419090271,
+            0.8161661028862,
+            0.8112794160842896,
+            0.8109692335128784,
+            0.804811418056488,
+            0.7864331007003784,
+            0.7791820764541626,
+            0.7686119079589844,
+            0.7407371997833252,
+            0.7253967523574829,
+            0.6956401467323303,
+            0.6928620338439941,
+            0.6852032542228699,
+            0.6677954792976379,
+            0.6599273085594177,
+            0.6240651607513428,
+            0.6025466322898865,
+            0.5848931074142456,
+            0.5243335366249084,
+            0.5181518793106079,
+            0.5162089467048645,
+            0.501259446144104,
+            0.4699840545654297,
+            0.4445635676383972,
+            0.4327366054058075,
+            0.42880895733833313,
+            0.4246503412723541,
+            0.40996304154396057,
+            0.4097292125225067,
+            0.3966461718082428,
+            0.3959084749221802,
+            0.3729622960090637,
+            0.3592763841152191,
+            0.3417065143585205,
+            0.32514768838882446,
+            0.3169158399105072,
+            0.31354787945747375,
+            0.308859646320343,
+            0.291749507188797,
+            0.26372823119163513,
+            0.25181975960731506,
+            0.19724003970623016,
+            0.15133461356163025,
+            0.13707004487514496,
+            0.1307857632637024,
+            0.10988196730613708
+          ]
+        },
+        {
+          "phase": "pregrasp",
+          "sequence": 1105,
+          "time": 1788702239.1037116,
+          "target_world": [
+            [
+              0.9901531934738159,
+              -0.10451483726501465,
+              -0.09313162416219711,
+              0.41011672160774465
+            ],
+            [
+              -0.10350990295410156,
+              -0.9945065975189209,
+              0.015571048483252525,
+              0.13234266252480448
+            ],
+            [
+              -0.09424741566181183,
+              -0.0057776798494160175,
+              -0.9955322742462158,
+              0.13156161552667617
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "phase": "approach",
+          "sequence": 1190,
+          "time": 1788702242.5537827,
+          "target_world": [
+            [
+              0.9901531934738159,
+              -0.10451483726501465,
+              -0.09313162416219711,
+              0.398940926708281
+            ],
+            [
+              -0.10350990295410156,
+              -0.9945065975189209,
+              0.015571048483252525,
+              0.13421118834279477
+            ],
+            [
+              -0.09424741566181183,
+              -0.0057776798494160175,
+              -0.9955322742462158,
+              0.012097742617130272
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "phase": "attempt_finished",
+          "sequence": 1550,
+          "time": 1788702257.521199,
+          "backend": "models",
+          "ok": false,
+          "error": "Arena IK did not reach approach: position error 0.0127 m, rotation error 3.02 deg",
+          "elapsed_s": 19.765483926981688
+        }
+      ]
+    },
+    "stack-regrasp-failed": {
+      "command_id": "observed-test-9bfefb7a9cde4c47915d38971734eeb9",
+      "skill": "grasp",
+      "ok": false,
+      "state": "failed",
+      "message": "Arena IK did not reach pregrasp: position error 0.0637 m, rotation error 0.12 deg",
+      "elapsed_s": 29.715246438980103,
+      "attempts": [
+        {
+          "backend": "official_pick_place",
+          "ok": false,
+          "error": "Fast grasp did not lift the target",
+          "elapsed_s": 9.131950959563255
+        },
+        {
+          "backend": "models",
+          "ok": false,
+          "error": "Arena IK did not reach pregrasp: position error 0.0637 m, rotation error 0.12 deg",
+          "elapsed_s": 16.70447543822229
+        }
+      ],
+      "fallback_used": true,
+      "held_object": null,
+      "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-214045-a92ba970",
+      "events": [
+        {
+          "phase": "attempt_started",
+          "sequence": 11688,
+          "time": 1788702045.0622692,
+          "backend": "official_pick_place"
+        },
+        {
+          "phase": "instance_observed",
+          "sequence": 11713,
+          "time": 1788702046.4268038,
+          "label": "green object",
+          "instance_id": "surface_01",
+          "observation_ref": "61e67c35306b40809299ee2dc4b37de2",
+          "witness_votes": {
+            "part_03": 760,
+            "surface_01": 10528
+          },
+          "association_source": "model_mask_to_rendered_physical_instance"
+        },
+        {
+          "phase": "planning",
+          "sequence": 11713,
+          "time": 1788702046.4288976,
+          "route": {
+            "decision": "busagent",
+            "grasp": "official_pick_place",
+            "placement": null,
+            "execution": "isaaclab_arena.franka_ik",
+            "robot": "franka_panda"
+          },
+          "object_points": 11288,
+          "algorithm": "isaacsim PickPlaceController / Arena IK"
+        },
+        {
+          "phase": "pregrasp",
+          "sequence": 11713,
+          "time": 1788702046.4297042,
+          "backend": "official_pick_place"
+        },
+        {
+          "phase": "approach",
+          "sequence": 11773,
+          "time": 1788702048.8239555,
+          "backend": "official_pick_place"
+        },
+        {
+          "phase": "close_gripper",
+          "sequence": 11831,
+          "time": 1788702051.1334112,
+          "backend": "official_pick_place"
+        },
+        {
+          "phase": "lift",
+          "sequence": 11856,
+          "time": 1788702052.2101407,
+          "backend": "official_pick_place"
+        },
+        {
+          "phase": "attempt_finished",
+          "sequence": 11906,
+          "time": 1788702054.1942194,
+          "backend": "official_pick_place",
+          "ok": false,
+          "error": "Fast grasp did not lift the target",
+          "elapsed_s": 9.131950959563255
+        },
+        {
+          "phase": "model_fallback",
+          "sequence": 11906,
+          "time": 1788702054.1949902,
+          "reason": "Fast grasp did not lift the target"
+        },
+        {
+          "phase": "attempt_started",
+          "sequence": 12000,
+          "time": 1788702058.071462,
+          "backend": "models"
+        },
+        {
+          "phase": "instance_observed",
+          "sequence": 12014,
+          "time": 1788702058.7095783,
+          "label": "green object",
+          "instance_id": "surface_01",
+          "observation_ref": "3d4797027b184cb699ad0aa75c1c7f99",
+          "witness_votes": {
+            "part_03": 777,
+            "surface_01": 10533
+          },
+          "association_source": "model_mask_to_rendered_physical_instance"
+        },
+        {
+          "phase": "planning",
+          "sequence": 12014,
+          "time": 1788702058.7109802,
+          "route": {
+            "decision": "busagent",
+            "grasp": "graspgenx",
+            "placement": null,
+            "execution": "isaaclab_arena.franka_ik",
+            "robot": "franka_panda"
+          },
+          "object_points": 11310
+        },
+        {
+          "phase": "grasp_candidates",
+          "sequence": 12021,
+          "time": 1788702059.3305628,
+          "backend": "graspgenx",
+          "count": 59,
+          "scores": [
+            0.8285691142082214,
+            0.8182403445243835,
+            0.8062669634819031,
+            0.8034681677818298,
+            0.7986896634101868,
+            0.7937092781066895,
+            0.7924482226371765,
+            0.7850008010864258,
+            0.7824450731277466,
+            0.7815825343132019,
+            0.7774189114570618,
+            0.7723677158355713,
+            0.7713000774383545,
+            0.768061637878418,
+            0.7615933418273926,
+            0.7594388127326965,
+            0.7520445585250854,
+            0.7483818531036377,
+            0.747745931148529,
+            0.7330581545829773,
+            0.720391571521759,
+            0.7102147936820984,
+            0.7016077637672424,
+            0.6865696310997009,
+            0.6846932172775269,
+            0.6834303140640259,
+            0.670699954032898,
+            0.6621776223182678,
+            0.6419072151184082,
+            0.6383394598960876,
+            0.6382896900177002,
+            0.6349669694900513,
+            0.6113879084587097,
+            0.6100760698318481,
+            0.595806896686554,
+            0.5927203297615051,
+            0.5828469395637512,
+            0.5693201422691345,
+            0.5663427710533142,
+            0.5580814480781555,
+            0.557296097278595,
+            0.48724496364593506,
+            0.4835989475250244,
+            0.4689231812953949,
+            0.4151560366153717,
+            0.40928056836128235,
+            0.38174107670783997,
+            0.3806513547897339,
+            0.3761760890483856,
+            0.35530003905296326,
+            0.34598955512046814,
+            0.33967918157577515,
+            0.3250557780265808,
+            0.31220319867134094,
+            0.2885325253009796,
+            0.2714155316352844,
+            0.25577405095100403,
+            0.2077578902244568,
+            0.14416101574897766
+          ]
+        },
+        {
+          "phase": "pregrasp",
+          "sequence": 12021,
+          "time": 1788702059.3662608,
+          "target_world": [
+            [
+              0.6188791990280151,
+              0.10878181457519531,
+              -0.7779170274734497,
+              0.6542121935606002
+            ],
+            [
+              0.5266144871711731,
+              -0.7922834753990173,
+              0.30816230177879333,
+              -0.09242393084168435
+            ],
+            [
+              -0.5828084349632263,
+              -0.60037761926651,
+              -0.5476138591766357,
+              0.12426269427537918
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "phase": "attempt_finished",
+          "sequence": 12381,
+          "time": 1788702074.7759552,
+          "backend": "models",
+          "ok": false,
+          "error": "Arena IK did not reach pregrasp: position error 0.0637 m, rotation error 0.12 deg",
+          "elapsed_s": 16.70447543822229
+        }
+      ]
+    },
+    "active_transport_interruption": {
+      "passed": true,
+      "target": "red cube",
+      "destination": "yellow cylinder",
+      "commands": [
+        {
+          "command_id": "holding-test-fd2d82109a984dac9d5648a1a0eaec96",
+          "skill": "place_held",
+          "ok": false,
+          "state": "failed",
+          "message": "当前没有确认仍在夹爪中的物体，未执行放置。",
+          "elapsed_s": 0.0011391639709472656,
+          "held_object": null,
+          "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-215243-20a8c2dc",
+          "events": []
+        },
+        {
+          "command_id": "holding-test-69c94b4280634393adbdc1e8811e0e63",
+          "skill": "grasp",
+          "ok": true,
+          "state": "completed",
+          "message": "Physical task verified",
+          "elapsed_s": 9.347568035125732,
+          "route": {
+            "decision": "busagent",
+            "grasp": "official_pick_place",
+            "placement": null,
+            "execution": "isaaclab_arena.franka_ik",
+            "robot": "franka_panda"
+          },
+          "evaluation": {
+            "physical_success": true,
+            "lifted": true,
+            "released": false,
+            "max_lift_m": 0.10879505798220634,
+            "final_position_world_m": [
+              0.47985580563545227,
+              -0.12116500735282898,
+              0.1312950700521469
+            ],
+            "destination_xy_error_m": null,
+            "supported_region": false,
+            "support_linear_speed_mps": 0.0,
+            "support_gap_m": null,
+            "gripper_opening_m": 0.04509437084197998,
+            "settle_displacement_m": 0.0,
+            "linear_speed_mps": 0.14385941624641418,
+            "evaluation_source": "arena_task_simulation_ground_truth"
+          },
+          "attempts": [
+            {
+              "backend": "official_pick_place",
+              "ok": true,
+              "elapsed_s": 9.345256866887212
+            }
+          ],
+          "fallback_used": false,
+          "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-215243-0c6a1915",
+          "events": [
+            {
+              "phase": "attempt_started",
+              "sequence": 3012,
+              "time": 1788702763.3370574,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "instance_observed",
+              "sequence": 3035,
+              "time": 1788702764.5069535,
+              "label": "red cube",
+              "instance_id": "part_01",
+              "observation_ref": "6620607814db4239a865e4176fffe8c9",
+              "witness_votes": {
+                "part_01": 1763
+              },
+              "association_source": "model_mask_to_rendered_physical_instance"
+            },
+            {
+              "phase": "planning",
+              "sequence": 3035,
+              "time": 1788702764.5085797,
+              "route": {
+                "decision": "busagent",
+                "grasp": "official_pick_place",
+                "placement": null,
+                "execution": "isaaclab_arena.franka_ik",
+                "robot": "franka_panda"
+              },
+              "object_points": 1750,
+              "algorithm": "isaacsim PickPlaceController / Arena IK"
+            },
+            {
+              "phase": "pregrasp",
+              "sequence": 3035,
+              "time": 1788702764.509381,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "approach",
+              "sequence": 3095,
+              "time": 1788702767.0142431,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "close_gripper",
+              "sequence": 3153,
+              "time": 1788702769.4521048,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "lift",
+              "sequence": 3178,
+              "time": 1788702770.5199244,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "attempt_finished",
+              "sequence": 3228,
+              "time": 1788702772.682316,
+              "backend": "official_pick_place",
+              "ok": true,
+              "elapsed_s": 9.345256866887212
+            }
+          ]
+        },
+        {
+          "command_id": "holding-test-244219ceab2741f79ccdf7a08ed2c522",
+          "skill": "place_held",
+          "ok": false,
+          "state": "failed",
+          "message": "本次画面未找到目标：purple flying elephant",
+          "elapsed_s": 0.7573668956756592,
+          "held_object": "part_01",
+          "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-215252-6b2b8154",
+          "events": []
+        },
+        {
+          "command_id": "holding-test-a0a1bb16c8b642da8058d69e8ad17ca9",
+          "skill": "place_held",
+          "ok": false,
+          "state": "cancelled",
+          "message": "Stopped; gripper state preserved",
+          "elapsed_s": 1.5468623638153076,
+          "attempts": [
+            {
+              "backend": "official_pick_place",
+              "ok": false,
+              "error": "Stopped; gripper state preserved",
+              "elapsed_s": 0.6276815161108971
+            }
+          ],
+          "fallback_used": false,
+          "held_object": "part_01",
+          "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-215253-bcc51a4b",
+          "events": [
+            {
+              "phase": "instance_observed",
+              "sequence": 3271,
+              "time": 1788702774.9019876,
+              "label": "yellow cylinder",
+              "instance_id": "part_02",
+              "observation_ref": "fb4a063c965f439e8856ed6f2ae4b29d",
+              "witness_votes": {
+                "floor": 1,
+                "part_02": 1186
+              },
+              "association_source": "model_mask_to_rendered_physical_instance"
+            },
+            {
+              "phase": "holding_resumed",
+              "sequence": 3271,
+              "time": 1788702774.9038935,
+              "instance_id": "part_01",
+              "label": "red cube",
+              "grasp_command_id": "holding-test-69c94b4280634393adbdc1e8811e0e63",
+              "initial_z": 0.022500012069940567,
+              "max_lift_m": 0.10879505798220634,
+              "tcp_to_object_at_grasp": [
+                [
+                  0.9999838426218834,
+                  0.0021112033945220932,
+                  0.005278002974553867,
+                  -0.0021519760451991776
+                ],
+                [
+                  0.0020929870753297036,
+                  -0.9999918428490125,
+                  0.003454510173451616,
+                  -7.751109117007382e-06
+                ],
+                [
+                  0.0052852530946912914,
+                  -0.0034434075656152425,
+                  -0.9999801043241121,
+                  0.006922603055579901
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "verified": true,
+              "gripper_opening_m": 0.04509250074625015,
+              "relative_translation_drift_m": 2.483027816773736e-05
+            },
+            {
+              "phase": "attempt_started",
+              "sequence": 3271,
+              "time": 1788702774.9057927,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "planning",
+              "sequence": 3282,
+              "time": 1788702775.4776719,
+              "route": {
+                "decision": "busagent",
+                "grasp": "retained_from_previous_command",
+                "placement": "official_pick_place",
+                "execution": "isaaclab_arena.franka_ik",
+                "robot": "franka_panda"
+              },
+              "algorithm": "isaacsim PickPlaceController transport/release/retreat",
+              "object_points": 10597
+            },
+            {
+              "phase": "transport",
+              "sequence": 3282,
+              "time": 1788702775.4797752,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "attempt_finished",
+              "sequence": 3283,
+              "time": 1788702775.5334778,
+              "backend": "official_pick_place",
+              "ok": false,
+              "error": "Stopped; gripper state preserved",
+              "elapsed_s": 0.6276815161108971
+            }
+          ]
+        },
+        {
+          "command_id": "holding-test-b1da6b6b03794b218cac37c498a026af",
+          "skill": "place_held",
+          "ok": true,
+          "state": "completed",
+          "message": "Physical placement verified",
+          "elapsed_s": 12.48204231262207,
+          "route": {
+            "decision": "busagent",
+            "grasp": "retained_from_previous_command",
+            "placement": "official_pick_place",
+            "execution": "isaaclab_arena.franka_ik",
+            "robot": "franka_panda"
+          },
+          "evaluation": {
+            "physical_success": true,
+            "lifted": true,
+            "released": true,
+            "max_lift_m": 0.17956091091036797,
+            "final_position_world_m": [
+              0.5592782497406006,
+              -0.1795012205839157,
+              0.07250064611434937
+            ],
+            "destination_xy_error_m": 0.010734425857663155,
+            "destination_position_world_m": [
+              0.5700011253356934,
+              -0.17999905347824097,
+              0.02499999664723873
+            ],
+            "support_contact": true,
+            "support_force_world_n": [
+              6.100281098042615e-05,
+              2.6158617401961237e-05,
+              0.5990247130393982
+            ],
+            "supported_region": true,
+            "support_linear_speed_mps": 0.0007257715915329754,
+            "support_gap_m": null,
+            "gripper_opening_m": 0.0799999088048935,
+            "settle_displacement_m": 4.634644425048458e-06,
+            "linear_speed_mps": 0.002897625556215644,
+            "evaluation_source": "arena_task_simulation_ground_truth"
+          },
+          "attempts": [
+            {
+              "backend": "official_pick_place",
+              "ok": true,
+              "elapsed_s": 11.894801896065474
+            }
+          ],
+          "fallback_used": false,
+          "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-215255-5fb949fb",
+          "events": [
+            {
+              "phase": "instance_observed",
+              "sequence": 3299,
+              "time": 1788702776.4220994,
+              "label": "yellow cylinder",
+              "instance_id": "part_02",
+              "observation_ref": "fe581ac97a4c4b22bada6a9496d8e77f",
+              "witness_votes": {
+                "floor": 1,
+                "part_02": 1195
+              },
+              "association_source": "model_mask_to_rendered_physical_instance"
+            },
+            {
+              "phase": "holding_resumed",
+              "sequence": 3299,
+              "time": 1788702776.4240096,
+              "instance_id": "part_01",
+              "label": "red cube",
+              "grasp_command_id": "holding-test-69c94b4280634393adbdc1e8811e0e63",
+              "initial_z": 0.022500012069940567,
+              "max_lift_m": 0.10879505798220634,
+              "tcp_to_object_at_grasp": [
+                [
+                  0.9999838426218834,
+                  0.0021112033945220932,
+                  0.005278002974553867,
+                  -0.0021519760451991776
+                ],
+                [
+                  0.0020929870753297036,
+                  -0.9999918428490125,
+                  0.003454510173451616,
+                  -7.751109117007382e-06
+                ],
+                [
+                  0.0052852530946912914,
+                  -0.0034434075656152425,
+                  -0.9999801043241121,
+                  0.006922603055579901
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "verified": true,
+              "gripper_opening_m": 0.04509253054857254,
+              "relative_translation_drift_m": 2.5151042980048513e-05
+            },
+            {
+              "phase": "attempt_started",
+              "sequence": 3299,
+              "time": 1788702776.4258597,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "planning",
+              "sequence": 3309,
+              "time": 1788702777.2361524,
+              "route": {
+                "decision": "busagent",
+                "grasp": "retained_from_previous_command",
+                "placement": "official_pick_place",
+                "execution": "isaaclab_arena.franka_ik",
+                "robot": "franka_panda"
+              },
+              "algorithm": "isaacsim PickPlaceController transport/release/retreat",
+              "object_points": 10627
+            },
+            {
+              "phase": "transport",
+              "sequence": 3309,
+              "time": 1788702777.2388196,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "place_approach",
+              "sequence": 3390,
+              "time": 1788702780.8427358,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "release",
+              "sequence": 3440,
+              "time": 1788702782.9961233,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "retreat",
+              "sequence": 3465,
+              "time": 1788702784.2762825,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "attempt_finished",
+              "sequence": 3551,
+              "time": 1788702788.3206656,
+              "backend": "official_pick_place",
+              "ok": true,
+              "elapsed_s": 11.894801896065474
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "known_limits": [
+    "Same-class instance selection and real-camera physical association remain outside this change.",
+    "Hanging, insertion and BusAgent goal planning are not implemented.",
+    "All contact and holding measurements are simulation evidence; model point clouds still come from RGB-D masks."
+  ],
+  "cross_view_fix": {
+    "replay_observation": "33d398f2f220413596c29f9b6cbcc527",
+    "before": "600 green-object points in front view merged with 10526 blue-pad points in side view; larger wrong view selected surface_01.",
+    "after": "Per-view instance conflict triggers new SAM3 observation before point-cloud fusion; recorded conflicting view replay now raises InstanceConflict.",
+    "live_recovery": "model-held-grasp contains visual_relocalization, then part_03 association and physical success.",
+    "affected_failed_runs": {
+      "cross-view-failure": "Front green-object and side blue-pad masks were fused before per-view consistency was implemented.",
+      "stack-regrasp-failed": "The same cross-view misassociation selected surface_01 (blue pad) for green object; later grasp/IK failure followed this incorrect geometry. This run is retained as pre-fix evidence."
+    }
+  }
+}

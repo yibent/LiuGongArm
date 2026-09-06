@@ -14,10 +14,11 @@ from scipy.spatial.transform import Rotation, Slerp
 import torch
 
 from mr_liu.arena.perception import PerceptionBridge
-from mr_liu.arena.entities import scene_entities, resolve_entity
+from mr_liu.arena.holding import holding_measurement
+from mr_liu.arena.instances import InstanceConflict
 from mr_liu.vision.worker import VisionWorker
 from mr_liu.arena.cascade import run_cascade
-from mr_liu.arena.fast import fast_pick_place
+from mr_liu.arena.fast import fast_pick_place, fast_place_held
 from mr_liu.arena.contracts import ManipulationRequest, model_grasp_to_tcp, placement_to_tcp
 from mr_liu.grasp.backends.graspgenx import ZmqGraspGenXTransport
 from mr_liu.grasp.transforms import invert_transform
@@ -35,6 +36,12 @@ class ArenaRuntime:
         self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="pose-inference")
         self.frames = {}; self.snapshot = {}; self.sequence = 0
         self.phase = "initializing"; self.current = None; self.held = None
+        self.held_context = None
+        self.observed_entities = {}
+        self.prepared_clouds = {}
+        self.body_entities = {name: {'name': name, 'prim_path': body.cfg.prim_path.replace(
+            self.env.scene.env_regex_ns, self.env.scene.env_prim_paths[0])}
+            for name, body in self.env.scene.rigid_objects.items()}
         self.bus_context = {}
         self.perception = PerceptionBridge(Path(__file__).resolve().parents[3]/'output/perception', config['vision']['service_url'])
         self.vision_worker = VisionWorker(self.perception.request)
@@ -62,14 +69,46 @@ class ArenaRuntime:
         data = self.env.scene[name].data
         return pose_matrix(numpy_data(data.root_pos_w)[0], numpy_data(data.root_quat_w)[0])
 
-    def resolve(self, label, kind="objects"):
-        return resolve_entity(self.config, label, graspable=kind == 'objects')
+    def locate(self, label):
+        """Visual geometry first. Physical IDs are evaluation witnesses only."""
+        points = self.cloud(label, associate=True)
+        observation = self.visual_result
+        name = observation['physical_witness']['instance_id']
+        votes = observation['physical_witness']['votes']
+        row = {**self.body_entities[name], 'label': observation['label']}
+        self.observed_entities[name] = row
+        self.prepared_clouds[name] = (points, observation)
+        self.event('instance_observed', label=row['label'], instance_id=name,
+                   observation_ref=observation['request_id'], witness_votes=votes,
+                   association_source='model_mask_to_rendered_physical_instance')
+        return row
+
+    def remember_hold(self, row):
+        self.held = row['name']
+        self.held_context = {'instance_id': self.held, 'label': row['label'],
+            'grasp_command_id': self.current, 'initial_z': self.initial_z,
+            'max_lift_m': self.max_lift,
+            'tcp_to_object_at_grasp': (invert_transform(self.tcp_pose()) @ self.object_pose(self.held)).tolist()}
+
+    def holding_status(self):
+        if not self.held_context or self.held != self.held_context['instance_id']:
+            return {'verified': False, 'instance_id': self.held}
+        robot = self.env.scene['robot']
+        fingers, _ = robot.find_joints('panda_finger_joint.*')
+        measured = holding_measurement(self.held_context['tcp_to_object_at_grasp'],
+            invert_transform(self.tcp_pose()) @ self.object_pose(self.held),
+            float(numpy_data(robot.data.joint_pos)[0, fingers].sum()))
+        return {**self.held_context, **measured}
+
+    def clear_hold(self):
+        self.held = None
+        self.held_context = None
 
     def capabilities(self):
         return {"robot": "franka_panda", "execution": "isaaclab_arena.franka_ik",
-                "skills": ["status", "capabilities", "select_target", "perceive", "grasp", "pick_place", "stop", "hold", "home"],
+                "skills": ["status", "capabilities", "select_target", "perceive", "grasp", "pick_place", "place_held", "stop", "hold", "home"],
                 "grasp": {"backend": "official_pick_place_or_graspgenx", "ready": True},
-                "placement": {"backend": "official_pick_place_or_anyplace", "relations": ["on"]},
+                "placement": {"backend": "official_pick_place_or_anyplace", "relations": ["on"], "place_held": True},
                 "routing": "fast_first_then_models_once; complex_tasks_use_models_directly",
                 "vla_loaded": False, "perception_source": "task_routed_rgbd",
                 "vision": {"architecture": "task_routed_fast_slow", "visual_tracking": True,
@@ -77,7 +116,10 @@ class ArenaRuntime:
                     "slow_localizer": self.config['vision'].get('slow_localizer'),
                     "scene_description": "florence2", "planned_disabled": ["qwen_multimodal"]},
                 "frame": "world", "quaternion": "xyzw", "units": "metres",
-                "objects": self.config["objects"], "destinations": scene_entities(self.config)}
+                "configured_label_required": False,
+                "target_source": "image_model_mask_and_rgbd",
+                "objects": list(self.observed_entities.values()),
+                "destinations": list(self.observed_entities.values())}
 
     def refresh_snapshot(self):
         robot = self.env.scene["robot"]
@@ -85,6 +127,7 @@ class ArenaRuntime:
         self.snapshot = {"ready": True, "robot": "franka_panda", "phase": self.phase,
                          "sequence": self.sequence, "timestamp": time.time(), "capabilities": self.capabilities(),
                          "held_object": self.held, "command_id": self.current,
+                         "holding": self.holding_status(),
                          "tcp_pose_world": tcp.tolist(), "prompt": self.selected_target,
                          "last_result": self.last_result,
                          "vision": self.visual_result,
@@ -152,30 +195,46 @@ class ArenaRuntime:
         print(json.dumps(self.events[-1], ensure_ascii=False), flush=True)
         self.refresh_snapshot()
 
-    def cloud(self, name, **vision_options):
+    def cloud(self, name, *, associate=False, **vision_options):
+        if not vision_options and name in self.prepared_clouds:
+            points, self.visual_result = self.prepared_clouds.pop(name)
+            return points
         self.observing = True
         try:
             # Retire a tracking request before requesting a geometric observation.
             while not self.vision_worker.available: self.tick()
-            for _ in range(self.config['camera']['render_interval']): self.tick()
-            packet = self.perception.capture(self, name, refine=True, **vision_options)
-            self.event('visual_observation', target=name, request_id=packet['request_id'])
-            result = self.infer(self.perception.request, packet)
-            if not result.get('ok') and self.held == name:
-                packet = self.perception.capture(self, name, refine=True, cameras=['scene_camera', 'side_camera'], **vision_options)
+            for recovery in range(2):
+                for _ in range(self.config['camera']['render_interval']): self.tick()
+                packet = self.perception.capture(self, name, refine=True, **vision_options)
+                self.event('visual_observation', target=name, request_id=packet['request_id'])
                 result = self.infer(self.perception.request, packet)
-            self.visual_result = result
-            if not result.get('ok'):
-                states = {v.get('status') for v in result.get('views', [])}
-                message = ('目标不唯一，请指定其中一个' if 'ambiguous' in states else
-                           '所选视觉模型不可用' if 'provider_unavailable' in states else
-                           '视觉服务调用失败' if result.get('error') else '本次画面未找到目标')
-                # Full diagnostics remain in result.vision, not in the console's action label.
-                raise RuntimeError(f'{message}：{name}')
-            points, views = self.perception.cloud(result)
-            self.event('observation', target=name, request_id=packet['request_id'],
-                       perception_source=result['perception_source'], views=views, models=result['views'])
-            return points
+                if not result.get('ok') and self.held == name:
+                    packet = self.perception.capture(self, name, refine=True, cameras=['scene_camera', 'side_camera'], **vision_options)
+                    result = self.infer(self.perception.request, packet)
+                self.visual_result = result
+                if not result.get('ok'):
+                    states = {v.get('status') for v in result.get('views', [])}
+                    message = ('目标不唯一，请指定其中一个' if 'ambiguous' in states else
+                               '所选视觉模型不可用' if 'provider_unavailable' in states else
+                               '视觉服务调用失败' if result.get('error') else '本次画面未找到目标')
+                    raise RuntimeError(f'{message}：{name}')
+                if associate or name in self.observed_entities:
+                    try:
+                        witness, votes = self.perception.witness(result, self.body_entities)
+                        if name in self.observed_entities and witness != name:
+                            raise InstanceConflict('观测切换到了另一实例，需要重新识别。')
+                        result['physical_witness'] = {'instance_id': witness, 'votes': votes}
+                    except InstanceConflict as error:
+                        if recovery or vision_options.get('vision_mode') == 'slow':
+                            raise
+                        self.event('visual_relocalization', reason=str(error),
+                                   previous_observation_ref=result['request_id'], provider='sam3')
+                        vision_options.update(vision_mode='slow', slow_provider='sam3')
+                        continue
+                points, views = self.perception.cloud(result)
+                self.event('observation', target=name, request_id=packet['request_id'],
+                           perception_source=result['perception_source'], views=views, models=result['views'])
+                return points
         finally:
             self.observing = False
             self.last_track = self.sequence
@@ -254,10 +313,13 @@ class ArenaRuntime:
         return candidates
 
     def prepare_task(self, request):
+        if self.held_context and not self.holding_status()['verified']:
+            self.clear_hold()
         if self.held is not None:
-            raise ValueError("A previous object may still be held; do not start another grasp")
-        row = self.resolve(request.target)
-        destination = self.resolve(request.destination, "destinations") if request.destination else None
+            raise ValueError('夹爪仍持有物体，可使用 place_held 指定目的地继续放置。')
+        self.gripper = 1.
+        row = self.locate(request.target)
+        destination = self.locate(request.destination) if request.destination else None
         if destination and destination['name'] == row['name']:
             raise ValueError('抓取对象和支撑对象相同，请指定另一个放置对象。')
         self.target_name = row["name"]
@@ -291,6 +353,7 @@ class ArenaRuntime:
         self.move(lift, label="lift")
         if self.max_lift < .04:
             raise RuntimeError("Physical lift verification failed")
+        self.remember_hold(row)
         self.event("lift_verified", lift_m=self.max_lift)
         if destination is None:
             return self.task.evaluate(self.env, row["name"], self.initial_z, None,
@@ -332,7 +395,7 @@ class ArenaRuntime:
                   self.task.support_contact(self.env, row["name"], destination))
         self.event("release"); self.gripper = 1.
         for _ in range(50): self.tick()
-        self.held = None
+        self.clear_hold()
         retreat = self.tcp_pose(); retreat[2, 3] += .13
         self.move(retreat, label="retreat")
         before = self.object_pose(row["name"])[:3, 3]
@@ -342,10 +405,12 @@ class ArenaRuntime:
                                   released=True, max_lift=self.max_lift, stability=stability)
 
     def recover_fast(self, request):
-        row = self.resolve(request.target)
-        if self.held and self.task.evaluate(self.env, row["name"], self.initial_z, None,
-                released=False, max_lift=self.max_lift, stability=0.)["physical_success"]:
-            destination = self.resolve(request.destination, "destinations") if request.destination else None
+        if self.target_name is None:
+            return None  # No grasp was started; retain the original localization failure.
+        row = self.observed_entities[self.target_name]
+        self.prepared_clouds.clear()
+        if self.holding_status()['verified']:
+            destination = self.locate(request.destination) if request.destination else None
             self.event("fallback_keep_grasp", target=row["name"])
             if destination is None:
                 return lambda task: self.task.evaluate(self.env, row["name"], self.initial_z, None,
@@ -356,15 +421,46 @@ class ArenaRuntime:
         self.event("fallback_reobserve")
         self.gripper = 1.
         for _ in range(25): self.tick()
-        self.held = None
+        self.clear_hold()
         retreat = self.tcp_pose(); retreat[2, 3] += .12
         self.move(retreat, label="fallback_retreat")
         return None
+
+    def place_held(self, request, attempts=None):
+        measured = self.holding_status()
+        if not measured['verified']:
+            if self.held_context:
+                self.clear_hold()
+            raise RuntimeError('当前没有确认仍在夹爪中的物体，未执行放置。')
+        row = self.observed_entities[self.held]
+        destination = self.locate(request.destination)
+        if row['name'] == destination['name']:
+            raise ValueError('持有物体不能作为它自身的放置目标。')
+        self.target_name = row['name']; self.selected_target = row['label']
+        self.initial_z = self.held_context['initial_z']
+        self.max_lift = self.held_context['max_lift_m']
+        self.event('holding_resumed', **measured)
+
+        def recover(_):
+            if not self.holding_status()['verified']:
+                raise RuntimeError('放置未通过评测，物体已释放；未自动重新抓取。')
+            self.prepared_clouds.clear()
+            self.event('fallback_keep_grasp', target=row['name'])
+            return lambda task: self._place_held(task, row, destination)
+
+        evaluation, route, attempts = run_cascade(request,
+            lambda task: fast_place_held(self, task, row, destination),
+            lambda task: self._place_held(task, row, destination), recover, self.event, attempts=attempts)
+        route['grasp'] = 'retained_from_previous_command'
+        return {'ok': evaluation['physical_success'], 'evaluation': evaluation,
+                'route': route, 'attempts': attempts, 'fallback_used': len(attempts) > 1,
+                'message': 'Physical placement verified' if evaluation['physical_success'] else 'Physical placement failed verification'}
 
     def execute(self, command):
         self.current = command["command_id"]; self.events = []; started = time.time()
         self.tracking = None
         self.visual_result = None
+        self.prepared_clouds.clear()
         self.bus_context = {key:command[key] for key in ('task_id','task_version','correlation_id','causation_id') if key in command}
         attempts = []
         directory = self.output / (time.strftime("%Y%m%d-%H%M%S") + "-" + uuid4().hex[:8])
@@ -372,7 +468,16 @@ class ArenaRuntime:
         self.active_directory = directory
         try:
             params = command.get("params", {}); skill = command["skill"]
-            if skill in {"grasp", "pick_place"}:
+            if skill == 'place_held':
+                dest = params.get('destination', {})
+                label = dest.get('label') if isinstance(dest, dict) else dest
+                if not label:
+                    raise ValueError('请指定放置目的地。')
+                request = ManipulationRequest((self.held_context or {}).get('label', 'held object'), label,
+                    params.get('mode', 'auto'), params.get('unfamiliar', False), params.get('cluttered', False),
+                    params.get('precise', False), params.get('relation', 'on'))
+                result = self.place_held(request, attempts)
+            elif skill in {"grasp", "pick_place"}:
                 target = params.get("target", {})
                 label = target.get("category", "") if isinstance(target, dict) else target
                 color = target.get("attributes", {}).get("color", "") if isinstance(target, dict) else ""

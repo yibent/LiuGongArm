@@ -8,7 +8,6 @@ from argparse import Namespace
 
 import numpy as np
 from mr_liu.arena.arrays import numpy_data
-from mr_liu.arena.entities import scene_entities
 from mr_liu.arena.evaluation import support_metrics
 from scipy.spatial.transform import Rotation
 
@@ -66,15 +65,8 @@ class PandaTask(NoTask):
         if destination is not None:
             base = env.scene[destination['name']].data
             support_position = numpy_data(base.root_pos_w)[0]
-            support_rotation = Rotation.from_quat(numpy_data(base.root_quat_w)[0]).as_matrix()
             support = support_metrics(position, support_position, self.support_force(env, name, destination),
                                       numpy_data(base.root_lin_vel_w)[0])
-            size = np.asarray(self.object_sizes[name])
-            rotation = Rotation.from_quat(numpy_data(body.data.root_quat_w)[0]).as_matrix()
-            world_half = np.abs(rotation) @ (size / 2)
-            support_half = np.abs(support_rotation) @ (np.asarray(destination['size']) / 2)
-            # Bounding-box gap is diagnostic only; contact determines support.
-            support_gap = float(position[2] - world_half[2] - support_position[2] - support_half[2])
         robot = env.scene["robot"]
         finger_ids, _ = robot.find_joints("panda_finger_joint.*")
         opening = float(numpy_data(robot.data.joint_pos)[0, finger_ids].sum())
@@ -104,7 +96,8 @@ def _camera_rotation(position, lookat):
 def _camera(path, width, height, position, lookat, period):
     return CameraCfg(
         prim_path=path, update_period=period, width=width, height=height,
-        data_types=["rgb", "distance_to_image_plane"],
+        data_types=["rgb", "distance_to_image_plane", "instance_id_segmentation_fast"],
+        colorize_instance_id_segmentation=False,
         spawn=sim.PinholeCameraCfg(focal_length=18., horizontal_aperture=20.955, clipping_range=(.02, 5.)),
         offset=CameraCfg.OffsetCfg(pos=position, rot=_camera_rotation(position, lookat), convention="ros"),
     )
@@ -133,8 +126,8 @@ def build_environment(config, *, device="cuda:0"):
     embodiment.action_config.arm_action.scale = 1.
     embodiment.action_config.arm_action.body_offset.pos = [0., 0., .1034]
     assets = []
-    for row in scene_entities(config):
-        dynamic = row in config["objects"]
+    for row in config['entities']:
+        dynamic = row.get('dynamic', True)
         shape = dict(
             activate_contact_sensors=True,
             collision_props=sim.CollisionPropertiesCfg(contact_offset=.002, rest_offset=0.),
@@ -146,28 +139,31 @@ def build_environment(config, *, device="cuda:0"):
             physics_material=sim.RigidBodyMaterialCfg(static_friction=1.2, dynamic_friction=1.),
             visual_material=sim.PreviewSurfaceCfg(diffuse_color=tuple(row["color"])),
         )
-        spawner = (sim.CylinderCfg(radius=row["size"][0] / 2, height=row["size"][2], **shape)
+        spawner = (sim.UsdFileCfg(usd_path=row['usd_path'], **shape) if row.get('usd_path') else
+                   sim.CylinderCfg(radius=row["size"][0] / 2, height=row["size"][2], **shape)
                    if row.get("shape") == "cylinder" else sim.CuboidCfg(size=tuple(row["size"]), **shape))
         cfg = RigidObjectCfg(prim_path="{ENV_REGEX_NS}/" + row["name"], spawn=spawner,
                              init_state=RigidObjectCfg.InitialStateCfg(pos=tuple(row["position"])))
         assets.append(ConfiguredAsset(row["name"], cfg))
     assets += [
-        ConfiguredAsset("floor", AssetBaseCfg(prim_path="/World/Ground", spawn=sim.CuboidCfg(
+        ConfiguredAsset("floor", RigidObjectCfg(prim_path="/World/Ground", spawn=sim.CuboidCfg(
             size=(2., 2., .04), collision_props=sim.CollisionPropertiesCfg(),
+            activate_contact_sensors=True,
+            rigid_props=sim.RigidBodyPropertiesCfg(kinematic_enabled=True, disable_gravity=True),
             visual_material=sim.PreviewSurfaceCfg(diffuse_color=(.22, .25, .24))),
-            init_state=AssetBaseCfg.InitialStateCfg(pos=(.3, 0., -.02)))),
+            init_state=RigidObjectCfg.InitialStateCfg(pos=(.3, 0., -.02)))),
         ConfiguredAsset("light", AssetBaseCfg(prim_path="/World/Light", spawn=sim.DomeLightCfg(intensity=2500.))),
     ]
     task = PandaTask()
-    task.object_sizes = {row["name"]: row["size"] for row in config["objects"]}
-    task.contact_targets = {row['name']: [other['name'] for other in scene_entities(config)
-                            if other['name'] != row['name']] for row in config['objects']}
-
     def configure(cfg):
-        for obj in config["objects"]:
-            setattr(cfg.scene, f"{obj['name']}_support_contact", ContactSensorCfg(
-                prim_path="{ENV_REGEX_NS}/" + obj["name"],
-                filter_prim_paths_expr=["{ENV_REGEX_NS}/" + name for name in task.contact_targets[obj['name']]],
+        # Register physical witnesses from the actual Arena scene, independent
+        # of labels, aliases, object/destination lists and imported geometry.
+        bodies = {name: value for name, value in vars(cfg.scene).items() if isinstance(value, RigidObjectCfg)}
+        task.contact_targets = {name: [other for other in bodies if other != name] for name in bodies}
+        for name, body in bodies.items():
+            setattr(cfg.scene, f"{name}_support_contact", ContactSensorCfg(
+                prim_path=body.prim_path,
+                filter_prim_paths_expr=[bodies[other].prim_path for other in task.contact_targets[name]],
                 update_period=0.))
         width, height = config["camera"]["width"], config["camera"]["height"]
         camera = config["camera"]
@@ -179,7 +175,8 @@ def build_environment(config, *, device="cuda:0"):
         cfg.scene.wrist_camera = CameraCfg(
             prim_path="{ENV_REGEX_NS}/Robot/panda_hand/WristRGBD", update_period=camera["update_period_s"],
             update_latest_camera_pose=True,
-            width=width, height=height, data_types=["rgb", "distance_to_image_plane"],
+            width=width, height=height, data_types=["rgb", "distance_to_image_plane", "instance_id_segmentation_fast"],
+            colorize_instance_id_segmentation=False,
                 spawn=sim.PinholeCameraCfg(focal_length=12., horizontal_aperture=20.955, clipping_range=(.01, 4.)),
             offset=CameraCfg.OffsetCfg(pos=tuple(wrist["position"]),
                 rot=_camera_rotation(wrist["position"], wrist["lookat"]), convention="ros"))

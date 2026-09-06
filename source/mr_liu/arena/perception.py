@@ -4,12 +4,14 @@ import time
 import shutil
 from pathlib import Path
 from uuid import uuid4
+from collections import Counter
 import numpy as np
 from scipy.ndimage import binary_erosion
 import urllib.request
 import urllib.error
 from mr_liu.arena.arrays import numpy_data, pose_matrix
 from mr_liu.grasp.transforms import transform_points
+from mr_liu.arena.instances import instance_votes, consistent_witness
 
 
 class PerceptionBridge:
@@ -22,12 +24,11 @@ class PerceptionBridge:
                 slow_provider=None, scene_mode='describe', transient=False):
         request_id = uuid4().hex
         directory = self.root/request_id; directory.mkdir()
-        row = next((r for r in runtime.config['objects'] + runtime.config['destinations']
-                    if name in [r['name'], r['label'], *r.get('aliases', [])]), None)
+        row = getattr(runtime, 'observed_entities', {}).get(name)
         held_target = name and (runtime.held == name or (row and runtime.held == row['name']))
         cameras = cameras or (['wrist_camera'] if held_target else ['scene_camera', 'side_camera'])
         label = row['label'] if row else name
-        arrays, views = {}, []
+        arrays, views, instances, instance_labels = {}, [], {}, {}
         for camera in cameras:
             data = runtime.env.scene[camera].data
             arrays[camera+'_rgb'] = numpy_data(data.output['rgb'])[0, :, :, :3].copy()
@@ -35,6 +36,10 @@ class PerceptionBridge:
                 arrays[camera+'_depth'] = numpy_data(data.output['distance_to_image_plane'])[0].squeeze().copy()
                 arrays[camera+'_K'] = numpy_data(data.intrinsic_matrices)[0].copy()
                 arrays[camera+'_T'] = pose_matrix(numpy_data(data.pos_w)[0], numpy_data(data.quat_w_ros)[0])
+                kind = 'instance_id_segmentation_fast'
+                if kind in data.output:
+                    instances[camera] = numpy_data(data.output[kind])[0].squeeze().copy()
+                    instance_labels[camera] = data.info[0][kind]['idToLabels']
             views.append({'camera': camera, 'sequence': runtime.sequence})
         request = {'request_id': request_id, 'scene_id': self.scene_id, 'command_id': runtime.current or 'observe',
             'label': label or 'scene', 'scope': 'target' if name else 'scene',
@@ -45,6 +50,11 @@ class PerceptionBridge:
             'views': views, 'refine': refine, 'reset': reset, **runtime.bus_context}
         # Same-machine SSD transport: compression cost exceeded model inference on the fast path.
         np.savez(directory/'frames.npz', **arrays)
+        if instances:
+            # Evaluation-only sidecar. Never sent to the image model or used
+            # to manufacture a target mask/point cloud.
+            np.savez(directory/'physical_instances.npz', **instances)
+            (directory/'physical_instances.json').write_text(json.dumps(instance_labels))
         (directory/'request.json').write_text(json.dumps(request))
         return request
 
@@ -89,3 +99,14 @@ class PerceptionBridge:
         _, indices = np.unique(np.round(points/.0005).astype(int), axis=0, return_index=True)
         points = points[np.sort(indices)]
         return points[np.linspace(0,len(points)-1,min(len(points),16000),dtype=int)], diagnostics
+
+    def witness(self, result, bodies):
+        directory = self.root/result['request_id']
+        views = {}
+        labels = json.loads((directory/'physical_instances.json').read_text())
+        with np.load(directory/'physical_instances.npz') as instances, np.load(directory/'masks.npz') as masks:
+            for camera in masks.files:
+                mask = masks[camera].astype(bool)
+                core = binary_erosion(mask)
+                views[camera] = instance_votes(core if core.any() else mask, instances[camera], labels[camera], bodies)
+        return consistent_witness(views), dict(sum(views.values(), Counter()))
