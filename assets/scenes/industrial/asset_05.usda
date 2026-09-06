@@ -1,0 +1,175 @@
+#usda 1.0
+(
+    defaultPrim = "Asset"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def Xform "Asset" (
+    prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+)
+{
+    float physics:mass = 0.08
+
+    def Material "Material" (
+        prepend apiSchemas = ["PhysicsMaterialAPI"]
+    )
+    {
+        token outputs:surface.connect = </Asset/Material/Shader.outputs:surface>
+        float physics:dynamicFriction = 1
+        float physics:restitution = 0
+        float physics:staticFriction = 1.2
+
+        def Shader "Shader"
+        {
+            uniform token info:id = "UsdPreviewSurface"
+            color3f inputs:diffuseColor = (0.68, 0.45, 0.1)
+            float inputs:metallic = 0.8
+            float inputs:roughness = 0.32
+            token outputs:surface
+        }
+    }
+
+    def Mesh "piece_001" (
+        prepend apiSchemas = ["PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [6, 6, 4, 4, 4, 4, 4, 4]
+        int[] faceVertexIndices = [5, 4, 3, 2, 1, 0, 6, 7, 8, 9, 10, 11, 0, 1, 7, 6, 1, 2, 8, 7, 2, 3, 9, 8, 3, 4, 10, 9, 4, 5, 11, 10, 5, 0, 6, 11]
+        rel material:binding = </Asset/Material>
+        rel material:binding:physics = </Asset/Material>
+        uniform token physics:approximation = "convexHull"
+        point3f[] points = [(0.023, 0, 0), (0.0115, 0.019918585, 0), (-0.0115, 0.019918585, 0), (-0.023, 2.8166877e-18, 0), (-0.0115, -0.019918585, 0), (0.0115, -0.019918585, 0), (0.023, 0, 0.013), (0.0115, 0.019918585, 0.013), (-0.0115, 0.019918585, 0.013), (-0.023, 2.8166877e-18, 0.013), (-0.0115, -0.019918585, 0.013), (0.0115, -0.019918585, 0.013)]
+        uniform token subdivisionScheme = "none"
+        float3 xformOp:rotateXYZ = (0, 0, 0)
+        double3 xformOp:translate = (0, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+
+    def Cylinder "piece_002" (
+        prepend apiSchemas = ["PhysicsCollisionAPI", "MaterialBindingAPI"]
+    )
+    {
+        uniform token axis = "Z"
+        double height = 0.046
+        rel material:binding = </Asset/Material>
+        rel material:binding:physics = </Asset/Material>
+        double radius = 0.009
+        float3 xformOp:rotateXYZ = (0, 0, 0)
+        double3 xformOp:translate = (0, 0, 0.036)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+
+    def Cylinder "piece_003" (
+        prepend apiSchemas = ["PhysicsCollisionAPI", "MaterialBindingAPI"]
+    )
+    {
+        uniform token axis = "Z"
+        double height = 0.0015
+        rel material:binding = </Asset/Material>
+        rel material:binding:physics = </Asset/Material>
+        double radius = 0.0104
+        float3 xformOp:rotateXYZ = (0, 0, 0)
+        double3 xformOp:translate = (0, 0, 0.018)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+
+    def Cylinder "piece_004" (
+        prepend apiSchemas = ["PhysicsCollisionAPI", "MaterialBindingAPI"]
+    )
+    {
+        uniform token axis = "Z"
+        double height = 0.0015
+        rel material:binding = </Asset/Material>
+        rel material:binding:physics = </Asset/Material>
+        double radius = 0.0104
+        float3 xformOp:rotateXYZ = (0, 0, 0)
+        double3 xformOp:translate = (0, 0, 0.023)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+
+    def Cylinder "piece_005" (
+        prepend apiSchemas = ["PhysicsCollisionAPI", "MaterialBindingAPI"]
+    )
+    {
+        uniform token axis = "Z"
+        double height = 0.0015
+        rel material:binding = </Asset/Material>
+        rel material:binding:physics = </Asset/Material>
+        double radius = 0.0104
+        float3 xformOp:rotateXYZ = (0, 0, 0)
+        double3 xformOp:translate = (0, 0, 0.027999999999999997)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+
+    def Cylinder "piece_006" (
+        prepend apiSchemas = ["PhysicsCollisionAPI", "MaterialBindingAPI"]
+    )
+    {
+        uniform token axis = "Z"
+        double height = 0.0015
+        rel material:binding = </Asset/Material>
+        rel material:binding:physics = </Asset/Material>
+        double radius = 0.0104
+        float3 xformOp:rotateXYZ = (0, 0, 0)
+        double3 xformOp:translate = (0, 0, 0.033)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+
+    def Cylinder "piece_007" (
+        prepend apiSchemas = ["PhysicsCollisionAPI", "MaterialBindingAPI"]
+    )
+    {
+        uniform token axis = "Z"
+        double height = 0.0015
+        rel material:binding = </Asset/Material>
+        rel material:binding:physics = </Asset/Material>
+        double radius = 0.0104
+        float3 xformOp:rotateXYZ = (0, 0, 0)
+        double3 xformOp:translate = (0, 0, 0.038)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+
+    def Cylinder "piece_008" (
+        prepend apiSchemas = ["PhysicsCollisionAPI", "MaterialBindingAPI"]
+    )
+    {
+        uniform token axis = "Z"
+        double height = 0.0015
+        rel material:binding = </Asset/Material>
+        rel material:binding:physics = </Asset/Material>
+        double radius = 0.0104
+        float3 xformOp:rotateXYZ = (0, 0, 0)
+        double3 xformOp:translate = (0, 0, 0.043)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+
+    def Cylinder "piece_009" (
+        prepend apiSchemas = ["PhysicsCollisionAPI", "MaterialBindingAPI"]
+    )
+    {
+        uniform token axis = "Z"
+        double height = 0.0015
+        rel material:binding = </Asset/Material>
+        rel material:binding:physics = </Asset/Material>
+        double radius = 0.0104
+        float3 xformOp:rotateXYZ = (0, 0, 0)
+        double3 xformOp:translate = (0, 0, 0.048)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+
+    def Cylinder "piece_010" (
+        prepend apiSchemas = ["PhysicsCollisionAPI", "MaterialBindingAPI"]
+    )
+    {
+        uniform token axis = "Z"
+        double height = 0.0015
+        rel material:binding = </Asset/Material>
+        rel material:binding:physics = </Asset/Material>
+        double radius = 0.0104
+        float3 xformOp:rotateXYZ = (0, 0, 0)
+        double3 xformOp:translate = (0, 0, 0.053000000000000005)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+}
+

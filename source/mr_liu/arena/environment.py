@@ -5,6 +5,7 @@ constraint is used. Primitive assets make the first regression self-contained.
 Isaac Lab 3 uses XYZW quaternions throughout this module.
 """
 from argparse import Namespace
+from pathlib import Path
 
 import numpy as np
 from mr_liu.arena.arrays import numpy_data
@@ -137,13 +138,23 @@ def build_environment(config, *, device="cuda:0"):
                                                   solver_velocity_iteration_count=4),
             mass_props=sim.MassPropertiesCfg(mass=row.get("mass", .1)),
             physics_material=sim.RigidBodyMaterialCfg(static_friction=1.2, dynamic_friction=1.),
-            visual_material=sim.PreviewSurfaceCfg(diffuse_color=tuple(row["color"])),
+            visual_material=sim.PreviewSurfaceCfg(diffuse_color=tuple(row.get("color", [.6, .6, .6]))),
         )
-        spawner = (sim.UsdFileCfg(usd_path=row['usd_path'], **shape) if row.get('usd_path') else
-                   sim.CylinderCfg(radius=row["size"][0] / 2, height=row["size"][2], **shape)
-                   if row.get("shape") == "cylinder" else sim.CuboidCfg(size=tuple(row["size"]), **shape))
+        if row.get('usd_path'):
+            path = Path(row['usd_path'])
+            if not path.is_absolute():
+                path = Path(__file__).resolve().parents[3] / path
+            # USD assets carry their own collider materials and concave shape.
+            # UsdFileCfg has no primitive-spawner physics_material argument.
+            shape.pop('physics_material')
+            shape.pop('visual_material')
+            spawner = sim.UsdFileCfg(usd_path=str(path), **shape)
+        else:
+            spawner = (sim.CylinderCfg(radius=row["size"][0] / 2, height=row["size"][2], **shape)
+                       if row.get("shape") == "cylinder" else sim.CuboidCfg(size=tuple(row["size"]), **shape))
         cfg = RigidObjectCfg(prim_path="{ENV_REGEX_NS}/" + row["name"], spawn=spawner,
-                             init_state=RigidObjectCfg.InitialStateCfg(pos=tuple(row["position"])))
+                             init_state=RigidObjectCfg.InitialStateCfg(pos=tuple(row["position"]),
+                                 rot=tuple(row.get('orientation', [0., 0., 0., 1.]))))
         assets.append(ConfiguredAsset(row["name"], cfg))
     assets += [
         ConfiguredAsset("floor", RigidObjectCfg(prim_path="/World/Ground", spawn=sim.CuboidCfg(

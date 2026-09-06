@@ -20,6 +20,20 @@ class NullVisualizer:
     def delete(self, *args, **kwargs): pass
 
 
+def model_cloud(points, name, minimum=1024):
+    """Meet the model tensor size using only measured samples, without new geometry."""
+    points = np.asarray(points, dtype=np.float32)
+    if points.ndim != 2 or points.shape[1] != 3 or not np.isfinite(points).all():
+        raise ValueError(f'{name}: expected finite Nx3 cloud in metres')
+    observed = len(points)
+    if not observed:
+        raise ValueError(f'{name}: empty observed cloud')
+    if observed < minimum:
+        points = points[np.linspace(0, observed, minimum, endpoint=False).astype(int)]
+    return points, {'observed_points': observed, 'model_input_points': len(points),
+                    'repeated_samples': len(points) - observed}
+
+
 def rotation_grid(size=10000):
     # Same RING HEALPix centres and Euler convention as upstream util.py.
     # astropy-healpix supplies native Windows wheels where healpy does not.
@@ -66,13 +80,10 @@ class AnyPlaceRuntime:
 
     def infer(self, parent, child, *, seed=0, candidates=20, iterations=50,init_current_orientation=False):
         torch=self.torch
-        parent=np.asarray(parent,dtype=np.float32);child=np.asarray(child,dtype=np.float32)
-        for name,points in [('parent',parent),('child',child)]:
-            if points.ndim!=2 or points.shape[1]!=3 or not np.isfinite(points).all():
-                raise ValueError(f'{name}: expected finite Nx3 cloud in metres')
-            if len(points)<1024: raise ValueError(f'{name}: insufficient observed points (<1024)')
-        # The unused success-classifier cloud is skipped by the tracked vendor
-        # patch. Actual diffusion still requires 1024 real input points per cloud.
+        parent, parent_sampling = model_cloud(parent, 'parent')
+        child, child_sampling = model_cloud(child, 'child')
+        # 1024 is a tensor size, not a minimum number of independent measurements.
+        # Repetition adds no surface information; report the observed counts.
         if not 2<=candidates<=20 or not 1<=iterations<=50: raise ValueError('Invalid inference budget')
         random.seed(seed);np.random.seed(seed);torch.manual_seed(seed)
         torch.cuda.reset_peak_memory_stats();torch.cuda.synchronize();started=time.perf_counter()
@@ -96,6 +107,7 @@ class AnyPlaceRuntime:
             'init_current_orientation':bool(init_current_orientation),
             'inference_s':time.perf_counter()-started,
             'cuda_peak_allocated_bytes':torch.cuda.max_memory_allocated(),
-            'parent_points':len(parent),'child_points':len(child),
+            'parent_points':parent_sampling['observed_points'],'child_points':child_sampling['observed_points'],
+            'input_sampling': {'parent': parent_sampling, 'child': child_sampling},
             'checkpoint':self.checkpoint,'checkpoint_sha256':self.weight_sha256,
             'learned_success_scores':None,'collision_checked':False}

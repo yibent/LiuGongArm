@@ -21,7 +21,7 @@ from mr_liu.arena.cascade import run_cascade
 from mr_liu.arena.fast import fast_pick_place, fast_place_held
 from mr_liu.arena.contracts import ManipulationRequest, model_grasp_to_tcp, placement_to_tcp
 from mr_liu.grasp.backends.graspgenx import ZmqGraspGenXTransport
-from mr_liu.grasp.transforms import invert_transform
+from mr_liu.grasp.transforms import invert_transform, transform_points
 from mr_liu.place.anyplace import AnyPlaceClient
 
 
@@ -37,6 +37,7 @@ class ArenaRuntime:
         self.frames = {}; self.snapshot = {}; self.sequence = 0
         self.phase = "initializing"; self.current = None; self.held = None
         self.held_context = None
+        self.held_geometry = None
         self.observed_entities = {}
         self.prepared_clouds = {}
         self.body_entities = {name: {'name': name, 'prim_path': body.cfg.prim_path.replace(
@@ -85,6 +86,7 @@ class ArenaRuntime:
 
     def remember_hold(self, row):
         self.held = row['name']
+        self.held_geometry = None
         self.held_context = {'instance_id': self.held, 'label': row['label'],
             'grasp_command_id': self.current, 'initial_z': self.initial_z,
             'max_lift_m': self.max_lift,
@@ -103,6 +105,21 @@ class ArenaRuntime:
     def clear_hold(self):
         self.held = None
         self.held_context = None
+        self.held_geometry = None
+
+    def held_cloud(self):
+        """Retain measured geometry in the tool frame while the grasp persists."""
+        if not self.holding_status()['verified']:
+            raise RuntimeError('夹持状态已改变，不能沿用持物几何。')
+        if self.held_geometry is not None:
+            self.event('held_geometry_reused', observation_ref=self.held_geometry['observation_ref'],
+                       source='prior_rgbd_in_gripper_frame', points=len(self.held_geometry['points_tcp']))
+            return transform_points(self.tcp_pose(), self.held_geometry['points_tcp'])
+        points = self.cloud(self.held)
+        self.held_geometry = {'points_tcp': transform_points(invert_transform(self.tcp_pose()), points),
+                              'observation_ref': self.visual_result['request_id']}
+        self.event('held_geometry_recorded', observation_ref=self.held_geometry['observation_ref'], points=len(points))
+        return points
 
     def capabilities(self):
         return {"robot": "franka_panda", "execution": "isaaclab_arena.franka_ik",
@@ -363,7 +380,7 @@ class ArenaRuntime:
     def _place_held(self, request, row, destination):
         # Geometry below comes from RGB-D. Simulator object pose is used only by
         # evaluation; the held reference is estimated from measured cloud bounds.
-        child = self.cloud(row["name"])
+        child = self.held_cloud()
         object_input = np.eye(4)
         object_input[:3, 3] = np.quantile(child, [.02, .98], axis=0).mean(axis=0)
         tcp_to_object = invert_transform(self.tcp_pose()) @ object_input
@@ -380,7 +397,8 @@ class ArenaRuntime:
         np.savez(self.active_directory / "anyplace_candidates.npz", parent=parent, child=child,
                  relative=np.asarray(answer["transforms"]), object_input=object_input, tcp_to_object=tcp_to_object)
         self.event("placement_candidates", backend="anyplace", count=len(answer["transforms"]),
-                   inference_s=answer.get("inference_s"), checkpoint_sha256=answer.get("checkpoint_sha256"))
+                   inference_s=answer.get("inference_s"), checkpoint_sha256=answer.get("checkpoint_sha256"),
+                   input_sampling=answer.get('input_sampling'))
         candidates = [placement_to_tcp(np.asarray(relative), object_input, tcp_to_object)
                       for relative in answer["transforms"]]
         if not candidates:

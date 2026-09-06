@@ -83,7 +83,7 @@ T_world_tcp_goal = T_world_object_final @ inverse(T_tcp_object)
 | 对侧 | 世界 `[0.90, 0.62, 0.66]` | 看向同一点，从另一侧补足夹爪、手臂遮挡 |
 | 腕部 | `panda_hand` 局部 `[0.055, 0, 0.02]` | 看向局部夹持中心 `[0, 0, 0.1034]`，偏离夹爪中线获得近距持物几何 |
 
-依照 [Isaac Lab 相机接口](https://isaac-sim.github.io/IsaacLab/v2.2.0/source/api/lab/isaaclab.sensors.html) 使用 ROS 光学坐标（前方 +Z、上方 −Y）、相机内参和 Z 深度反投影；分辨率为 640×480。抓取前融合两台固定相机，持物后优先使用腕部视角。保留真实观测点数量、相机外参和每视角点云包围范围，便于发现遮挡或错位；不复制点来凑模型输入。新视角下红方块初始观测融合约 1857 点，黄色圆柱约 1304 点，两个固定视角的世界坐标范围一致。
+依照 [Isaac Lab 相机接口](https://isaac-sim.github.io/IsaacLab/v2.2.0/source/api/lab/isaaclab.sensors.html) 使用 ROS 光学坐标（前方 +Z、上方 −Y）、相机内参和 Z 深度反投影；分辨率为 640×480。抓取前融合两台固定相机，持物后优先使用腕部视角。保留真实观测点数量、相机外参和每视角点云包围范围，便于发现遮挡或错位；AnyPlace 的固定输入长度适配在模型边界完成，诊断仍报告原始观测数量。新视角下红方块初始观测融合约 1857 点，黄色圆柱约 1304 点，两个固定视角的世界坐标范围一致。
 
 ## 运行
 
@@ -189,3 +189,24 @@ HTTP 202 仅表示接受任务。最终 `completed` 必须来自物理评测；�
 - [AnyPlace 官方权重](https://huggingface.co/datasets/yuchiallanzhao/anyplace)
 
 AnyPlace multitask 权重 SHA-256：`d3d33f0a279633c25f252960a208d4b4447a756f0cff8e94be0faadc20dc5be5`。模型源码、权重和 Python 环境不提交到仓库。
+
+## 工业工作台场景
+
+`configs/arena_panda_industrial.json` 加入七个可移动工业零件、两个敞口零件托盘及带定位销／挂钩的工装。资产是原创 USD 组合刚体，带孔零件采用多个凸碰撞体保留孔洞，详见 [资产说明](../assets/scenes/industrial/README.md)。配置中的实体仍只有物理属性，不登记类别或别名。场景盘点词汇是视觉查询提示，不限制抓放指令。
+
+```bash
+python3 ops/arena_stack.py stop arena
+python3 ops/arena_stack.py start arena --config configs/arena_panda_industrial.json
+```
+
+场景选择记录在 `output/services/arena-scene.json`，后续常规重启沿用该场景。切回基础场景时用 `--config configs/arena_panda.json`。工业场景两路固定相机从对角上方观察工作区，分辨率 800×600，腕部相机保留抓持后的局部观测。挂钩和定位销目前是几何测试对象，尚不表示已支持悬挂／插入动作。
+
+工业零件测试发现持物遮挡使螺母仅有 406 个可见点。旧 AnyPlace 适配器把 1024 个网络输入样本误当成 1024 个独立观测点；现对非空稀疏观测重复采样，保留原始点数和采样信息。该适配不补全不可见表面，也不保证放置成功。原始 406 点回放已通过官方模型推理。
+
+在一次夹持中，成功获得的持物点云保存在夹爪坐标系，后续放置使用当前 TCP 位姿更新它，避免遮挡后每次重新定位。释放、新抓取或夹持失效不再沿用旧几何。事件区分 `held_geometry_recorded / held_geometry_reused`，并保留原始观测编号；目标区域仍使用新视觉观测。
+
+工业场景首轮结果：绿色支架至蓝色托盘约 21.8 秒，金色螺栓至橙色托盘约 22.6 秒，两次均走快速控制器并通过物理评测。五个带描述的查询可定位；首次泛类别盘点漏报多数零件，Florence 描述较泛。螺母增强测试出现过点数拦截、夹持遮挡和一次物理抬升失败，不能宣称稳定成功。原始结果及修复回放见 [绿色目标歧义与工业场景验证](arena/green-ambiguity-industrial-validation.json)。
+
+支架补测已验证中断后复用夹爪坐标系中的旧观测几何，且 AnyPlace 返回候选；选中的增强放置姿态随后因 Arena IK 未到达而失败（位置误差 66.7 mm，姿态误差 9.19°）。模型返回候选不代表动作可执行，后续需改进候选可达性处理。本轮保留该失败，未放宽物理评测。
+
+增强搬运失败后的夹持复核显示相对位置已改变，未再沿用该夹持执行放置。验证后重置工业场景，供后续从原始零件位置继续测试。

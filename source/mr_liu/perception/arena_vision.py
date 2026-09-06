@@ -45,6 +45,8 @@ class ImagePipeline:
             accepted = [d for d in found if d.score >= self.fast_conf]
             stages.append({'model': 'yoloe', 'loop': 'fast', 'operation': 'text_detect',
                            'candidates': len(found), 'accepted': len(accepted),
+                           'accepted_boxes': [{'box': d.xyxy.tolist(), 'label': d.label,
+                                               'score': float(d.score)} for d in accepted],
                            'best_score': max((float(d.score) for d in found), default=0.),
                            'elapsed_s': time.perf_counter()-started})
             return accepted, 'low_confidence' if found else 'no_text_detection'
@@ -170,11 +172,16 @@ class ImagePipeline:
                 else:
                     found, reason = self._text(bgr, [label], stages)
                     if len(found) > 1:
-                        return None, result('ambiguous')
-                    if found:
+                        # Multiple fast proposals are model uncertainty, not
+                        # proof of multiple matching objects in the scene.
+                        reason = 'multiple_fast_candidates'
+                        if mode == 'fast':
+                            fallback_reason = reason
+                            return None, result('ambiguous')
+                    elif found:
                         detection, semantic_status, origin = found[0], 'detected', 'yoloe_text'
                         score_model = 'yoloe_text'
-                    else:
+                    if detection is None:
                         fallback_reason = reason if fallback_reason is None else fallback_reason+';'+reason
             if detection is None:
                 if mode == 'fast':

@@ -13,6 +13,9 @@ def main():
     parser.add_argument('--target', default='red cube')
     parser.add_argument('--destination', default='blue pad')
     parser.add_argument('--interrupt-placement', action='store_true')
+    parser.add_argument('--interrupt-inference', action='store_true', help='Stop AnyPlace inference, then reuse held geometry')
+    parser.add_argument('--mode', choices=['auto', 'enhanced'], default='auto')
+    parser.add_argument('--grasp-mode', choices=['auto', 'enhanced'], help='Override pickup mode independently of placement')
     parser.add_argument('--output', type=Path, default=Path('output/validation/holding-live.json'))
     args = parser.parse_args()
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -32,7 +35,7 @@ def main():
         interrupted = False
         while time.monotonic() < deadline:
             result = call('/api/commands/' + key)
-            if interrupt and not interrupted and result.get('phase') == 'transport':
+            if interrupt and not interrupted and result.get('phase') == interrupt:
                 call('/api/command', {'command_id': 'transport-stop-' + uuid4().hex, 'skill': 'stop'})
                 interrupted = True
             if result['state'] not in ('accepted', 'running'):
@@ -51,7 +54,7 @@ def main():
     assert status['capabilities']['configured_label_required'] is False
     empty = command('place_held', {'destination': {'label': args.destination}})
     assert not empty['ok'] and not empty['events'], 'An empty gripper must not start transport'
-    grasp = command('grasp', {'target': {'category': args.target}})
+    grasp = command('grasp', {'target': {'category': args.target}, 'mode': args.grasp_mode or args.mode})
     assert grasp['ok'], grasp['message']
     held = call('/api/status')['holding']
     assert held['verified'] and held['grasp_command_id'] == grasp['command_id']
@@ -59,15 +62,18 @@ def main():
     assert not missing['ok']
     assert call('/api/status')['holding']['instance_id'] == held['instance_id']
     call('/api/command', {'command_id': 'holding-stop-' + uuid4().hex, 'skill': 'stop'})
-    if args.interrupt_placement:
-        interrupted = command('place_held', {'destination': {'label': args.destination}}, interrupt=True)
+    if args.interrupt_placement or args.interrupt_inference:
+        phase = 'placement_inference' if args.interrupt_inference else 'transport'
+        interrupted = command('place_held', {'destination': {'label': args.destination}, 'mode': args.mode}, interrupt=phase)
         assert call('/api/status')['holding']['verified']
         assert not set(e['phase'] for e in interrupted['events']) & {'release', 'close_gripper'}
-    placed = command('place_held', {'destination': {'label': args.destination}})
+    placed = command('place_held', {'destination': {'label': args.destination}, 'mode': args.mode})
     assert placed['ok'], placed['message']
     assert placed['route']['grasp'] == 'retained_from_previous_command'
     phases = [e['phase'] for e in placed['events']]
     assert 'holding_resumed' in phases and 'release' in phases
+    if args.interrupt_inference:
+        assert 'held_geometry_reused' in phases
     assert not set(phases) & {'pregrasp', 'approach', 'close_gripper', 'grasp_candidates', 'lift'}
     assert call('/api/status')['held_object'] is None
     report['passed'] = True

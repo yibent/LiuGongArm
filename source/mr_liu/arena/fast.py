@@ -88,7 +88,7 @@ def fast_place_held(runtime, request, row, destination):
 Warm the controller's first phases with detached adapters, without stepping
 the robot. Then use its original transport/release/retreat interpolation.
 """
-    child = runtime.cloud(row['name'])
+    child = runtime.held_cloud()
     parent = runtime.cloud(destination['name'])
     tcp = runtime.tcp_pose()
     low, high = np.quantile(child, [.02, .98], axis=0)

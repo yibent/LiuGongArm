@@ -1,0 +1,281 @@
+{
+  "robot": "franka_panda",
+  "arena_revision": "8b4a3a47fc53de23e8205089d71109a2e2348acd",
+  "isaaclab_revision": "e57379c634b42db5a0fe9f754341be6e2a7c7c43",
+  "base_revision": "0576d673fa396d1373d9bcd298d45a93bc582904",
+  "camera": {
+    "width": 800,
+    "height": 600,
+    "render_interval": 8,
+    "update_period_s": 0.06666666666666667,
+    "scene": {
+      "position": [
+        1.02,
+        -0.64,
+        0.92
+      ],
+      "lookat": [
+        0.5,
+        0.025,
+        0.04
+      ]
+    },
+    "side": {
+      "position": [
+        0.96,
+        0.66,
+        0.8
+      ],
+      "lookat": [
+        0.5,
+        0.025,
+        0.04
+      ]
+    },
+    "wrist": {
+      "position": [
+        0.055,
+        0,
+        0.02
+      ],
+      "lookat": [
+        0,
+        0,
+        0.1034
+      ]
+    }
+  },
+  "fast": {
+    "phase_steps": [
+      60,
+      50,
+      8,
+      25,
+      50,
+      80,
+      50,
+      25,
+      40,
+      1
+    ]
+  },
+  "vision": {
+    "service_url": "http://127.0.0.1:5570/observe",
+    "track_every_steps": 8,
+    "vocabulary": [
+      "nut",
+      "gear",
+      "shaft",
+      "bolt",
+      "bracket",
+      "sleeve",
+      "washer",
+      "tray",
+      "robot arm",
+      "table"
+    ],
+    "fast_conf": 0.45,
+    "refresh_updates": 8,
+    "max_frame_gap": 90,
+    "slow_localizer": "sam3",
+    "sam3_conf": 0.4,
+    "planned_disabled": [
+      "qwen_multimodal"
+    ]
+  },
+  "controller": {
+    "position_tolerance_m": 0.006,
+    "rotation_tolerance_deg": 5,
+    "max_steps": 360
+  },
+  "graspgenx": {
+    "host": "127.0.0.1",
+    "port": 5556,
+    "timeout_ms": 120000,
+    "num_grasps": 64
+  },
+  "anyplace": {
+    "url": "http://127.0.0.1:5590",
+    "timeout_s": 120,
+    "candidates": 20,
+    "iterations": 50
+  },
+  "ports": {
+    "busagent": 8991,
+    "preview": 8993,
+    "spare": 8999,
+    "controller_internal": 7861
+  },
+  "entities": [
+    {
+      "name": "entity_01",
+      "usd_path": "assets/scenes/industrial/asset_01.usda",
+      "position": [
+        0.44,
+        -0.17,
+        0.002
+      ],
+      "orientation": [
+        0,
+        0,
+        -0.10452846326765347,
+        0.9945218953682733
+      ],
+      "dynamic": true,
+      "mass": 0.08
+    },
+    {
+      "name": "entity_02",
+      "usd_path": "assets/scenes/industrial/asset_02.usda",
+      "position": [
+        0.5,
+        -0.025,
+        0.002
+      ],
+      "orientation": [
+        0,
+        0,
+        0.10452846326765347,
+        0.9945218953682733
+      ],
+      "dynamic": true,
+      "mass": 0.08
+    },
+    {
+      "name": "entity_03",
+      "usd_path": "assets/scenes/industrial/asset_03.usda",
+      "position": [
+        0.625,
+        -0.165,
+        0.002
+      ],
+      "orientation": [
+        0,
+        0,
+        0.0,
+        1.0
+      ],
+      "dynamic": true,
+      "mass": 0.08
+    },
+    {
+      "name": "entity_04",
+      "usd_path": "assets/scenes/industrial/asset_04.usda",
+      "position": [
+        0.665,
+        -0.035,
+        0.002
+      ],
+      "orientation": [
+        0,
+        0,
+        0.24192189559966773,
+        0.9702957262759965
+      ],
+      "dynamic": true,
+      "mass": 0.08
+    },
+    {
+      "name": "entity_05",
+      "usd_path": "assets/scenes/industrial/asset_05.usda",
+      "position": [
+        0.35,
+        -0.075,
+        0.002
+      ],
+      "orientation": [
+        0,
+        0,
+        0.0,
+        1.0
+      ],
+      "dynamic": true,
+      "mass": 0.08
+    },
+    {
+      "name": "entity_06",
+      "usd_path": "assets/scenes/industrial/asset_06.usda",
+      "position": [
+        0.69,
+        0.095,
+        0.002
+      ],
+      "orientation": [
+        0,
+        0,
+        0.0,
+        1.0
+      ],
+      "dynamic": true,
+      "mass": 0.08
+    },
+    {
+      "name": "entity_07",
+      "usd_path": "assets/scenes/industrial/asset_07.usda",
+      "position": [
+        0.539,
+        0.012,
+        0.002
+      ],
+      "orientation": [
+        0,
+        0,
+        0.0,
+        1.0
+      ],
+      "dynamic": true,
+      "mass": 0.08
+    },
+    {
+      "name": "entity_08",
+      "usd_path": "assets/scenes/industrial/asset_08.usda",
+      "position": [
+        0.355,
+        0.215,
+        0
+      ],
+      "orientation": [
+        0,
+        0,
+        0.0,
+        1.0
+      ],
+      "dynamic": false,
+      "mass": 1.0
+    },
+    {
+      "name": "entity_09",
+      "usd_path": "assets/scenes/industrial/asset_09.usda",
+      "position": [
+        0.58,
+        0.265,
+        0
+      ],
+      "orientation": [
+        0,
+        0,
+        0.0,
+        1.0
+      ],
+      "dynamic": false,
+      "mass": 1.0
+    },
+    {
+      "name": "entity_10",
+      "usd_path": "assets/scenes/industrial/asset_10.usda",
+      "position": [
+        0.78,
+        0.245,
+        0
+      ],
+      "orientation": [
+        0,
+        0,
+        0.0,
+        1.0
+      ],
+      "dynamic": false,
+      "mass": 1.0
+    }
+  ]
+}

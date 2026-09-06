@@ -1,0 +1,3150 @@
+{
+  "date": "2026-09-06",
+  "original_failed_observation": "e8a082f63e704e8f9d99395fcd92c40d",
+  "cause": "YOLOE detected the green block and the combined block-plus-pad region; auto mode returned ambiguous before slow localization.",
+  "fix": "Multiple fast candidates now invoke the selected slow localizer; only unresolved multiple slow instances remain ambiguous.",
+  "tests_passed": 45,
+  "replay": {
+    "request_id": "66eaeb5dca614bba9e7093f373ad4f4b",
+    "command_id": "evt_7071a2e3-70c0-46f8-82a8-c8aa4dcb2d54:1",
+    "label": "green block",
+    "views": [
+      {
+        "camera": "scene_camera",
+        "label": "green block",
+        "sequence": 19543,
+        "status": "observed",
+        "semantic_status": "detected",
+        "origin": "sam3",
+        "score": 0.92529296875,
+        "score_model": "sam3",
+        "memory_id": "1788703652-83ad76d6",
+        "loop": "slow",
+        "fallback_reason": "multiple_fast_candidates",
+        "stages": [
+          {
+            "model": "yoloe",
+            "loop": "fast",
+            "operation": "text_detect",
+            "candidates": 2,
+            "accepted": 2,
+            "accepted_boxes": [
+              {
+                "box": [
+                  364.0,
+                  184.0,
+                  386.0,
+                  211.0
+                ],
+                "label": "green block",
+                "score": 0.896251380443573
+              },
+              {
+                "box": [
+                  330.0,
+                  170.0,
+                  428.0,
+                  246.0
+                ],
+                "label": "green block",
+                "score": 0.8244618773460388
+              }
+            ],
+            "best_score": 0.896251380443573,
+            "elapsed_s": 1.0915645454078913
+          },
+          {
+            "model": "sam3",
+            "loop": "slow",
+            "operation": "find",
+            "reason": "multiple_fast_candidates",
+            "candidates": 1
+          }
+        ],
+        "elapsed_s": 1.4773919265717268,
+        "box": [
+          364.0,
+          184.0,
+          387.0,
+          211.0
+        ],
+        "mask_pixels": 466
+      },
+      {
+        "camera": "side_camera",
+        "label": "green block",
+        "sequence": 19543,
+        "status": "observed",
+        "semantic_status": "detected",
+        "origin": "sam3",
+        "score": 0.6584175229072571,
+        "score_model": "yoloe_visual",
+        "memory_id": "1788703652-83ad76d6",
+        "loop": "fast",
+        "fallback_reason": null,
+        "stages": [
+          {
+            "model": "yoloe",
+            "loop": "fast",
+            "operation": "memory_recall",
+            "memory_id": "1788703652-83ad76d6",
+            "candidates": 1,
+            "best_score": 0.6584175229072571
+          },
+          {
+            "model": "sam2_tiny",
+            "loop": "fast",
+            "operation": "segment",
+            "mask_score": 0.97265625
+          }
+        ],
+        "elapsed_s": 0.4296279437839985,
+        "box": [
+          380.0,
+          297.0,
+          422.0,
+          338.0
+        ],
+        "mask_pixels": 1160
+      }
+    ],
+    "result_ref": "66eaeb5dca614bba9e7093f373ad4f4b",
+    "scope": "target",
+    "observed_at": 1788703454.887917,
+    "elapsed_s": 1.9151900075376034,
+    "ok": true,
+    "perception_source": "task_routed_image_models",
+    "transient": false,
+    "loop": "slow",
+    "fallback_reasons": [
+      "multiple_fast_candidates"
+    ],
+    "semantic_status": "detected"
+  },
+  "green_block_physical_transfer": {
+    "command_id": "observed-test-d74aa5a86f134b6fbeeb31a59db3cba4",
+    "ok": true,
+    "state": "completed",
+    "elapsed_s": 19.966933727264404,
+    "evaluation": {
+      "physical_success": true,
+      "lifted": true,
+      "released": true,
+      "max_lift_m": 0.1470022089779377,
+      "final_position_world_m": [
+        0.24710717797279358,
+        0.023570138961076736,
+        0.015999993309378624
+      ],
+      "destination_xy_error_m": 0.057906847447156906,
+      "destination_position_world_m": [
+        0.30000001192092896,
+        0.0,
+        -0.019999999552965164
+      ],
+      "support_contact": true,
+      "support_force_world_n": [
+        0.0,
+        0.0,
+        0.5885985493659973
+      ],
+      "supported_region": true,
+      "support_linear_speed_mps": 0.0,
+      "support_gap_m": null,
+      "gripper_opening_m": 0.07999996840953827,
+      "settle_displacement_m": 1.501712528671799e-08,
+      "linear_speed_mps": 0.00013932371803093702,
+      "evaluation_source": "arena_task_simulation_ground_truth"
+    },
+    "route": {
+      "decision": "busagent",
+      "grasp": "official_pick_place",
+      "placement": "official_pick_place",
+      "execution": "isaaclab_arena.franka_ik",
+      "robot": "franka_panda"
+    },
+    "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-220816-a7708096"
+  },
+  "industrial_scene": {
+    "profile": "configs/arena_panda_industrial.json",
+    "dynamic_parts": 7,
+    "trays": 2,
+    "fixture": 1,
+    "configuration_labels_or_aliases": false,
+    "physical_geometry": "one rigid root per asset with compound colliders preserving holes",
+    "observations": {
+      "green-bracket": {
+        "command_id": "observed-test-fa1a9d46ec084665891756b1b2b5e431",
+        "target": "green bracket",
+        "ok": true,
+        "elapsed_s": 1.1637232303619385,
+        "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-221338-0a719125",
+        "vision": {
+          "request_id": "85cf9db3495147a1b82fe910cdc453fc",
+          "command_id": "observed-test-fa1a9d46ec084665891756b1b2b5e431",
+          "label": "green bracket",
+          "views": [
+            {
+              "camera": "scene_camera",
+              "label": "green bracket",
+              "sequence": 2212,
+              "status": "observed",
+              "semantic_status": "detected",
+              "origin": "sam3",
+              "score": 0.94384765625,
+              "score_model": "sam3",
+              "memory_id": "1788704019-b541fa50",
+              "loop": "slow",
+              "fallback_reason": "low_confidence",
+              "stages": [
+                {
+                  "model": "yoloe",
+                  "loop": "fast",
+                  "operation": "text_detect",
+                  "candidates": 1,
+                  "accepted": 0,
+                  "accepted_boxes": [],
+                  "best_score": 0.21733753383159637,
+                  "elapsed_s": 0.09647934511303902
+                },
+                {
+                  "model": "sam3",
+                  "loop": "slow",
+                  "operation": "find",
+                  "reason": "low_confidence",
+                  "candidates": 1
+                }
+              ],
+              "elapsed_s": 0.30837060138583183,
+              "box": [
+                279.0,
+                329.0,
+                325.0,
+                384.0
+              ],
+              "mask_pixels": 1376
+            },
+            {
+              "camera": "side_camera",
+              "label": "green bracket",
+              "sequence": 2212,
+              "status": "observed",
+              "semantic_status": "detected",
+              "origin": "sam3",
+              "score": 0.8701171875,
+              "score_model": "sam3",
+              "memory_id": "1788704019-b541fa50",
+              "loop": "slow",
+              "fallback_reason": "low_confidence",
+              "stages": [
+                {
+                  "model": "yoloe",
+                  "loop": "fast",
+                  "operation": "memory_recall",
+                  "memory_id": "1788704019-b541fa50",
+                  "candidates": 0,
+                  "best_score": 0.0
+                },
+                {
+                  "model": "yoloe",
+                  "loop": "fast",
+                  "operation": "text_detect",
+                  "candidates": 2,
+                  "accepted": 0,
+                  "accepted_boxes": [],
+                  "best_score": 0.2422056347131729,
+                  "elapsed_s": 0.07424422912299633
+                },
+                {
+                  "model": "sam3",
+                  "loop": "slow",
+                  "operation": "find",
+                  "reason": "low_confidence",
+                  "candidates": 1
+                }
+              ],
+              "elapsed_s": 0.45573312416672707,
+              "box": [
+                343.0,
+                223.0,
+                386.0,
+                255.0
+              ],
+              "mask_pixels": 943
+            }
+          ],
+          "result_ref": "85cf9db3495147a1b82fe910cdc453fc",
+          "scope": "target",
+          "observed_at": 1788704019.29002,
+          "elapsed_s": 0.7757872957736254,
+          "ok": true,
+          "perception_source": "task_routed_image_models",
+          "transient": false,
+          "loop": "slow",
+          "fallback_reasons": [
+            "low_confidence"
+          ],
+          "semantic_status": "detected"
+        }
+      },
+      "silver-nut": {
+        "command_id": "observed-test-0e9912ca798544a4a830f9ac22d1f1f4",
+        "target": "silver nut",
+        "ok": true,
+        "elapsed_s": 1.180656909942627,
+        "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-221340-31299f8d",
+        "vision": {
+          "request_id": "01faff8fe38c4d40ab152e09c54252ae",
+          "command_id": "observed-test-0e9912ca798544a4a830f9ac22d1f1f4",
+          "label": "silver nut",
+          "views": [
+            {
+              "camera": "scene_camera",
+              "label": "silver nut",
+              "sequence": 2239,
+              "status": "observed",
+              "semantic_status": "detected",
+              "origin": "sam3",
+              "score": 0.68115234375,
+              "score_model": "sam3",
+              "memory_id": "1788704020-2ed6ecef",
+              "loop": "slow",
+              "fallback_reason": "no_text_detection",
+              "stages": [
+                {
+                  "model": "yoloe",
+                  "loop": "fast",
+                  "operation": "text_detect",
+                  "candidates": 0,
+                  "accepted": 0,
+                  "accepted_boxes": [],
+                  "best_score": 0.0,
+                  "elapsed_s": 0.07926052436232567
+                },
+                {
+                  "model": "sam3",
+                  "loop": "slow",
+                  "operation": "find",
+                  "reason": "no_text_detection",
+                  "candidates": 1
+                }
+              ],
+              "elapsed_s": 0.3397060092538595,
+              "box": [
+                367.0,
+                310.0,
+                399.0,
+                343.0
+              ],
+              "mask_pixels": 864
+            },
+            {
+              "camera": "side_camera",
+              "label": "silver nut",
+              "sequence": 2239,
+              "status": "ambiguous",
+              "semantic_status": "unknown",
+              "origin": null,
+              "score": null,
+              "score_model": null,
+              "memory_id": null,
+              "loop": "slow",
+              "fallback_reason": "no_text_detection",
+              "stages": [
+                {
+                  "model": "yoloe",
+                  "loop": "fast",
+                  "operation": "memory_recall",
+                  "memory_id": "1788704020-2ed6ecef",
+                  "candidates": 0,
+                  "best_score": 0.1037486344575882
+                },
+                {
+                  "model": "yoloe",
+                  "loop": "fast",
+                  "operation": "text_detect",
+                  "candidates": 0,
+                  "accepted": 0,
+                  "accepted_boxes": [],
+                  "best_score": 0.0,
+                  "elapsed_s": 0.0838872604072094
+                },
+                {
+                  "model": "sam3",
+                  "loop": "slow",
+                  "operation": "find",
+                  "reason": "no_text_detection",
+                  "candidates": 4
+                }
+              ],
+              "elapsed_s": 0.43382443487644196
+            }
+          ],
+          "result_ref": "01faff8fe38c4d40ab152e09c54252ae",
+          "scope": "target",
+          "observed_at": 1788704020.6543133,
+          "elapsed_s": 0.780833151191473,
+          "ok": true,
+          "perception_source": "task_routed_image_models",
+          "transient": false,
+          "loop": "slow",
+          "fallback_reasons": [
+            "no_text_detection"
+          ],
+          "semantic_status": "detected"
+        }
+      },
+      "orange-gear": {
+        "command_id": "observed-test-fd2f696b2abb4df887612dec624a295d",
+        "target": "orange gear",
+        "ok": true,
+        "elapsed_s": 0.8811626434326172,
+        "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-221341-f6dadde9",
+        "vision": {
+          "request_id": "43fa1a3054914df2bd16ccd1ee72d6f4",
+          "command_id": "observed-test-fd2f696b2abb4df887612dec624a295d",
+          "label": "orange gear",
+          "views": [
+            {
+              "camera": "scene_camera",
+              "label": "orange gear",
+              "sequence": 2265,
+              "status": "observed",
+              "semantic_status": "detected",
+              "origin": "yoloe_text",
+              "score": 0.46101677417755127,
+              "score_model": "yoloe_text",
+              "memory_id": "1788704022-c28f5ba1",
+              "loop": "fast",
+              "fallback_reason": null,
+              "stages": [
+                {
+                  "model": "yoloe",
+                  "loop": "fast",
+                  "operation": "text_detect",
+                  "candidates": 2,
+                  "accepted": 1,
+                  "accepted_boxes": [
+                    {
+                      "box": [
+                        364.53125,
+                        395.46875,
+                        411.09375,
+                        438.75
+                      ],
+                      "label": "orange gear",
+                      "score": 0.46101677417755127
+                    }
+                  ],
+                  "best_score": 0.46101677417755127,
+                  "elapsed_s": 0.08390317298471928
+                },
+                {
+                  "model": "sam2_tiny",
+                  "loop": "fast",
+                  "operation": "segment",
+                  "mask_score": 0.96875
+                }
+              ],
+              "elapsed_s": 0.21970349922776222,
+              "box": [
+                365.0,
+                396.0,
+                411.0,
+                440.0
+              ],
+              "mask_pixels": 1598
+            },
+            {
+              "camera": "side_camera",
+              "label": "orange gear",
+              "sequence": 2265,
+              "status": "observed",
+              "semantic_status": "detected",
+              "origin": "yoloe_text",
+              "score": 0.8840392827987671,
+              "score_model": "yoloe_visual",
+              "memory_id": "1788704022-c28f5ba1",
+              "loop": "fast",
+              "fallback_reason": null,
+              "stages": [
+                {
+                  "model": "yoloe",
+                  "loop": "fast",
+                  "operation": "memory_recall",
+                  "memory_id": "1788704022-c28f5ba1",
+                  "candidates": 1,
+                  "best_score": 0.8840392827987671
+                },
+                {
+                  "model": "sam2_tiny",
+                  "loop": "fast",
+                  "operation": "segment",
+                  "mask_score": 0.96875
+                }
+              ],
+              "elapsed_s": 0.2535932846367359,
+              "box": [
+                253.0,
+                263.0,
+                297.0,
+                298.0
+              ],
+              "mask_pixels": 1231
+            }
+          ],
+          "result_ref": "43fa1a3054914df2bd16ccd1ee72d6f4",
+          "scope": "target",
+          "observed_at": 1788704022.070725,
+          "elapsed_s": 0.4829999301582575,
+          "ok": true,
+          "perception_source": "task_routed_image_models",
+          "transient": false,
+          "loop": "fast",
+          "fallback_reasons": [],
+          "semantic_status": "detected"
+        }
+      },
+      "blue-tray": {
+        "command_id": "observed-test-f9a7faad8f8f4eb9a3a576f31a2b2af6",
+        "target": "blue tray",
+        "ok": true,
+        "elapsed_s": 0.8531348705291748,
+        "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-221342-07836890",
+        "vision": {
+          "request_id": "a75d9cd87231422a845eb17aaebec125",
+          "command_id": "observed-test-f9a7faad8f8f4eb9a3a576f31a2b2af6",
+          "label": "blue tray",
+          "views": [
+            {
+              "camera": "scene_camera",
+              "label": "blue tray",
+              "sequence": 2288,
+              "status": "observed",
+              "semantic_status": "detected",
+              "origin": "yoloe_text",
+              "score": 0.4649015963077545,
+              "score_model": "yoloe_text",
+              "memory_id": "1788704023-24dd7332",
+              "loop": "fast",
+              "fallback_reason": null,
+              "stages": [
+                {
+                  "model": "yoloe",
+                  "loop": "fast",
+                  "operation": "text_detect",
+                  "candidates": 2,
+                  "accepted": 1,
+                  "accepted_boxes": [
+                    {
+                      "box": [
+                        342.5,
+                        183.75,
+                        460.0,
+                        267.96875
+                      ],
+                      "label": "blue tray",
+                      "score": 0.4649015963077545
+                    }
+                  ],
+                  "best_score": 0.4649015963077545,
+                  "elapsed_s": 0.08088679984211922
+                },
+                {
+                  "model": "sam2_tiny",
+                  "loop": "fast",
+                  "operation": "segment",
+                  "mask_score": 0.984375
+                }
+              ],
+              "elapsed_s": 0.19917362928390503,
+              "box": [
+                342.0,
+                184.0,
+                460.0,
+                269.0
+              ],
+              "mask_pixels": 5790
+            },
+            {
+              "camera": "side_camera",
+              "label": "blue tray",
+              "sequence": 2288,
+              "status": "observed",
+              "semantic_status": "detected",
+              "origin": "yoloe_text",
+              "score": 0.8056321740150452,
+              "score_model": "yoloe_visual",
+              "memory_id": "1788704023-24dd7332",
+              "loop": "fast",
+              "fallback_reason": null,
+              "stages": [
+                {
+                  "model": "yoloe",
+                  "loop": "fast",
+                  "operation": "memory_recall",
+                  "memory_id": "1788704023-24dd7332",
+                  "candidates": 1,
+                  "best_score": 0.8056321740150452
+                },
+                {
+                  "model": "sam2_tiny",
+                  "loop": "fast",
+                  "operation": "segment",
+                  "mask_score": 0.984375
+                }
+              ],
+              "elapsed_s": 0.2537756823003292,
+              "box": [
+                470.0,
+                284.0,
+                630.0,
+                410.0
+              ],
+              "mask_pixels": 11174
+            }
+          ],
+          "result_ref": "a75d9cd87231422a845eb17aaebec125",
+          "scope": "target",
+          "observed_at": 1788704023.2737055,
+          "elapsed_s": 0.4635367691516876,
+          "ok": true,
+          "perception_source": "task_routed_image_models",
+          "transient": false,
+          "loop": "fast",
+          "fallback_reasons": [],
+          "semantic_status": "detected"
+        }
+      },
+      "golden-bolt": {
+        "command_id": "observed-test-aa5bd163aae644b296cff8c8bddc3831",
+        "target": "golden bolt",
+        "ok": true,
+        "elapsed_s": 0.9246454238891602,
+        "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-221343-ba3883b1",
+        "vision": {
+          "request_id": "2377f0971a634d11b35e4a4ca6cf9574",
+          "command_id": "observed-test-aa5bd163aae644b296cff8c8bddc3831",
+          "label": "golden bolt",
+          "views": [
+            {
+              "camera": "scene_camera",
+              "label": "golden bolt",
+              "sequence": 2308,
+              "status": "observed",
+              "semantic_status": "detected",
+              "origin": "sam3",
+              "score": 0.56396484375,
+              "score_model": "sam3",
+              "memory_id": "1788704024-d2979bbd",
+              "loop": "slow",
+              "fallback_reason": "low_confidence",
+              "stages": [
+                {
+                  "model": "yoloe",
+                  "loop": "fast",
+                  "operation": "text_detect",
+                  "candidates": 1,
+                  "accepted": 0,
+                  "accepted_boxes": [],
+                  "best_score": 0.10970578342676163,
+                  "elapsed_s": 0.08572656661272049
+                },
+                {
+                  "model": "sam3",
+                  "loop": "slow",
+                  "operation": "find",
+                  "reason": "low_confidence",
+                  "candidates": 1
+                }
+              ],
+              "elapsed_s": 0.27577945590019226,
+              "box": [
+                289.0,
+                283.0,
+                314.0,
+                318.0
+              ],
+              "mask_pixels": 602
+            },
+            {
+              "camera": "side_camera",
+              "label": "golden bolt",
+              "sequence": 2308,
+              "status": "observed",
+              "semantic_status": "detected",
+              "origin": "sam3",
+              "score": 0.8221890926361084,
+              "score_model": "yoloe_visual",
+              "memory_id": "1788704024-d2979bbd",
+              "loop": "fast",
+              "fallback_reason": null,
+              "stages": [
+                {
+                  "model": "yoloe",
+                  "loop": "fast",
+                  "operation": "memory_recall",
+                  "memory_id": "1788704024-d2979bbd",
+                  "candidates": 1,
+                  "best_score": 0.8221890926361084
+                },
+                {
+                  "model": "sam2_tiny",
+                  "loop": "fast",
+                  "operation": "segment",
+                  "mask_score": 0.9296875
+                }
+              ],
+              "elapsed_s": 0.2312110122293234,
+              "box": [
+                423.0,
+                221.0,
+                447.0,
+                258.0
+              ],
+              "mask_pixels": 617
+            }
+          ],
+          "result_ref": "2377f0971a634d11b35e4a4ca6cf9574",
+          "scope": "target",
+          "observed_at": 1788704024.3414662,
+          "elapsed_s": 0.5169893689453602,
+          "ok": true,
+          "perception_source": "task_routed_image_models",
+          "transient": false,
+          "loop": "slow",
+          "fallback_reasons": [
+            "low_confidence"
+          ],
+          "semantic_status": "detected"
+        }
+      }
+    },
+    "physical_runs": {
+      "bracket-to-tray": {
+        "command_id": "observed-test-29f713f83e1547d589203dc4d44a55eb",
+        "ok": true,
+        "state": "completed",
+        "message": "Physical task verified",
+        "elapsed_s": 21.78481388092041,
+        "evaluation": {
+          "physical_success": true,
+          "lifted": true,
+          "released": true,
+          "max_lift_m": 0.16806403174996376,
+          "final_position_world_m": [
+            0.35520607233047485,
+            0.1916016787290573,
+            0.008000001311302185
+          ],
+          "destination_xy_error_m": 0.02339923195540905,
+          "destination_position_world_m": [
+            0.35499998927116394,
+            0.2150000035762787,
+            0.0
+          ],
+          "support_contact": true,
+          "support_force_world_n": [
+            0.0,
+            0.0,
+            0.7847997546195984
+          ],
+          "supported_region": true,
+          "support_linear_speed_mps": 0.0,
+          "support_gap_m": null,
+          "gripper_opening_m": 0.07999996095895767,
+          "settle_displacement_m": 3.332000937312528e-08,
+          "linear_speed_mps": 1.747472651913995e-06,
+          "evaluation_source": "arena_task_simulation_ground_truth"
+        },
+        "route": {
+          "decision": "busagent",
+          "grasp": "official_pick_place",
+          "placement": "official_pick_place",
+          "execution": "isaaclab_arena.franka_ik",
+          "robot": "franka_panda"
+        },
+        "attempts": [
+          {
+            "backend": "official_pick_place",
+            "ok": true,
+            "elapsed_s": 21.78374284133315
+          }
+        ],
+        "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-221416-6a9db6a8"
+      },
+      "bolt-to-tray": {
+        "command_id": "observed-test-5dcaf6d99c694662b1b85fd9e7266fd4",
+        "ok": true,
+        "state": "completed",
+        "message": "Physical task verified",
+        "elapsed_s": 22.625151872634888,
+        "evaluation": {
+          "physical_success": true,
+          "lifted": true,
+          "released": true,
+          "max_lift_m": 0.16602477245032787,
+          "final_position_world_m": [
+            0.5764878392219543,
+            0.2639441192150116,
+            0.00800001248717308
+          ],
+          "destination_xy_error_m": 0.003667425597086549,
+          "destination_position_world_m": [
+            0.5799999833106995,
+            0.26499998569488525,
+            0.0
+          ],
+          "support_contact": true,
+          "support_force_world_n": [
+            -1.0400668770671473e-06,
+            -1.4956954146327917e-06,
+            0.7846666574478149
+          ],
+          "supported_region": true,
+          "support_linear_speed_mps": 0.0,
+          "support_gap_m": null,
+          "gripper_opening_m": 0.07999996095895767,
+          "settle_displacement_m": 3.003425057343598e-08,
+          "linear_speed_mps": 0.00017075134383048862,
+          "evaluation_source": "arena_task_simulation_ground_truth"
+        },
+        "route": {
+          "decision": "busagent",
+          "grasp": "official_pick_place",
+          "placement": "official_pick_place",
+          "execution": "isaaclab_arena.franka_ik",
+          "robot": "franka_panda"
+        },
+        "attempts": [
+          {
+            "backend": "official_pick_place",
+            "ok": true,
+            "elapsed_s": 22.624188037589192
+          }
+        ],
+        "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-221438-03a8a441"
+      }
+    },
+    "inventory_limit": "First generic inventory detected only robot arm/table; Florence mostly gave toy/3D-printed-part descriptions. Five targeted descriptions localized successfully, but silver nut remained ambiguous in the side view and used the front view.",
+    "enhanced_failures": {
+      "industrial-nut-enhanced": {
+        "command_id": "observed-test-f5750ace773e464f8ffc67c6039b1b55",
+        "ok": false,
+        "state": "failed",
+        "message": "placement_model_unavailable: {\"error\": \"ValueError\", \"message\": \"child: insufficient observed points (<1024)\"}",
+        "elapsed_s": 19.28545379638672,
+        "attempts": [
+          {
+            "backend": "models",
+            "ok": false,
+            "error": "placement_model_unavailable: {\"error\": \"ValueError\", \"message\": \"child: insufficient observed points (<1024)\"}",
+            "elapsed_s": 19.282623825594783
+          }
+        ],
+        "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-221512-29b73fb9"
+      },
+      "industrial-nut-enhanced-resume": {
+        "command_id": "observed-test-90482d8de3cf4d2ca002472f312ae593",
+        "ok": false,
+        "state": "failed",
+        "message": "本次画面未找到目标：entity_02",
+        "elapsed_s": 2.373426914215088,
+        "attempts": [
+          {
+            "backend": "models",
+            "ok": false,
+            "error": "本次画面未找到目标：entity_02",
+            "elapsed_s": 1.4162887446582317
+          }
+        ],
+        "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-221820-ba414d8a"
+      },
+      "industrial-held-geometry": [
+        {
+          "command_id": "holding-test-ffb6e6600f9548d99d545eeddc5c7b4b",
+          "ok": false,
+          "state": "failed",
+          "message": "当前没有确认仍在夹爪中的物体，未执行放置。",
+          "elapsed_s": 0.0009887218475341797,
+          "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-222305-05e12493"
+        },
+        {
+          "command_id": "holding-test-e5748088925a4e1f8ca3970a5cf8c6c4",
+          "ok": false,
+          "state": "failed",
+          "message": "Physical lift verification failed",
+          "elapsed_s": 18.588185787200928,
+          "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-222305-b84511a4"
+        }
+      ]
+    },
+    "sparse_cloud_inference": {
+      "backend": "anyplace",
+      "kind": "offline_model_inference_only",
+      "physical_success": null,
+      "transform_convention": "T_world_child_final = relative @ T_world_child_input",
+      "seed": 0,
+      "iterations": 50,
+      "candidates_requested": 20,
+      "init_current_orientation": true,
+      "inference_s": 7.018018215894699,
+      "cuda_peak_allocated_bytes": 1502956544,
+      "parent_points": 16000,
+      "child_points": 406,
+      "input_sampling": {
+        "parent": {
+          "observed_points": 16000,
+          "model_input_points": 16000,
+          "repeated_samples": 0
+        },
+        "child": {
+          "observed_points": 406,
+          "model_input_points": 1024,
+          "repeated_samples": 618
+        }
+      },
+      "checkpoint": "/root/gpufree-data/arena-panda/_models/anyplace/anyplace_ckpts/anyplace_multitask/model.pth",
+      "checkpoint_sha256": "d3d33f0a279633c25f252960a208d4b4447a756f0cff8e94be0faadc20dc5be5",
+      "learned_success_scores": null,
+      "collision_checked": false,
+      "sequence": 0,
+      "protocol": 1,
+      "input_geometry": "unspecified",
+      "transforms_returned": 20
+    },
+    "held_geometry_interruption": {
+      "target": "green bracket",
+      "destination": "blue tray",
+      "timestamp": "2026-09-06T22:24:53+0800",
+      "commands": [
+        {
+          "ok": false,
+          "state": "failed",
+          "message": "当前没有确认仍在夹爪中的物体，未执行放置。",
+          "error_type": "RuntimeError",
+          "held_object": null,
+          "command_id": "holding-test-b60b71b2910e408f900a07451cec13fa",
+          "skill": "place_held",
+          "elapsed_s": 0.0011553764343261719,
+          "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-222454-f766b419",
+          "events": [],
+          "vision": null,
+          "tcp_pose_world": [
+            [
+              0.9999999999999266,
+              3.825579108156479e-07,
+              2.432443452148372e-08,
+              0.30689042806625366
+            ],
+            [
+              3.8255791765591645e-07,
+              -0.9999999999998873,
+              -2.81210385432349e-07,
+              9.734382899750926e-08
+            ],
+            [
+              2.4324326942223428e-08,
+              2.8121039473783337e-07,
+              -0.9999999999999604,
+              0.4868816137313843
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "ok": true,
+          "evaluation": {
+            "physical_success": true,
+            "lifted": true,
+            "released": false,
+            "max_lift_m": 0.11091689113527536,
+            "final_position_world_m": [
+              0.444191038608551,
+              -0.18936879932880402,
+              0.11091689020395279
+            ],
+            "destination_xy_error_m": null,
+            "supported_region": false,
+            "support_linear_speed_mps": 0.0,
+            "support_gap_m": null,
+            "gripper_opening_m": 0.007939774543046951,
+            "settle_displacement_m": 0.0,
+            "linear_speed_mps": 0.15366633236408234,
+            "evaluation_source": "arena_task_simulation_ground_truth"
+          },
+          "route": {
+            "decision": "busagent",
+            "grasp": "official_pick_place",
+            "placement": null,
+            "execution": "isaaclab_arena.franka_ik",
+            "robot": "franka_panda"
+          },
+          "attempts": [
+            {
+              "backend": "official_pick_place",
+              "ok": true,
+              "elapsed_s": 9.90230537764728
+            }
+          ],
+          "fallback_used": false,
+          "message": "Physical task verified",
+          "state": "completed",
+          "command_id": "holding-test-4b3ff46483d643b5a4da007107e95453",
+          "skill": "grasp",
+          "elapsed_s": 9.904459238052368,
+          "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-222454-c9ff06e0",
+          "events": [
+            {
+              "phase": "attempt_started",
+              "sequence": 313,
+              "time": 1788704694.2818298,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "visual_observation",
+              "sequence": 321,
+              "time": 1788704694.640988,
+              "target": "green bracket",
+              "request_id": "3ce87fdf2c444520bc64a2b6aea88ddb"
+            },
+            {
+              "phase": "observation",
+              "sequence": 340,
+              "time": 1788704695.8241277,
+              "target": "green bracket",
+              "request_id": "3ce87fdf2c444520bc64a2b6aea88ddb",
+              "perception_source": "task_routed_image_models",
+              "views": {
+                "scene_camera": {
+                  "points": 1246,
+                  "camera_world": [
+                    [
+                      0.7877550488196889,
+                      0.4445251326379559,
+                      -0.42642630021176803,
+                      1.0199999809265137
+                    ],
+                    [
+                      0.6159886225078229,
+                      -0.5684795936745715,
+                      0.545333813839293,
+                      -0.6399999856948853
+                    ],
+                    [
+                      -6.394766266515362e-08,
+                      -0.6922632144125539,
+                      -0.7216450941918708,
+                      0.9200000166893005
+                    ],
+                    [
+                      0.0,
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  ],
+                  "intrinsics": [
+                    [
+                      687.1868286132812,
+                      0.0,
+                      400.0
+                    ],
+                    [
+                      0.0,
+                      687.1868286132812,
+                      300.0
+                    ],
+                    [
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  ],
+                  "bounds_world": [
+                    [
+                      0.40602186419309505,
+                      -0.2010410690830673,
+                      0.0005966336123209848
+                    ],
+                    [
+                      0.4751643918859556,
+                      -0.1330889876197041,
+                      0.05058261981270473
+                    ]
+                  ]
+                },
+                "side_camera": {
+                  "points": 843,
+                  "camera_world": [
+                    [
+                      -0.8098375975170691,
+                      0.40830078507132084,
+                      -0.42125234071506884,
+                      0.9599999785423279
+                    ],
+                    [
+                      0.5866541277855093,
+                      0.5636325734996421,
+                      -0.5815111834198836,
+                      0.6600000262260437
+                    ],
+                    [
+                      6.817189102115151e-08,
+                      -0.7180590442298693,
+                      -0.6959821901454675,
+                      0.800000011920929
+                    ],
+                    [
+                      0.0,
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  ],
+                  "intrinsics": [
+                    [
+                      687.1868286132812,
+                      0.0,
+                      400.0
+                    ],
+                    [
+                      0.0,
+                      687.1868286132812,
+                      300.0
+                    ],
+                    [
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  ],
+                  "bounds_world": [
+                    [
+                      0.41561871300990616,
+                      -0.21082803978499443,
+                      0.0006671406461766782
+                    ],
+                    [
+                      0.4768516891650671,
+                      -0.1402103343380967,
+                      0.05063492084813914
+                    ]
+                  ]
+                }
+              },
+              "models": [
+                {
+                  "camera": "scene_camera",
+                  "label": "green bracket",
+                  "sequence": 321,
+                  "status": "observed",
+                  "semantic_status": "detected",
+                  "origin": "sam3",
+                  "score": 0.943359375,
+                  "score_model": "sam3",
+                  "memory_id": "1788704019-b541fa50",
+                  "loop": "slow",
+                  "fallback_reason": "low_confidence",
+                  "stages": [
+                    {
+                      "model": "yoloe",
+                      "loop": "fast",
+                      "operation": "memory_recall",
+                      "memory_id": "1788704019-b541fa50",
+                      "candidates": 0,
+                      "best_score": 0.0
+                    },
+                    {
+                      "model": "yoloe",
+                      "loop": "fast",
+                      "operation": "memory_recall",
+                      "memory_id": "1788704019-b541fa50",
+                      "candidates": 0,
+                      "best_score": 0.0
+                    },
+                    {
+                      "model": "yoloe",
+                      "loop": "fast",
+                      "operation": "text_detect",
+                      "candidates": 1,
+                      "accepted": 0,
+                      "accepted_boxes": [],
+                      "best_score": 0.19682618975639343,
+                      "elapsed_s": 0.06043027155101299
+                    },
+                    {
+                      "model": "sam3",
+                      "loop": "slow",
+                      "operation": "find",
+                      "reason": "low_confidence",
+                      "candidates": 1
+                    }
+                  ],
+                  "elapsed_s": 0.5754999667406082,
+                  "box": [
+                    279.0,
+                    329.0,
+                    324.0,
+                    384.0
+                  ],
+                  "mask_pixels": 1376
+                },
+                {
+                  "camera": "side_camera",
+                  "label": "green bracket",
+                  "sequence": 321,
+                  "status": "observed",
+                  "semantic_status": "detected",
+                  "origin": "sam3",
+                  "score": 0.87255859375,
+                  "score_model": "sam3",
+                  "memory_id": "1788704019-b541fa50",
+                  "loop": "slow",
+                  "fallback_reason": "low_confidence",
+                  "stages": [
+                    {
+                      "model": "yoloe",
+                      "loop": "fast",
+                      "operation": "memory_recall",
+                      "memory_id": "1788704019-b541fa50",
+                      "candidates": 0,
+                      "best_score": 0.43014734983444214
+                    },
+                    {
+                      "model": "yoloe",
+                      "loop": "fast",
+                      "operation": "memory_recall",
+                      "memory_id": "1788704019-b541fa50",
+                      "candidates": 0,
+                      "best_score": 0.0
+                    },
+                    {
+                      "model": "yoloe",
+                      "loop": "fast",
+                      "operation": "text_detect",
+                      "candidates": 2,
+                      "accepted": 0,
+                      "accepted_boxes": [],
+                      "best_score": 0.2422056347131729,
+                      "elapsed_s": 0.07892848178744316
+                    },
+                    {
+                      "model": "sam3",
+                      "loop": "slow",
+                      "operation": "find",
+                      "reason": "low_confidence",
+                      "candidates": 1
+                    }
+                  ],
+                  "elapsed_s": 0.5434464812278748,
+                  "box": [
+                    343.0,
+                    223.0,
+                    386.0,
+                    255.0
+                  ],
+                  "mask_pixels": 956
+                }
+              ]
+            },
+            {
+              "phase": "instance_observed",
+              "sequence": 340,
+              "time": 1788704695.8253841,
+              "label": "green bracket",
+              "instance_id": "entity_01",
+              "observation_ref": "3ce87fdf2c444520bc64a2b6aea88ddb",
+              "witness_votes": {
+                "entity_01": 2069,
+                "floor": 20
+              },
+              "association_source": "model_mask_to_rendered_physical_instance"
+            },
+            {
+              "phase": "planning",
+              "sequence": 340,
+              "time": 1788704695.827205,
+              "route": {
+                "decision": "busagent",
+                "grasp": "official_pick_place",
+                "placement": null,
+                "execution": "isaaclab_arena.franka_ik",
+                "robot": "franka_panda"
+              },
+              "object_points": 2068,
+              "algorithm": "isaacsim PickPlaceController / Arena IK"
+            },
+            {
+              "phase": "pregrasp",
+              "sequence": 340,
+              "time": 1788704695.8280363,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "approach",
+              "sequence": 400,
+              "time": 1788704698.3552468,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "settle_grasp",
+              "sequence": 450,
+              "time": 1788704700.4316576,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "close_gripper",
+              "sequence": 458,
+              "time": 1788704700.762499,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "lift",
+              "sequence": 483,
+              "time": 1788704701.9564736,
+              "backend": "official_pick_place"
+            },
+            {
+              "phase": "lift_verified",
+              "sequence": 533,
+              "time": 1788704704.1806781,
+              "lift_m": 0.11091689113527536
+            },
+            {
+              "phase": "attempt_finished",
+              "sequence": 533,
+              "time": 1788704704.1841297,
+              "backend": "official_pick_place",
+              "ok": true,
+              "elapsed_s": 9.90230537764728
+            }
+          ],
+          "vision": {
+            "request_id": "67496cdf1d384d14b611c22f3c7ddd1a",
+            "command_id": "holding-test-4b3ff46483d643b5a4da007107e95453",
+            "label": "green bracket",
+            "views": [
+              {
+                "camera": "scene_camera",
+                "label": "green bracket",
+                "sequence": 526,
+                "status": "observed",
+                "semantic_status": "detected",
+                "origin": "sam3",
+                "score": 0.8046875,
+                "score_model": "sam3",
+                "memory_id": "1788704019-b541fa50",
+                "loop": "fast",
+                "fallback_reason": null,
+                "stages": [
+                  {
+                    "model": "lk",
+                    "loop": "fast",
+                    "flow_reason": "lk_forward_backward",
+                    "flow_points": 57,
+                    "flow_shift_px": [
+                      -0.999542236328125,
+                      -6.014495849609375
+                    ],
+                    "flow_fb_median_px": 0.09673398733139038
+                  }
+                ],
+                "elapsed_s": 0.013327544555068016,
+                "box": [
+                  270.0,
+                  319.0,
+                  316.0,
+                  364.0
+                ],
+                "mask_pixels": 1188
+              }
+            ],
+            "result_ref": "67496cdf1d384d14b611c22f3c7ddd1a",
+            "scope": "target",
+            "observed_at": 1788704703.855919,
+            "elapsed_s": 0.018164433538913727,
+            "ok": true,
+            "perception_source": "task_routed_image_models",
+            "transient": true,
+            "loop": "fast",
+            "fallback_reasons": [],
+            "semantic_status": "detected"
+          },
+          "tcp_pose_world": [
+            [
+              0.9999973299090744,
+              0.0003569094171256545,
+              0.002283153606193953,
+              0.44410213828086853
+            ],
+            [
+              0.0003604765602628083,
+              -0.9999987148637276,
+              -0.0015621547755365233,
+              -0.16877534985542297
+            ],
+            [
+              0.0022825931242800414,
+              0.0015629736277997456,
+              -0.9999961734337125,
+              0.14095699787139893
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "ok": false,
+          "state": "failed",
+          "message": "本次画面未找到目标：purple flying elephant",
+          "error_type": "RuntimeError",
+          "held_object": "entity_01",
+          "command_id": "holding-test-3aba6d803c8c49a9ae1b549e5fe0c1ac",
+          "skill": "place_held",
+          "elapsed_s": 0.8432919979095459,
+          "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-222504-0cc28934",
+          "events": [
+            {
+              "phase": "visual_observation",
+              "sequence": 546,
+              "time": 1788704704.870131,
+              "target": "purple flying elephant",
+              "request_id": "7c240a04874344f99c6f5aaf15fe3cee"
+            }
+          ],
+          "vision": {
+            "request_id": "7c240a04874344f99c6f5aaf15fe3cee",
+            "command_id": "holding-test-3aba6d803c8c49a9ae1b549e5fe0c1ac",
+            "label": "purple flying elephant",
+            "views": [
+              {
+                "camera": "scene_camera",
+                "label": "purple flying elephant",
+                "sequence": 546,
+                "status": "not_found",
+                "semantic_status": "unknown",
+                "origin": null,
+                "score": null,
+                "score_model": null,
+                "memory_id": null,
+                "loop": "slow",
+                "fallback_reason": "no_text_detection",
+                "stages": [
+                  {
+                    "model": "yoloe",
+                    "loop": "fast",
+                    "operation": "text_detect",
+                    "candidates": 0,
+                    "accepted": 0,
+                    "accepted_boxes": [],
+                    "best_score": 0.0,
+                    "elapsed_s": 0.08067790418863297
+                  },
+                  {
+                    "model": "sam3",
+                    "loop": "slow",
+                    "operation": "find",
+                    "reason": "no_text_detection",
+                    "candidates": 0
+                  }
+                ],
+                "elapsed_s": 0.25430879183113575
+              },
+              {
+                "camera": "side_camera",
+                "label": "purple flying elephant",
+                "sequence": 546,
+                "status": "not_found",
+                "semantic_status": "unknown",
+                "origin": null,
+                "score": null,
+                "score_model": null,
+                "memory_id": null,
+                "loop": "slow",
+                "fallback_reason": "no_text_detection",
+                "stages": [
+                  {
+                    "model": "yoloe",
+                    "loop": "fast",
+                    "operation": "text_detect",
+                    "candidates": 0,
+                    "accepted": 0,
+                    "accepted_boxes": [],
+                    "best_score": 0.0,
+                    "elapsed_s": 0.023324085399508476
+                  },
+                  {
+                    "model": "sam3",
+                    "loop": "slow",
+                    "operation": "find",
+                    "reason": "no_text_detection",
+                    "candidates": 0
+                  }
+                ],
+                "elapsed_s": 0.14340123161673546
+              }
+            ],
+            "result_ref": "7c240a04874344f99c6f5aaf15fe3cee",
+            "scope": "target",
+            "observed_at": 1788704704.8539567,
+            "elapsed_s": 0.4004798512905836,
+            "ok": false,
+            "perception_source": "task_routed_image_models",
+            "transient": false,
+            "loop": "slow",
+            "fallback_reasons": [
+              "no_text_detection"
+            ],
+            "semantic_status": "unknown"
+          },
+          "tcp_pose_world": [
+            [
+              0.9999958016068596,
+              0.0013265823961308137,
+              0.002576227435725192,
+              0.44349855184555054
+            ],
+            [
+              0.0013333349103011424,
+              -0.9999956759124299,
+              -0.002621139916063587,
+              -0.16889922320842743
+            ],
+            [
+              0.0025727391378217138,
+              0.0026245638854646715,
+              -0.9999932463160638,
+              0.1630055010318756
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "ok": false,
+          "state": "cancelled",
+          "message": "Stopped; gripper state preserved",
+          "error_type": "InterruptedError",
+          "held_object": "entity_01",
+          "attempts": [
+            {
+              "backend": "models",
+              "ok": false,
+              "error": "Stopped; gripper state preserved",
+              "elapsed_s": 2.108286779373884
+            }
+          ],
+          "fallback_used": false,
+          "command_id": "holding-test-8dcbe4ddfe394c8d9e00b9152101793c",
+          "skill": "place_held",
+          "elapsed_s": 2.857497453689575,
+          "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-222505-ef5e7d79",
+          "events": [
+            {
+              "phase": "visual_observation",
+              "sequence": 564,
+              "time": 1788704705.8954322,
+              "target": "blue tray",
+              "request_id": "70d7fc5e2a304a86871882ba5ee97f0b"
+            },
+            {
+              "phase": "observation",
+              "sequence": 569,
+              "time": 1788704706.2239254,
+              "target": "blue tray",
+              "request_id": "70d7fc5e2a304a86871882ba5ee97f0b",
+              "perception_source": "task_routed_image_models",
+              "views": {
+                "scene_camera": {
+                  "points": 5537,
+                  "camera_world": [
+                    [
+                      0.7877550488196889,
+                      0.4445251326379559,
+                      -0.42642630021176803,
+                      1.0199999809265137
+                    ],
+                    [
+                      0.6159886225078229,
+                      -0.5684795936745715,
+                      0.545333813839293,
+                      -0.6399999856948853
+                    ],
+                    [
+                      -6.394766266515362e-08,
+                      -0.6922632144125539,
+                      -0.7216450941918708,
+                      0.9200000166893005
+                    ],
+                    [
+                      0.0,
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  ],
+                  "intrinsics": [
+                    [
+                      687.1868286132812,
+                      0.0,
+                      400.0
+                    ],
+                    [
+                      0.0,
+                      687.1868286132812,
+                      300.0
+                    ],
+                    [
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  ],
+                  "bounds_world": [
+                    [
+                      0.2671188962032214,
+                      0.13495141213098294,
+                      0.0018702406672661542
+                    ],
+                    [
+                      0.4438242413065554,
+                      0.2902666811820843,
+                      0.03273514509409847
+                    ]
+                  ]
+                },
+                "side_camera": {
+                  "points": 10839,
+                  "camera_world": [
+                    [
+                      -0.8098375975170691,
+                      0.40830078507132084,
+                      -0.42125234071506884,
+                      0.9599999785423279
+                    ],
+                    [
+                      0.5866541277855093,
+                      0.5636325734996421,
+                      -0.5815111834198836,
+                      0.6600000262260437
+                    ],
+                    [
+                      6.817189102115151e-08,
+                      -0.7180590442298693,
+                      -0.6959821901454675,
+                      0.800000011920929
+                    ],
+                    [
+                      0.0,
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  ],
+                  "intrinsics": [
+                    [
+                      687.1868286132812,
+                      0.0,
+                      400.0
+                    ],
+                    [
+                      0.0,
+                      687.1868286132812,
+                      300.0
+                    ],
+                    [
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  ],
+                  "bounds_world": [
+                    [
+                      0.26702281303057895,
+                      0.13650963046888587,
+                      0.0016529030404814904
+                    ],
+                    [
+                      0.4453137395714215,
+                      0.2941923882423721,
+                      0.032589292912360235
+                    ]
+                  ]
+                }
+              },
+              "models": [
+                {
+                  "camera": "scene_camera",
+                  "label": "blue tray",
+                  "sequence": 564,
+                  "status": "observed",
+                  "semantic_status": "detected",
+                  "origin": "yoloe_text",
+                  "score": 0.5888891220092773,
+                  "score_model": "yoloe_visual",
+                  "memory_id": "1788704023-24dd7332",
+                  "loop": "fast",
+                  "fallback_reason": null,
+                  "stages": [
+                    {
+                      "model": "yoloe",
+                      "loop": "fast",
+                      "operation": "memory_recall",
+                      "memory_id": "1788704023-24dd7332",
+                      "candidates": 1,
+                      "best_score": 0.5888891220092773
+                    },
+                    {
+                      "model": "sam2_tiny",
+                      "loop": "fast",
+                      "operation": "segment",
+                      "mask_score": 0.984375
+                    }
+                  ],
+                  "elapsed_s": 0.13825255073606968,
+                  "box": [
+                    342.0,
+                    184.0,
+                    460.0,
+                    269.0
+                  ],
+                  "mask_pixels": 5792
+                },
+                {
+                  "camera": "side_camera",
+                  "label": "blue tray",
+                  "sequence": 564,
+                  "status": "observed",
+                  "semantic_status": "detected",
+                  "origin": "yoloe_text",
+                  "score": 0.8244618773460388,
+                  "score_model": "yoloe_visual",
+                  "memory_id": "1788704023-24dd7332",
+                  "loop": "fast",
+                  "fallback_reason": null,
+                  "stages": [
+                    {
+                      "model": "yoloe",
+                      "loop": "fast",
+                      "operation": "memory_recall",
+                      "memory_id": "1788704023-24dd7332",
+                      "candidates": 1,
+                      "best_score": 0.8244618773460388
+                    },
+                    {
+                      "model": "sam2_tiny",
+                      "loop": "fast",
+                      "operation": "segment",
+                      "mask_score": 0.984375
+                    }
+                  ],
+                  "elapsed_s": 0.12134441174566746,
+                  "box": [
+                    470.0,
+                    284.0,
+                    630.0,
+                    410.0
+                  ],
+                  "mask_pixels": 11184
+                }
+              ]
+            },
+            {
+              "phase": "instance_observed",
+              "sequence": 569,
+              "time": 1788704706.226398,
+              "label": "blue tray",
+              "instance_id": "entity_08",
+              "observation_ref": "70d7fc5e2a304a86871882ba5ee97f0b",
+              "witness_votes": {
+                "entity_08": 16376
+              },
+              "association_source": "model_mask_to_rendered_physical_instance"
+            },
+            {
+              "phase": "holding_resumed",
+              "sequence": 569,
+              "time": 1788704706.228265,
+              "instance_id": "entity_01",
+              "label": "green bracket",
+              "grasp_command_id": "holding-test-4b3ff46483d643b5a4da007107e95453",
+              "initial_z": -9.313225746154785e-10,
+              "max_lift_m": 0.11091689113527536,
+              "tcp_to_object_at_grasp": [
+                [
+                  0.9999873850104762,
+                  -0.004578778181911248,
+                  -0.0020650932836133833,
+                  1.2907291266073262e-05
+                ],
+                [
+                  -0.00455706657061691,
+                  -0.9999355494822408,
+                  0.010398558838602589,
+                  0.020546502841295777
+                ],
+                [
+                  -0.002112572881615547,
+                  -0.01038901689332382,
+                  -0.9999438011027468,
+                  0.03007236584552621
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "verified": true,
+              "gripper_opening_m": 0.007942058145999908,
+              "relative_translation_drift_m": 3.0712389568597514e-05
+            },
+            {
+              "phase": "attempt_started",
+              "sequence": 569,
+              "time": 1788704706.2301173,
+              "backend": "models"
+            },
+            {
+              "phase": "visual_observation",
+              "sequence": 577,
+              "time": 1788704706.614584,
+              "target": "entity_01",
+              "request_id": "f42c55ecfaf14a459d641533b56a1141"
+            },
+            {
+              "phase": "observation",
+              "sequence": 587,
+              "time": 1788704707.2055287,
+              "target": "entity_01",
+              "request_id": "f42c55ecfaf14a459d641533b56a1141",
+              "perception_source": "task_routed_image_models",
+              "views": {
+                "wrist_camera": {
+                  "points": 39487,
+                  "camera_world": [
+                    [
+                      0.025608521364932905,
+                      -0.8302398451443221,
+                      -0.5568177468150901,
+                      0.4969733953475952
+                    ],
+                    [
+                      -0.9996612269448951,
+                      -0.02385960855090203,
+                      -0.010399539548676229,
+                      -0.16600121557712555
+                    ],
+                    [
+                      -0.004651341368738127,
+                      0.5568954287965827,
+                      -0.8305695915508476,
+                      0.24285610020160675
+                    ],
+                    [
+                      0.0,
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  ],
+                  "intrinsics": [
+                    [
+                      458.1245422363281,
+                      0.0,
+                      400.0
+                    ],
+                    [
+                      0.0,
+                      458.1245422363281,
+                      300.0
+                    ],
+                    [
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  ],
+                  "bounds_world": [
+                    [
+                      0.42388406253504096,
+                      -0.21439057358435132,
+                      0.13420684281981332
+                    ],
+                    [
+                      0.47571547824126964,
+                      -0.16469374625803693,
+                      0.1828647436886613
+                    ]
+                  ]
+                }
+              },
+              "models": [
+                {
+                  "camera": "wrist_camera",
+                  "label": "green bracket",
+                  "sequence": 577,
+                  "status": "observed",
+                  "semantic_status": "detected",
+                  "origin": "sam3",
+                  "score": 0.57861328125,
+                  "score_model": "sam3",
+                  "memory_id": "1788704019-b541fa50",
+                  "loop": "slow",
+                  "fallback_reason": "multiple_fast_candidates",
+                  "stages": [
+                    {
+                      "model": "yoloe",
+                      "loop": "fast",
+                      "operation": "memory_recall",
+                      "memory_id": "1788704019-b541fa50",
+                      "candidates": 0,
+                      "best_score": 0.0
+                    },
+                    {
+                      "model": "yoloe",
+                      "loop": "fast",
+                      "operation": "memory_recall",
+                      "memory_id": "1788704019-b541fa50",
+                      "candidates": 0,
+                      "best_score": 0.0
+                    },
+                    {
+                      "model": "yoloe",
+                      "loop": "fast",
+                      "operation": "text_detect",
+                      "candidates": 2,
+                      "accepted": 2,
+                      "accepted_boxes": [
+                        {
+                          "box": [
+                            385.0,
+                            107.5,
+                            626.25,
+                            365.625
+                          ],
+                          "label": "green bracket",
+                          "score": 0.5851011276245117
+                        },
+                        {
+                          "box": [
+                            338.75,
+                            249.375,
+                            486.5625,
+                            366.875
+                          ],
+                          "label": "green bracket",
+                          "score": 0.5428633093833923
+                        }
+                      ],
+                      "best_score": 0.5851011276245117,
+                      "elapsed_s": 0.07134350948035717
+                    },
+                    {
+                      "model": "sam3",
+                      "loop": "slow",
+                      "operation": "find",
+                      "reason": "multiple_fast_candidates",
+                      "candidates": 1
+                    }
+                  ],
+                  "elapsed_s": 0.51298419944942,
+                  "box": [
+                    388.0,
+                    109.0,
+                    625.0,
+                    367.0
+                  ],
+                  "mask_pixels": 40469
+                }
+              ]
+            },
+            {
+              "phase": "held_geometry_recorded",
+              "sequence": 587,
+              "time": 1788704707.2088876,
+              "observation_ref": "f42c55ecfaf14a459d641533b56a1141",
+              "points": 8929
+            },
+            {
+              "phase": "visual_observation",
+              "sequence": 595,
+              "time": 1788704707.6145642,
+              "target": "entity_08",
+              "request_id": "862617dd442e47c9abbbf88aa5950111"
+            },
+            {
+              "phase": "observation",
+              "sequence": 602,
+              "time": 1788704708.039659,
+              "target": "entity_08",
+              "request_id": "862617dd442e47c9abbbf88aa5950111",
+              "perception_source": "task_routed_image_models",
+              "views": {
+                "scene_camera": {
+                  "points": 5475,
+                  "camera_world": [
+                    [
+                      0.7877550488196889,
+                      0.4445251326379559,
+                      -0.42642630021176803,
+                      1.0199999809265137
+                    ],
+                    [
+                      0.6159886225078229,
+                      -0.5684795936745715,
+                      0.545333813839293,
+                      -0.6399999856948853
+                    ],
+                    [
+                      -6.394766266515362e-08,
+                      -0.6922632144125539,
+                      -0.7216450941918708,
+                      0.9200000166893005
+                    ],
+                    [
+                      0.0,
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  ],
+                  "intrinsics": [
+                    [
+                      687.1868286132812,
+                      0.0,
+                      400.0
+                    ],
+                    [
+                      0.0,
+                      687.1868286132812,
+                      300.0
+                    ],
+                    [
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  ],
+                  "bounds_world": [
+                    [
+                      0.26682968431429777,
+                      0.13495141213098294,
+                      0.0035287632493533616
+                    ],
+                    [
+                      0.4438242413065554,
+                      0.2902960667727703,
+                      0.03273640119526189
+                    ]
+                  ]
+                },
+                "side_camera": {
+                  "points": 10739,
+                  "camera_world": [
+                    [
+                      -0.8098375975170691,
+                      0.40830078507132084,
+                      -0.42125234071506884,
+                      0.9599999785423279
+                    ],
+                    [
+                      0.5866541277855093,
+                      0.5636325734996421,
+                      -0.5815111834198836,
+                      0.6600000262260437
+                    ],
+                    [
+                      6.817189102115151e-08,
+                      -0.7180590442298693,
+                      -0.6959821901454675,
+                      0.800000011920929
+                    ],
+                    [
+                      0.0,
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  ],
+                  "intrinsics": [
+                    [
+                      687.1868286132812,
+                      0.0,
+                      400.0
+                    ],
+                    [
+                      0.0,
+                      687.1868286132812,
+                      300.0
+                    ],
+                    [
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  ],
+                  "bounds_world": [
+                    [
+                      0.26750425333649985,
+                      0.13600229569209543,
+                      0.0021004169532856665
+                    ],
+                    [
+                      0.44531334849287496,
+                      0.2941923882423721,
+                      0.03258929302426605
+                    ]
+                  ]
+                }
+              },
+              "models": [
+                {
+                  "camera": "scene_camera",
+                  "label": "blue tray",
+                  "sequence": 595,
+                  "status": "observed",
+                  "semantic_status": "detected",
+                  "origin": "sam3",
+                  "score": 0.96728515625,
+                  "score_model": "sam3",
+                  "memory_id": "1788704023-24dd7332",
+                  "loop": "slow",
+                  "fallback_reason": "slow_localization_requested",
+                  "stages": [
+                    {
+                      "model": "sam3",
+                      "loop": "slow",
+                      "operation": "find",
+                      "reason": "slow_localization_requested",
+                      "candidates": 1
+                    }
+                  ],
+                  "elapsed_s": 0.19115922413766384,
+                  "box": [
+                    342.0,
+                    184.0,
+                    460.0,
+                    268.0
+                  ],
+                  "mask_pixels": 5730
+                },
+                {
+                  "camera": "side_camera",
+                  "label": "blue tray",
+                  "sequence": 595,
+                  "status": "observed",
+                  "semantic_status": "detected",
+                  "origin": "sam3",
+                  "score": 0.96142578125,
+                  "score_model": "sam3",
+                  "memory_id": "1788704023-24dd7332",
+                  "loop": "slow",
+                  "fallback_reason": "slow_localization_requested",
+                  "stages": [
+                    {
+                      "model": "sam3",
+                      "loop": "slow",
+                      "operation": "find",
+                      "reason": "slow_localization_requested",
+                      "candidates": 1
+                    }
+                  ],
+                  "elapsed_s": 0.1668131947517395,
+                  "box": [
+                    470.0,
+                    284.0,
+                    629.0,
+                    409.0
+                  ],
+                  "mask_pixels": 11082
+                }
+              ]
+            },
+            {
+              "phase": "placement_inference",
+              "sequence": 602,
+              "time": 1788704708.0420783,
+              "backend": "anyplace",
+              "parent_points": 15985,
+              "child_points": 8929
+            },
+            {
+              "phase": "attempt_finished",
+              "sequence": 605,
+              "time": 1788704708.3384058,
+              "backend": "models",
+              "ok": false,
+              "error": "Stopped; gripper state preserved",
+              "elapsed_s": 2.108286779373884
+            }
+          ],
+          "vision": {
+            "request_id": "862617dd442e47c9abbbf88aa5950111",
+            "command_id": "holding-test-8dcbe4ddfe394c8d9e00b9152101793c",
+            "label": "blue tray",
+            "views": [
+              {
+                "camera": "scene_camera",
+                "label": "blue tray",
+                "sequence": 595,
+                "status": "observed",
+                "semantic_status": "detected",
+                "origin": "sam3",
+                "score": 0.96728515625,
+                "score_model": "sam3",
+                "memory_id": "1788704023-24dd7332",
+                "loop": "slow",
+                "fallback_reason": "slow_localization_requested",
+                "stages": [
+                  {
+                    "model": "sam3",
+                    "loop": "slow",
+                    "operation": "find",
+                    "reason": "slow_localization_requested",
+                    "candidates": 1
+                  }
+                ],
+                "elapsed_s": 0.19115922413766384,
+                "box": [
+                  342.0,
+                  184.0,
+                  460.0,
+                  268.0
+                ],
+                "mask_pixels": 5730
+              },
+              {
+                "camera": "side_camera",
+                "label": "blue tray",
+                "sequence": 595,
+                "status": "observed",
+                "semantic_status": "detected",
+                "origin": "sam3",
+                "score": 0.96142578125,
+                "score_model": "sam3",
+                "memory_id": "1788704023-24dd7332",
+                "loop": "slow",
+                "fallback_reason": "slow_localization_requested",
+                "stages": [
+                  {
+                    "model": "sam3",
+                    "loop": "slow",
+                    "operation": "find",
+                    "reason": "slow_localization_requested",
+                    "candidates": 1
+                  }
+                ],
+                "elapsed_s": 0.1668131947517395,
+                "box": [
+                  470.0,
+                  284.0,
+                  629.0,
+                  409.0
+                ],
+                "mask_pixels": 11082
+              }
+            ],
+            "result_ref": "862617dd442e47c9abbbf88aa5950111",
+            "scope": "target",
+            "observed_at": 1788704707.5968332,
+            "elapsed_s": 0.3678389582782984,
+            "ok": true,
+            "perception_source": "task_routed_image_models",
+            "transient": false,
+            "loop": "slow",
+            "fallback_reasons": [
+              "slow_localization_requested"
+            ],
+            "semantic_status": "detected",
+            "physical_witness": {
+              "instance_id": "entity_08",
+              "votes": {
+                "entity_08": 16214
+              }
+            }
+          },
+          "tcp_pose_world": [
+            [
+              0.9999892644294134,
+              0.004358047135459128,
+              0.0015743097171416606,
+              0.44339096546173096
+            ],
+            [
+              0.004365872851048323,
+              -0.9999779586797205,
+              -0.0050021304448497434,
+              -0.16868622601032257
+            ],
+            [
+              0.001552475497020596,
+              0.005008949980178481,
+              -0.9999862500254325,
+              0.16244082152843475
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "ok": false,
+          "state": "failed",
+          "message": "Arena IK did not reach transport: position error 0.0667 m, rotation error 9.19 deg",
+          "error_type": "RuntimeError",
+          "held_object": "entity_01",
+          "attempts": [
+            {
+              "backend": "models",
+              "ok": false,
+              "error": "Arena IK did not reach transport: position error 0.0667 m, rotation error 9.19 deg",
+              "elapsed_s": 25.903556710109115
+            }
+          ],
+          "fallback_used": false,
+          "command_id": "holding-test-fb8fa49e3b334e8d88347df6cf458d68",
+          "skill": "place_held",
+          "elapsed_s": 32.26060080528259,
+          "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-222508-b3a0898b",
+          "events": [
+            {
+              "phase": "visual_observation",
+              "sequence": 615,
+              "time": 1788704709.3413515,
+              "target": "blue tray",
+              "request_id": "b265a6744ea048b0bc44180bbf7b4a03"
+            },
+            {
+              "phase": "observation",
+              "sequence": 677,
+              "time": 1788704714.961312,
+              "target": "blue tray",
+              "request_id": "b265a6744ea048b0bc44180bbf7b4a03",
+              "perception_source": "task_routed_image_models",
+              "views": {
+                "scene_camera": {
+                  "points": 5536,
+                  "camera_world": [
+                    [
+                      0.7877550488196889,
+                      0.4445251326379559,
+                      -0.42642630021176803,
+                      1.0199999809265137
+                    ],
+                    [
+                      0.6159886225078229,
+                      -0.5684795936745715,
+                      0.545333813839293,
+                      -0.6399999856948853
+                    ],
+                    [
+                      -6.394766266515362e-08,
+                      -0.6922632144125539,
+                      -0.7216450941918708,
+                      0.9200000166893005
+                    ],
+                    [
+                      0.0,
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  ],
+                  "intrinsics": [
+                    [
+                      687.1868286132812,
+                      0.0,
+                      400.0
+                    ],
+                    [
+                      0.0,
+                      687.1868286132812,
+                      300.0
+                    ],
+                    [
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  ],
+                  "bounds_world": [
+                    [
+                      0.2671188962032214,
+                      0.13495141213098294,
+                      0.0018702406672661542
+                    ],
+                    [
+                      0.4438242413065554,
+                      0.2902666811820843,
+                      0.03273514509409847
+                    ]
+                  ]
+                },
+                "side_camera": {
+                  "points": 10847,
+                  "camera_world": [
+                    [
+                      -0.8098375975170691,
+                      0.40830078507132084,
+                      -0.42125234071506884,
+                      0.9599999785423279
+                    ],
+                    [
+                      0.5866541277855093,
+                      0.5636325734996421,
+                      -0.5815111834198836,
+                      0.6600000262260437
+                    ],
+                    [
+                      6.817189102115151e-08,
+                      -0.7180590442298693,
+                      -0.6959821901454675,
+                      0.800000011920929
+                    ],
+                    [
+                      0.0,
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  ],
+                  "intrinsics": [
+                    [
+                      687.1868286132812,
+                      0.0,
+                      400.0
+                    ],
+                    [
+                      0.0,
+                      687.1868286132812,
+                      300.0
+                    ],
+                    [
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  ],
+                  "bounds_world": [
+                    [
+                      0.26702281303057895,
+                      0.1360515245015087,
+                      0.0016529030404814904
+                    ],
+                    [
+                      0.4453137395714215,
+                      0.2941923882423721,
+                      0.03258929302426605
+                    ]
+                  ]
+                }
+              },
+              "models": [
+                {
+                  "camera": "scene_camera",
+                  "label": "blue tray",
+                  "sequence": 615,
+                  "status": "observed",
+                  "semantic_status": "detected",
+                  "origin": "sam3",
+                  "score": 0.96728515625,
+                  "score_model": "sam3",
+                  "memory_id": "1788704023-24dd7332",
+                  "loop": "fast",
+                  "fallback_reason": null,
+                  "stages": [
+                    {
+                      "model": "lk",
+                      "loop": "fast",
+                      "flow_reason": "lk_forward_backward",
+                      "flow_points": 80,
+                      "flow_shift_px": [
+                        0.015655517578125,
+                        0.01354217529296875
+                      ],
+                      "flow_fb_median_px": 0.0022668763995170593
+                    },
+                    {
+                      "model": "sam2_tiny",
+                      "loop": "fast",
+                      "operation": "segment",
+                      "mask_score": 0.984375
+                    }
+                  ],
+                  "elapsed_s": 0.048343583941459656,
+                  "box": [
+                    342.0,
+                    184.0,
+                    460.0,
+                    269.0
+                  ],
+                  "mask_pixels": 5790
+                },
+                {
+                  "camera": "side_camera",
+                  "label": "blue tray",
+                  "sequence": 615,
+                  "status": "observed",
+                  "semantic_status": "detected",
+                  "origin": "sam3",
+                  "score": 0.96142578125,
+                  "score_model": "sam3",
+                  "memory_id": "1788704023-24dd7332",
+                  "loop": "fast",
+                  "fallback_reason": null,
+                  "stages": [
+                    {
+                      "model": "lk",
+                      "loop": "fast",
+                      "flow_reason": "lk_forward_backward",
+                      "flow_points": 80,
+                      "flow_shift_px": [
+                        -0.00994873046875,
+                        -0.017730712890625
+                      ],
+                      "flow_fb_median_px": 0.00432675052434206
+                    },
+                    {
+                      "model": "sam2_tiny",
+                      "loop": "fast",
+                      "operation": "segment",
+                      "mask_score": 0.984375
+                    }
+                  ],
+                  "elapsed_s": 0.04796820878982544,
+                  "box": [
+                    470.0,
+                    284.0,
+                    630.0,
+                    410.0
+                  ],
+                  "mask_pixels": 11192
+                }
+              ]
+            },
+            {
+              "phase": "instance_observed",
+              "sequence": 677,
+              "time": 1788704714.9639757,
+              "label": "blue tray",
+              "instance_id": "entity_08",
+              "observation_ref": "b265a6744ea048b0bc44180bbf7b4a03",
+              "witness_votes": {
+                "entity_08": 16383
+              },
+              "association_source": "model_mask_to_rendered_physical_instance"
+            },
+            {
+              "phase": "holding_resumed",
+              "sequence": 677,
+              "time": 1788704714.9658613,
+              "instance_id": "entity_01",
+              "label": "green bracket",
+              "grasp_command_id": "holding-test-4b3ff46483d643b5a4da007107e95453",
+              "initial_z": -9.313225746154785e-10,
+              "max_lift_m": 0.11091689113527536,
+              "tcp_to_object_at_grasp": [
+                [
+                  0.9999873850104762,
+                  -0.004578778181911248,
+                  -0.0020650932836133833,
+                  1.2907291266073262e-05
+                ],
+                [
+                  -0.00455706657061691,
+                  -0.9999355494822408,
+                  0.010398558838602589,
+                  0.020546502841295777
+                ],
+                [
+                  -0.002112572881615547,
+                  -0.01038901689332382,
+                  -0.9999438011027468,
+                  0.03007236584552621
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "verified": true,
+              "gripper_opening_m": 0.00794297270476818,
+              "relative_translation_drift_m": 0.0002110622710927937
+            },
+            {
+              "phase": "attempt_started",
+              "sequence": 677,
+              "time": 1788704714.9677796,
+              "backend": "models"
+            },
+            {
+              "phase": "held_geometry_reused",
+              "sequence": 677,
+              "time": 1788704714.9707668,
+              "observation_ref": "f42c55ecfaf14a459d641533b56a1141",
+              "source": "prior_rgbd_in_gripper_frame",
+              "points": 8929
+            },
+            {
+              "phase": "visual_observation",
+              "sequence": 685,
+              "time": 1788704715.3688595,
+              "target": "entity_08",
+              "request_id": "d9e79c4d99cf4acb9a19fcb9cdd7947a"
+            },
+            {
+              "phase": "observation",
+              "sequence": 692,
+              "time": 1788704715.8315287,
+              "target": "entity_08",
+              "request_id": "d9e79c4d99cf4acb9a19fcb9cdd7947a",
+              "perception_source": "task_routed_image_models",
+              "views": {
+                "scene_camera": {
+                  "points": 5474,
+                  "camera_world": [
+                    [
+                      0.7877550488196889,
+                      0.4445251326379559,
+                      -0.42642630021176803,
+                      1.0199999809265137
+                    ],
+                    [
+                      0.6159886225078229,
+                      -0.5684795936745715,
+                      0.545333813839293,
+                      -0.6399999856948853
+                    ],
+                    [
+                      -6.394766266515362e-08,
+                      -0.6922632144125539,
+                      -0.7216450941918708,
+                      0.9200000166893005
+                    ],
+                    [
+                      0.0,
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  ],
+                  "intrinsics": [
+                    [
+                      687.1868286132812,
+                      0.0,
+                      400.0
+                    ],
+                    [
+                      0.0,
+                      687.1868286132812,
+                      300.0
+                    ],
+                    [
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  ],
+                  "bounds_world": [
+                    [
+                      0.2671188962032214,
+                      0.13495141213098294,
+                      0.0035287632493533616
+                    ],
+                    [
+                      0.4438242413065554,
+                      0.2902960667727703,
+                      0.03273640119526189
+                    ]
+                  ]
+                },
+                "side_camera": {
+                  "points": 10735,
+                  "camera_world": [
+                    [
+                      -0.8098375975170691,
+                      0.40830078507132084,
+                      -0.42125234071506884,
+                      0.9599999785423279
+                    ],
+                    [
+                      0.5866541277855093,
+                      0.5636325734996421,
+                      -0.5815111834198836,
+                      0.6600000262260437
+                    ],
+                    [
+                      6.817189102115151e-08,
+                      -0.7180590442298693,
+                      -0.6959821901454675,
+                      0.800000011920929
+                    ],
+                    [
+                      0.0,
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  ],
+                  "intrinsics": [
+                    [
+                      687.1868286132812,
+                      0.0,
+                      400.0
+                    ],
+                    [
+                      0.0,
+                      687.1868286132812,
+                      300.0
+                    ],
+                    [
+                      0.0,
+                      0.0,
+                      1.0
+                    ]
+                  ],
+                  "bounds_world": [
+                    [
+                      0.26750425333649985,
+                      0.13600229569209543,
+                      0.0021004169532856665
+                    ],
+                    [
+                      0.44531334849287496,
+                      0.2941923882423721,
+                      0.032589292912360235
+                    ]
+                  ]
+                }
+              },
+              "models": [
+                {
+                  "camera": "scene_camera",
+                  "label": "blue tray",
+                  "sequence": 685,
+                  "status": "observed",
+                  "semantic_status": "detected",
+                  "origin": "sam3",
+                  "score": 0.9697265625,
+                  "score_model": "sam3",
+                  "memory_id": "1788704023-24dd7332",
+                  "loop": "slow",
+                  "fallback_reason": "slow_localization_requested",
+                  "stages": [
+                    {
+                      "model": "sam3",
+                      "loop": "slow",
+                      "operation": "find",
+                      "reason": "slow_localization_requested",
+                      "candidates": 1
+                    }
+                  ],
+                  "elapsed_s": 0.1797028910368681,
+                  "box": [
+                    342.0,
+                    184.0,
+                    460.0,
+                    268.0
+                  ],
+                  "mask_pixels": 5729
+                },
+                {
+                  "camera": "side_camera",
+                  "label": "blue tray",
+                  "sequence": 685,
+                  "status": "observed",
+                  "semantic_status": "detected",
+                  "origin": "sam3",
+                  "score": 0.9619140625,
+                  "score_model": "sam3",
+                  "memory_id": "1788704023-24dd7332",
+                  "loop": "slow",
+                  "fallback_reason": "slow_localization_requested",
+                  "stages": [
+                    {
+                      "model": "sam3",
+                      "loop": "slow",
+                      "operation": "find",
+                      "reason": "slow_localization_requested",
+                      "candidates": 1
+                    }
+                  ],
+                  "elapsed_s": 0.1697677243500948,
+                  "box": [
+                    470.0,
+                    284.0,
+                    629.0,
+                    409.0
+                  ],
+                  "mask_pixels": 11077
+                }
+              ]
+            },
+            {
+              "phase": "placement_inference",
+              "sequence": 692,
+              "time": 1788704715.8340888,
+              "backend": "anyplace",
+              "parent_points": 15980,
+              "child_points": 8929
+            },
+            {
+              "phase": "placement_candidates",
+              "sequence": 766,
+              "time": 1788704722.8857508,
+              "backend": "anyplace",
+              "count": 20,
+              "inference_s": 6.693802980706096,
+              "checkpoint_sha256": "d3d33f0a279633c25f252960a208d4b4447a756f0cff8e94be0faadc20dc5be5",
+              "input_sampling": {
+                "parent": {
+                  "observed_points": 15980,
+                  "model_input_points": 15980,
+                  "repeated_samples": 0
+                },
+                "child": {
+                  "observed_points": 8929,
+                  "model_input_points": 8929,
+                  "repeated_samples": 0
+                }
+              }
+            },
+            {
+              "phase": "selected_placement",
+              "sequence": 766,
+              "time": 1788704722.8986008,
+              "pose_world": [
+                [
+                  -0.16956897920787464,
+                  -0.01974293628453653,
+                  0.9853209859181092,
+                  0.3513639897828274
+                ],
+                [
+                  -0.06790820543421709,
+                  -0.9971887098769544,
+                  -0.031667490774857254,
+                  0.23969067663469987
+                ],
+                [
+                  0.983175689699996,
+                  -0.07228140884479259,
+                  0.16775157926512838,
+                  0.009111871670454226
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "backend": "anyplace"
+            },
+            {
+              "phase": "transport",
+              "sequence": 766,
+              "time": 1788704722.9011188,
+              "target_world": [
+                [
+                  -0.16956897920787464,
+                  -0.01974293628453653,
+                  0.9853209859181092,
+                  0.3513639897828274
+                ],
+                [
+                  -0.06790820543421709,
+                  -0.9971887098769544,
+                  -0.031667490774857254,
+                  0.23969067663469987
+                ],
+                [
+                  0.983175689699996,
+                  -0.07228140884479259,
+                  0.16775157926512838,
+                  0.16187085211277008
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ]
+            },
+            {
+              "phase": "motion_failed",
+              "sequence": 1126,
+              "time": 1788704740.8687043,
+              "target_world": [
+                [
+                  -0.16956897920787464,
+                  -0.01974293628453653,
+                  0.9853209859181092,
+                  0.3513639897828274
+                ],
+                [
+                  -0.06790820543421709,
+                  -0.9971887098769544,
+                  -0.031667490774857254,
+                  0.23969067663469987
+                ],
+                [
+                  0.983175689699996,
+                  -0.07228140884479259,
+                  0.16775157926512838,
+                  0.16187085211277008
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "measured_world": [
+                [
+                  -0.2868359214340823,
+                  -0.09731630373899171,
+                  0.9530239719973689,
+                  0.34619641304016113
+                ],
+                [
+                  -0.11487465123098149,
+                  -0.9841544847378731,
+                  -0.1350694809159056,
+                  0.19997023046016693
+                ],
+                [
+                  0.9510672787345918,
+                  -0.14822107541409935,
+                  0.2711116820121673,
+                  0.21532852947711945
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "joints_rad": [
+                2.3922972679138184,
+                1.663936972618103,
+                -0.7930229306221008,
+                -2.568664073944092,
+                1.9771440029144287,
+                3.751415252685547,
+                1.262651801109314,
+                0.006223405245691538,
+                0.006397315766662359
+              ],
+              "joint_limits_rad": [
+                [
+                  -2.8973000049591064,
+                  2.8973000049591064
+                ],
+                [
+                  -1.7627999782562256,
+                  1.7627999782562256
+                ],
+                [
+                  -2.8973000049591064,
+                  2.8973000049591064
+                ],
+                [
+                  -3.0717999935150146,
+                  -0.0697999969124794
+                ],
+                [
+                  -2.8973000049591064,
+                  2.8973000049591064
+                ],
+                [
+                  -0.017500000074505806,
+                  3.752500057220459
+                ],
+                [
+                  -2.8973000049591064,
+                  2.8973000049591064
+                ],
+                [
+                  0.0,
+                  0.03999999910593033
+                ],
+                [
+                  0.0,
+                  0.03999999910593033
+                ]
+              ],
+              "joint_velocities": [
+                0.024299705401062965,
+                0.0222508292645216,
+                0.009506645612418652,
+                -0.011823751032352448,
+                0.008579779416322708,
+                0.003941033035516739,
+                -0.12483842670917511,
+                0.001746299909427762,
+                0.0022302076686173677
+              ]
+            },
+            {
+              "phase": "attempt_finished",
+              "sequence": 1126,
+              "time": 1788704740.8713408,
+              "backend": "models",
+              "ok": false,
+              "error": "Arena IK did not reach transport: position error 0.0667 m, rotation error 9.19 deg",
+              "elapsed_s": 25.903556710109115
+            }
+          ],
+          "vision": {
+            "request_id": "8332b776d4814711822b3871c6c0ad32",
+            "command_id": "holding-test-fb8fa49e3b334e8d88347df6cf458d68",
+            "label": "green bracket",
+            "views": [
+              {
+                "camera": "scene_camera",
+                "label": "green bracket",
+                "sequence": 1118,
+                "status": "observed",
+                "semantic_status": "detected",
+                "origin": "sam3",
+                "score": 0.477294921875,
+                "score_model": "sam3",
+                "memory_id": "1788704019-b541fa50",
+                "loop": "fast",
+                "fallback_reason": null,
+                "stages": [
+                  {
+                    "model": "lk",
+                    "loop": "fast",
+                    "flow_reason": "lk_forward_backward",
+                    "flow_points": 18,
+                    "flow_shift_px": [
+                      -0.6599884033203125,
+                      -0.27999114990234375
+                    ],
+                    "flow_fb_median_px": 0.010619248263537884
+                  }
+                ],
+                "elapsed_s": 0.012376725673675537,
+                "box": [
+                  361.0,
+                  123.0,
+                  391.0,
+                  163.0
+                ],
+                "mask_pixels": 636
+              }
+            ],
+            "result_ref": "8332b776d4814711822b3871c6c0ad32",
+            "scope": "target",
+            "observed_at": 1788704740.4965577,
+            "elapsed_s": 0.01722809486091137,
+            "ok": true,
+            "perception_source": "task_routed_image_models",
+            "transient": true,
+            "loop": "fast",
+            "fallback_reasons": [],
+            "semantic_status": "detected"
+          },
+          "tcp_pose_world": [
+            [
+              -0.2868359214340823,
+              -0.09731630373899171,
+              0.9530239719973689,
+              0.34619641304016113
+            ],
+            [
+              -0.11487465123098149,
+              -0.9841544847378731,
+              -0.1350694809159056,
+              0.19997023046016693
+            ],
+            [
+              0.9510672787345918,
+              -0.14822107541409935,
+              0.2711116820121673,
+              0.21532852947711945
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        }
+      ]
+    },
+    "remaining_issues": [
+      "Generic scene inventory misses industrial parts; targeted descriptions are stronger.",
+      "Silver nut enhanced grasp was not repeatably successful.",
+      "AnyPlace bracket placement candidate was not reached by Arena IK; pose candidate feasibility and alternate-candidate execution need further work."
+    ],
+    "holding_invalidated_after_failed_transport": {
+      "holding": {
+        "instance_id": "entity_01",
+        "label": "green bracket",
+        "grasp_command_id": "holding-test-4b3ff46483d643b5a4da007107e95453",
+        "initial_z": -9.313225746154785e-10,
+        "max_lift_m": 0.11091689113527536,
+        "tcp_to_object_at_grasp": [
+          [
+            0.9999873850104762,
+            -0.004578778181911248,
+            -0.0020650932836133833,
+            1.2907291266073262e-05
+          ],
+          [
+            -0.00455706657061691,
+            -0.9999355494822408,
+            0.010398558838602589,
+            0.020546502841295777
+          ],
+          [
+            -0.002112572881615547,
+            -0.01038901689332382,
+            -0.9999438011027468,
+            0.03007236584552621
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ],
+        "verified": false,
+        "gripper_opening_m": 0.012621773406863213,
+        "relative_translation_drift_m": 0.04085168184388372
+      },
+      "phase": "idle",
+      "action": "Ended failed enhanced trial and reset industrial scene; no placement attempted after holding check failed."
+    },
+    "final_state": "Industrial profile reset for continued user testing; empty gripper and original part positions."
+  }
+}
