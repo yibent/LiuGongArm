@@ -1,0 +1,130 @@
+{
+  "date": "2026-09-06",
+  "kind": "development integration runs, not a success-rate benchmark",
+  "software_tests": {
+    "arena_unit_tests": 10,
+    "busagent_full_suite_tests": 195,
+    "frontend_build": "passed"
+  },
+  "runs": [
+    {
+      "case": "web-basic-red-pass",
+      "state": "completed",
+      "message": "Physical task verified",
+      "route": {
+        "decision": "busagent",
+        "grasp": "arena_basic",
+        "placement": "arena_basic",
+        "execution": "isaaclab_arena.franka_ik",
+        "robot": "franka_panda"
+      },
+      "evaluation": {
+        "physical_success": true,
+        "lifted": true,
+        "released": true,
+        "max_lift_m": 0.15803628414869308,
+        "final_position_world_m": [
+          0.4588717520236969,
+          0.20031875371932983,
+          0.03849998116493225
+        ],
+        "destination_xy_error_m": 0.0011724109474150616,
+        "supported_region": true,
+        "support_gap_m": -5.5388329932987146e-08,
+        "gripper_opening_m": 0.07999997586011887,
+        "settle_displacement_m": 0.0,
+        "linear_speed_mps": 0.0052184960804879665,
+        "evaluation_source": "arena_task_simulation_ground_truth"
+      },
+      "elapsed_s": 48.44868445396423,
+      "evidence_dir_server": "/root/gpufree-data/arena-panda/output/arena/20260906-162932-17558f75"
+    },
+    {
+      "case": "enhanced-red-pass",
+      "state": "completed",
+      "message": "Physical task verified",
+      "route": {
+        "decision": "busagent",
+        "grasp": "graspgenx",
+        "placement": "anyplace",
+        "execution": "isaaclab_arena.franka_ik",
+        "robot": "franka_panda"
+      },
+      "evaluation": {
+        "physical_success": true,
+        "lifted": true,
+        "released": true,
+        "max_lift_m": 0.17455106228590012,
+        "final_position_world_m": [
+          0.4440328776836395,
+          0.20021119713783264,
+          0.038499992340803146
+        ],
+        "destination_xy_error_m": 0.015968519007617647,
+        "supported_region": true,
+        "support_gap_m": -5.0779742466477984e-08,
+        "gripper_opening_m": 0.07999984920024872,
+        "settle_displacement_m": 5.972094663188382e-08,
+        "linear_speed_mps": 5.3345411288319156e-05,
+        "evaluation_source": "arena_task_simulation_ground_truth"
+      },
+      "elapsed_s": 57.790839433670044,
+      "evidence_dir_server": "/root/gpufree-data/arena-panda/output/arena/20260906-162710-8e5a2350"
+    },
+    {
+      "case": "enhanced-contact-failure",
+      "state": "failed",
+      "message": "Arena IK did not reach place_approach: position error 0.0072 m, rotation error 0.74 deg",
+      "route": null,
+      "evaluation": null,
+      "elapsed_s": 63.11353826522827,
+      "evidence_dir_server": "/root/gpufree-data/arena-panda/output/arena/20260906-162228-f31b4a09"
+    },
+    {
+      "case": "web-yellow-cloud-failure",
+      "state": "failed",
+      "message": "placement_model_unavailable: {\"error\": \"ValueError\", \"message\": \"child: insufficient observed points (<1024)\"}",
+      "route": null,
+      "evaluation": null,
+      "elapsed_s": 23.719428062438965,
+      "evidence_dir_server": "/root/gpufree-data/arena-panda/output/arena/20260906-163101-1f7a4414"
+    },
+    {
+      "case": "web-enhanced-yellow-pass",
+      "state": "completed",
+      "message": "Physical task verified",
+      "route": {
+        "decision": "busagent",
+        "grasp": "graspgenx",
+        "placement": "anyplace",
+        "execution": "isaaclab_arena.franka_ik",
+        "robot": "franka_panda"
+      },
+      "evaluation": {
+        "physical_success": true,
+        "lifted": true,
+        "released": true,
+        "max_lift_m": 0.16016152501106262,
+        "final_position_world_m": [
+          0.4563901722431183,
+          0.2013549655675888,
+          0.04100000485777855
+        ],
+        "destination_xy_error_m": 0.0038557474144068405,
+        "supported_region": true,
+        "support_gap_m": -4.1841995764013706e-08,
+        "gripper_opening_m": 0.07999995350837708,
+        "settle_displacement_m": 1.5359765386647212e-08,
+        "linear_speed_mps": 8.375849574804306e-05,
+        "evaluation_source": "arena_task_simulation_ground_truth"
+      },
+      "elapsed_s": 53.38838744163513,
+      "evidence_dir_server": "/root/gpufree-data/arena-panda/output/arena/20260906-163900-5c56db9a",
+      "final_reply_observed": "已将黄色圆柱准确放置到蓝色区域，任务完成。"
+    }
+  ],
+  "public_endpoints": {
+    "busagent": "https://8byr7v21-8qne20ga-8991.zj02restapi.gpufree.cn:8443/",
+    "preview": "https://8byr7v21-8qne20ga-8993.zj02restapi.gpufree.cn:8443/"
+  }
+}

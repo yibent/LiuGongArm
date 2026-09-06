@@ -1,0 +1,10 @@
+{
+  "isaac_sim": "6.0.1-rc.7+release.42383.32955d8d.gl",
+  "repositories": {
+    "IsaacLab-Arena": "8b4a3a47fc53de23e8205089d71109a2e2348acd",
+    "IsaacLab-Arena/submodules/IsaacLab": "e57379c634b42db5a0fe9f754341be6e2a7c7c43",
+    "GraspGenX": "b9429097728cb1c430dd78b92edf17ba318aad03",
+    "anyplace": "3049f78ad226ba0d9e54c63e2ca7ad7bbcfaa45e",
+    "airobot": "7ae04feb07d554835bf6d917063def26c8b7e1d1"
+  }
+}

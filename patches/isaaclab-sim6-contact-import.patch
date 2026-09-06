@@ -1,0 +1,6 @@
+diff --git a/source/isaaclab_physx/isaaclab_physx/sensors/contact_sensor/contact_sensor.py b/source/isaaclab_physx/isaaclab_physx/sensors/contact_sensor/contact_sensor.py
+--- a/source/isaaclab_physx/isaaclab_physx/sensors/contact_sensor/contact_sensor.py
++++ b/source/isaaclab_physx/isaaclab_physx/sensors/contact_sensor/contact_sensor.py
+@@ -17 +17 @@
+-import omni.physics.tensors.impl.api as physx
++import omni.physics.tensors.api as physx

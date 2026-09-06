@@ -1,0 +1,18 @@
+{
+  "robot": "franka_panda",
+  "arena_revision": "8b4a3a47fc53de23e8205089d71109a2e2348acd",
+  "isaaclab_revision": "e57379c634b42db5a0fe9f754341be6e2a7c7c43",
+  "base_revision": "0576d673fa396d1373d9bcd298d45a93bc582904",
+  "camera": {"width": 640, "height": 480},
+  "controller": {"position_tolerance_m": 0.006, "rotation_tolerance_deg": 5, "max_steps": 360},
+  "graspgenx": {"host": "127.0.0.1", "port": 5556, "timeout_ms": 120000, "num_grasps": 64},
+  "anyplace": {"url": "http://127.0.0.1:5590", "timeout_s": 120, "candidates": 20, "iterations": 50},
+  "ports": {"busagent": 8991, "preview": 8993, "spare": 8999, "controller_internal": 7861},
+  "objects": [
+    {"name": "red_block", "label": "red block", "aliases": ["red cube", "红色方块", "红方块"], "shape": "cuboid", "size": [0.045, 0.045, 0.045], "position": [0.48, -0.12, 0.025], "color": [0.8, 0.05, 0.025], "mass": 0.06},
+    {"name": "yellow_cylinder", "label": "yellow cylinder", "aliases": ["黄色圆柱", "圆柱"], "shape": "cylinder", "size": [0.04, 0.04, 0.05], "position": [0.57, -0.18, 0.028], "color": [0.9, 0.65, 0.025], "mass": 0.06}
+  ],
+  "destinations": [
+    {"name": "blue_pad", "label": "blue pad", "aliases": ["blue square", "蓝色区域", "蓝色垫子", "蓝色平台"], "position": [0.46, 0.20, 0.008], "size": [0.18, 0.18, 0.016], "color": [0.025, 0.22, 0.7]}
+  ]
+}

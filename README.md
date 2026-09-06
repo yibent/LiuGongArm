@@ -1,4 +1,19 @@
-# MR Liu + YOLOE
+# LiuGong · Arena Panda
+
+当前开发入口：[Isaac Sim 6 + Arena + Panda 抓放适配](docs/ARENA_PANDA_ADAPTATION.md)。
+BusAgent 下发目标与目的地，GraspGenX / AnyPlace 提供抓放姿态，Arena 负责 Panda IK、场景、相机与物理评测。
+新执行路径不再使用旧的抓取准备确认和重复姿态限制。BusAgent 源码通过 Git 子模块固定版本：
+
+```bash
+git submodule update --init BusAgent
+```
+
+服务器启动：`python3 ops/arena_stack.py start`。端口为 8991（控制台）、8993（观察台）；8999 预留。
+验证结果和当前未完成的能力见上述适配文档。
+
+## 原分支实验记录
+
+下面保留原抓取分支的历史入口；当前 Arena 路径以顶部文档为准。
 
 ## BusAgent：精细抓取模块交接入口
 
