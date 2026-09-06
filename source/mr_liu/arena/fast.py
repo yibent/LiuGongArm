@@ -4,6 +4,7 @@ Only the Cartesian/gripper adapters live here. The SDK supplies the phase
 interpolation; this module neither builds a second robot nor solves joint IK.
 """
 import numpy as np
+from types import SimpleNamespace
 from scipy.spatial.transform import Rotation
 from isaacsim.core.utils.types import ArticulationAction
 from isaacsim.robot.manipulators.controllers.pick_place_controller import PickPlaceController
@@ -63,13 +64,14 @@ def fast_pick_place(runtime, request):
             if phase == 5:
                 if runtime.max_lift < .04:
                     raise FastPathFailure("Fast grasp did not lift the target")
+                runtime.remember_hold(row)
                 runtime.event("lift_verified", lift_m=runtime.max_lift)
                 if destination is None:
                     return runtime.task.evaluate(runtime.env, row["name"], runtime.initial_z, None,
                         released=False, max_lift=runtime.max_lift, stability=0.)
             runtime.event(PHASES[phase], backend="official_pick_place")
             if phase == 3: runtime.held = row["name"]
-            if phase == 7: runtime.held = None
+            if phase == 8: runtime.clear_hold()
             previous = phase
         controller.forward(pick, place, np.zeros(9), end_effector_orientation=np.array([0., 1., 0., 0.]))
         runtime.tick()
@@ -77,4 +79,47 @@ def fast_pick_place(runtime, request):
     for _ in range(45): runtime.tick()
     stability = np.linalg.norm(runtime.object_pose(row["name"])[:3, 3] - before)
     return runtime.task.evaluate(runtime.env, row["name"], runtime.initial_z, destination,
+        released=True, max_lift=runtime.max_lift, stability=stability)
+
+
+def fast_place_held(runtime, request, row, destination):
+    """Resume the official controller at transport, preserving the real grasp.
+
+Warm the controller's first phases with detached adapters, without stepping
+the robot. Then use its original transport/release/retreat interpolation.
+"""
+    child = runtime.held_cloud()
+    parent = runtime.cloud(destination['name'])
+    tcp = runtime.tcp_pose()
+    low, high = np.quantile(child, [.02, .98], axis=0)
+    centre = (low + high) / 2
+    place = tcp[:3, 3].copy()
+    place[:2] += np.quantile(parent[:, :2], [.02, .98], axis=0).mean(axis=0) - centre[:2]
+    place[2] = np.quantile(parent[:, 2], .95) + tcp[2, 3] - low[2] + .003
+    pick = tcp[:3, 3].copy()
+    orientation = np.roll(Rotation.from_matrix(tcp[:3, :3]).as_quat(), 1)
+    detached = SimpleNamespace()
+    arm, gripper = ArenaCartesian(detached), ArenaGripper(detached)
+    steps = runtime.config['fast']['phase_steps']
+    controller = PickPlaceController('arena_fast_place_held', arm, gripper,
+        end_effector_initial_height=max(pick[2], place[2] + .13),
+        events_dt=[1.] * 5 + [1. / count for count in steps[5:]])
+    while controller.get_current_event() < 5:
+        controller.forward(pick, place, np.zeros(9), end_effector_orientation=orientation)
+    arm.runtime = gripper.runtime = runtime
+    runtime.event('planning', route={**request.route(), 'grasp': 'retained_from_previous_command'},
+                  algorithm='isaacsim PickPlaceController transport/release/retreat', object_points=len(child))
+    previous = -1
+    while not controller.is_done():
+        phase = controller.get_current_event()
+        if phase != previous:
+            runtime.event(PHASES[phase], backend='official_pick_place')
+            if phase == 8: runtime.clear_hold()
+            previous = phase
+        controller.forward(pick, place, np.zeros(9), end_effector_orientation=orientation)
+        runtime.tick()
+    before = runtime.object_pose(row['name'])[:3, 3]
+    for _ in range(45): runtime.tick()
+    stability = np.linalg.norm(runtime.object_pose(row['name'])[:3, 3] - before)
+    return runtime.task.evaluate(runtime.env, row['name'], runtime.initial_z, destination,
         released=True, max_lift=runtime.max_lift, stability=stability)

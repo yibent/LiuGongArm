@@ -33,6 +33,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=["start", "stop", "status"])
     parser.add_argument("services", nargs="*", metavar="SERVICE")
+    parser.add_argument("--config", type=Path, help="Arena scene profile; reused on later Arena starts")
     args = parser.parse_args()
     STATE.mkdir(parents=True, exist_ok=True)
     names = args.services or list(SERVICES)
@@ -49,6 +50,15 @@ def main():
                 raise RuntimeError(f"PID {previous['pid']} was reused; refusing to signal it")
         if args.action == "start" and not running:
             env = {**os.environ, "BUSAGENT_PORT": "3100", "BUSAGENT_ROBOT": "franka_panda"}
+            if name == 'arena':
+                profile_file = STATE / 'arena-scene.json'
+                previous_profile = json.loads(profile_file.read_text()) if profile_file.exists() else {}
+                profile = args.config or env.get('ARENA_PANDA_CONFIG') or previous_profile.get('config')
+                if profile:
+                    path = Path(profile)
+                    path = path if path.is_absolute() else ROOT / path
+                    env['ARENA_PANDA_CONFIG'] = str(path)
+                    profile_file.write_text(json.dumps({'config': str(path)}))
             with (STATE / f"{name}.log").open("ab") as log:
                 process = subprocess.Popen(command, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
                                            stdout=log, stderr=subprocess.STDOUT, start_new_session=True)

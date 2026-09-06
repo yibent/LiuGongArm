@@ -7,9 +7,9 @@ def inject_once(runtime, fault):
         original = runtime.cloud
         fired = False
 
-        def cloud(name):
+        def cloud(name, **kwargs):
             nonlocal fired
-            points = original(name)
+            points = original(name, **kwargs)
             if not fired and name == runtime.target_name:
                 fired = True
                 points = points.copy()

@@ -152,13 +152,48 @@ def test_frame_gap_relocalizes_instead_of_reusing_stale_flow():
     finder.find.assert_not_called()
 
 
-def test_multiple_high_confidence_instances_remain_ambiguous():
+def test_fast_only_multiple_candidates_do_not_call_slow_models():
     finder, yolo, sam = Mock(), Mock(), Mock()
     yolo.detect.return_value = [Detection(np.array(box), 'part', .9) for box in [[1,1,5,5],[10,10,20,20]]]
     mask, detail = ImagePipeline(finder, yolo, sam).observe(np.zeros((32,32,3), np.uint8),
-        camera='scene', sequence=1, scene_id='s', label='part')
+        camera='scene', sequence=1, scene_id='s', label='part', mode='fast')
     assert mask is None and detail['status'] == 'ambiguous'
     finder.find.assert_not_called(); sam.predict.assert_not_called()
+
+
+def test_fast_multiple_candidates_are_resolved_by_sam3_then_tracked(tmp_path):
+    image = np.random.default_rng(71).integers(0, 255, (64,64,3), np.uint8)
+    correct = np.zeros((64,64), bool); correct[15:45,15:45] = True
+    finder, yolo, sam2, sam3 = Mock(), Mock(), Mock(), Mock()
+    yolo.detect.return_value = [Detection(np.array(box), 'green block', .9)
+                               for box in [[15,15,45,45], [48,48,60,60]]]
+    sam3.locate.return_value = [(yolo.detect.return_value[0], correct)]
+    memory = ObjectMemoryStore(tmp_path)
+    pipe = ImagePipeline(finder, yolo, sam2, memory_store=memory,
+                         slow_localizer='sam3', localizers={'sam3': sam3})
+    kwargs = dict(scene_id='s', camera='scene', label='green block')
+    mask, detail = pipe.observe(image, sequence=1, **kwargs)
+    assert np.array_equal(mask, correct)
+    assert detail['fallback_reason'] == 'multiple_fast_candidates'
+    assert detail['origin'] == 'sam3' and detail['status'] == 'observed'
+    assert len(detail['stages'][0]['accepted_boxes']) == 2
+    assert memory.find('green block')[0].metadata['origin'] == 'sam3'
+    _, tracked = pipe.observe(image.copy(), sequence=2, **kwargs)
+    assert tracked['loop'] == 'fast' and tracked['stages'][0]['model'] == 'lk'
+    sam3.locate.assert_called_once(); finder.find.assert_not_called(); sam2.predict.assert_not_called()
+
+
+def test_slow_confirmed_multiple_instances_still_return_no_target():
+    finder, yolo, sam2, sam3 = Mock(), Mock(), Mock(), Mock()
+    found = [Detection(np.array(box), 'part', .9) for box in [[1,1,5,5], [10,10,20,20]]]
+    yolo.detect.return_value = found
+    sam3.locate.return_value = [(d, np.ones((32,32), bool)) for d in found]
+    pipe = ImagePipeline(finder, yolo, sam2, slow_localizer='sam3', localizers={'sam3': sam3})
+    mask, detail = pipe.observe(np.zeros((32,32,3), np.uint8),
+        scene_id='s', camera='scene', label='part', sequence=1)
+    assert mask is None and detail['status'] == 'ambiguous' and detail['loop'] == 'slow'
+    assert not pipe.tracks
+    sam3.locate.assert_called_once(); finder.find.assert_not_called(); sam2.predict.assert_not_called()
 
 
 def test_sam3_concept_mask_hands_back_to_fast_tracking_without_florence_or_sam2(tmp_path):
