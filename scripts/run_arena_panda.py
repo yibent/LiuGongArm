@@ -18,12 +18,17 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--config", type=Path, default=ROOT / "configs/arena_panda.json")
 parser.add_argument("--output", type=Path, default=ROOT / "output/arena")
 parser.add_argument("--smoke", action="store_true")
+parser.add_argument("--smoke-fault", choices=["miss_grasp", "after_lift"],
+                    help="Inject one failure in a smoke test to exercise model escalation")
 parser.add_argument("--mode", choices=["basic", "enhanced", "auto"], default="basic")
 parser.add_argument("--target", default="red block")
 parser.add_argument("--destination", default="blue pad")
 parser.add_argument("--port", type=int, default=7861)
 AppLauncher.add_app_launcher_args(parser)
+parser.set_defaults(rendering_mode="performance")
 args = parser.parse_args()
+if args.smoke_fault and not args.smoke:
+    parser.error("--smoke-fault requires --smoke")
 args.enable_cameras = True
 launcher = AppLauncher(args)
 print("[Arena Panda] AppLauncher initialized", flush=True)
@@ -35,6 +40,8 @@ try:
     # otherwise PLAY initializes the same PhysX scene twice and deadlocks.
     from isaacsim.core.simulation_manager.impl.simulation_manager import SimulationManager
     SimulationManager.enable_all_default_callbacks(False)
+    import isaacsim.core.experimental.utils.app as app_utils
+    app_utils.enable_extension("isaacsim.robot.manipulators")
     from mr_liu.arena.environment import build_environment
     from mr_liu.arena.runtime import ArenaRuntime
     from mr_liu.arena.service import serve
@@ -43,6 +50,9 @@ try:
     env, task = build_environment(config, device=args.device)
     runtime = ArenaRuntime(env, task, config, args.output)
     if args.smoke:
+        if args.smoke_fault:
+            from arena_smoke_faults import inject_once
+            inject_once(runtime, args.smoke_fault)
         result = runtime.execute({"command_id": "smoke", "skill": "pick_place", "params": {
             "target": {"category": args.target}, "destination": {"label": args.destination}, "mode": args.mode}})
         print(json.dumps(result, ensure_ascii=False), flush=True)

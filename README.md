@@ -2,6 +2,8 @@
 
 当前开发入口：[Isaac Sim 6 + Arena + Panda 抓放适配](docs/ARENA_PANDA_ADAPTATION.md)。
 BusAgent 下发目标与目的地，GraspGenX / AnyPlace 提供抓放姿态，Arena 负责 Panda IK、场景、相机与物理评测。
+简单任务优先复用 NVIDIA 官方快速抓放；复杂任务或快速执行失败时升级模型，已成功抓住物体则只升级放置。
+当前示例实测快速抓放约 17–18 秒，相机采用两侧斜视与偏置腕部视角。
 新执行路径不再使用旧的抓取准备确认和重复姿态限制。BusAgent 源码通过 Git 子模块固定版本：
 
 ```bash

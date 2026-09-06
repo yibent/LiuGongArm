@@ -36,8 +36,8 @@ class ManipulationRequest:
     def route(self):
         return {
             "decision": "busagent",
-            "grasp": "graspgenx" if self.enhanced else "arena_basic",
-            "placement": ("anyplace" if self.enhanced else "arena_basic") if self.destination else None,
+            "grasp": "graspgenx" if self.enhanced else "official_pick_place",
+            "placement": ("anyplace" if self.enhanced else "official_pick_place") if self.destination else None,
             "execution": "isaaclab_arena.franka_ik",
             "robot": "franka_panda",
         }

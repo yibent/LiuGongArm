@@ -13,6 +13,8 @@ from PIL import Image
 from scipy.spatial.transform import Rotation, Slerp
 import torch
 
+from mr_liu.arena.cascade import run_cascade
+from mr_liu.arena.fast import fast_pick_place
 from mr_liu.arena.contracts import ManipulationRequest, model_grasp_to_tcp, placement_to_tcp
 from mr_liu.grasp.backends.graspgenx import ZmqGraspGenXTransport
 from mr_liu.grasp.transforms import invert_transform, transform_points
@@ -66,8 +68,9 @@ class ArenaRuntime:
     def capabilities(self):
         return {"robot": "franka_panda", "execution": "isaaclab_arena.franka_ik",
                 "skills": ["status", "capabilities", "select_target", "perceive", "grasp", "pick_place", "stop", "hold", "home"],
-                "grasp": {"backend": "arena_basic_or_graspgenx", "ready": True},
-                "placement": {"backend": "arena_basic_or_anyplace", "relations": ["on"]},
+                "grasp": {"backend": "official_pick_place_or_graspgenx", "ready": True},
+                "placement": {"backend": "official_pick_place_or_anyplace", "relations": ["on"]},
+                "routing": "fast_first_then_models_once; complex_tasks_use_models_directly",
                 "vla_loaded": False, "perception_source": "rendered_rgbd_with_simulator_semantic_masks",
                 "frame": "world", "quaternion": "xyzw", "units": "metres",
                 "objects": self.config["objects"], "destinations": self.config["destinations"]}
@@ -114,7 +117,10 @@ class ArenaRuntime:
 
     def cloud(self, name):
         """Fuse rendered depth; add the wrist view after grasping."""
+        # Let the lower-frequency RTX stream acquire a fresh synchronized frame.
+        for _ in range(self.config["camera"]["render_interval"]): self.tick()
         clouds = []
+        diagnostics = {}
         cameras = ["scene_camera", "side_camera"]
         if self.held == name: cameras.append("wrist_camera")
         for camera_name in cameras:
@@ -134,9 +140,13 @@ class ArenaRuntime:
                                (rows - intrinsic[1, 2]) * z / intrinsic[1, 1], z], axis=1)
             world_camera = pose_matrix(numpy_data(data.pos_w)[0],
                                        numpy_data(data.quat_w_ros)[0])
-            clouds.append(transform_points(world_camera, points))
+            world_points = transform_points(world_camera, points)
+            clouds.append(world_points)
+            diagnostics[camera_name] = {"points": len(points), "camera_world": world_camera.tolist(),
+                "intrinsics": intrinsic.tolist(), "bounds_world": [world_points.min(0).tolist(), world_points.max(0).tolist()] if len(points) else None}
         points = np.concatenate(clouds)
-        if len(points) < 64:
+        self.event("observation", target=name, views=diagnostics)
+        if not len(points):
             raise ValueError(f"Insufficient visible RGB-D geometry for {name}: {len(points)}")
         _, indices = np.unique(np.round(points / .0005).astype(int), axis=0, return_index=True)
         points = points[np.sort(indices)]
@@ -184,11 +194,7 @@ class ArenaRuntime:
                    joint_velocities=numpy_data(robot.data.joint_vel)[0].tolist())
         raise RuntimeError(f"Arena IK did not reach {label}: position error {np.linalg.norm(delta):.4f} m, rotation error {np.rad2deg(angle):.2f} deg")
 
-    def _grasp_candidates(self, request, points):
-        if not request.enhanced:
-            pose = np.eye(4); pose[:3, :3] = np.diag([1., -1., -1.])
-            pose[:3, 3] = (np.quantile(points, .02, axis=0) + np.quantile(points, .98, axis=0)) / 2
-            return [(pose, None)]
+    def _grasp_candidates(self, points):
         cfg = self.config["graspgenx"]
         # Official franka_panda gripper description, not the old SO-101 sweep.
         sweep = {"extents_open": np.array([.08, .018, .018], np.float32),
@@ -219,7 +225,7 @@ class ArenaRuntime:
             candidates.append((tcp, float(score)))
         return candidates
 
-    def _pick_place(self, request):
+    def prepare_task(self, request):
         if self.held is not None:
             raise ValueError("A previous object may still be held; do not start another grasp")
         row = self.resolve(request.target)
@@ -227,9 +233,13 @@ class ArenaRuntime:
         self.target_name = row["name"]
         self.selected_target = row["label"]
         self.initial_z = float(self.object_pose(row["name"])[2, 3]); self.max_lift = 0.
+        return row, destination
+
+    def _pick_place(self, request):
+        row, destination = self.prepare_task(request)
         points = self.cloud(row["name"])
         self.event("planning", route=request.route(), object_points=len(points))
-        candidates = self._grasp_candidates(request, points)
+        candidates = self._grasp_candidates(points)
         if not candidates:
             raise RuntimeError("GraspGenX returned no grasp candidates")
         current = self.tcp_pose()
@@ -255,6 +265,9 @@ class ArenaRuntime:
         if destination is None:
             return self.task.evaluate(self.env, row["name"], self.initial_z, None,
                                       released=False, max_lift=self.max_lift, stability=0.)
+        return self._place_held(request, row, destination)
+
+    def _place_held(self, request, row, destination):
         # Geometry below comes from RGB-D. Simulator object pose is used only by
         # evaluation; the held reference is estimated from measured cloud bounds.
         child = self.cloud(row["name"])
@@ -262,31 +275,24 @@ class ArenaRuntime:
         object_input[:3, 3] = (np.min(child, axis=0) + np.max(child, axis=0)) / 2
         tcp_to_object = invert_transform(self.tcp_pose()) @ object_input
         parent = self.cloud(destination["name"])
-        support_z = float(np.quantile(parent[:, 2], .95))
-        half_height = (np.max(child[:, 2]) - np.min(child[:, 2])) / 2
-        if request.enhanced:
-            cfg = self.config["anyplace"]
-            self.event("placement_inference", backend="anyplace", parent_points=len(parent), child_points=len(child))
-            client = AnyPlaceClient(cfg["url"], cfg["timeout_s"])
-            sequence = self.sequence
-            answer = self.infer(client.infer, sequence=sequence, parent=parent.tolist(), child=child.tolist(),
-                                candidates=cfg["candidates"], iterations=cfg["iterations"],
-                                input_geometry="partial_multiview_rgbd", init_current_orientation=True)
-            np.savez(self.active_directory / "anyplace_candidates.npz", parent=parent, child=child,
-                     relative=np.asarray(answer["transforms"]), object_input=object_input, tcp_to_object=tcp_to_object)
-            self.event("placement_candidates", backend="anyplace", count=len(answer["transforms"]),
-                       inference_s=answer.get("inference_s"), checkpoint_sha256=answer.get("checkpoint_sha256"))
-            candidates = [placement_to_tcp(np.asarray(relative), object_input, tcp_to_object)
-                          for relative in answer["transforms"]]
-            if not candidates:
-                raise RuntimeError("AnyPlace returned no placement candidates")
-            current = self.tcp_pose()
-            goal = min(candidates, key=motion_cost)
-        else:
-            final_object = object_input.copy()
-            final_object[:2, 3] = np.asarray(destination["position"])[:2]
-            final_object[2, 3] = support_z + half_height + .004
-            goal = final_object @ invert_transform(tcp_to_object)
+        cfg = self.config["anyplace"]
+        self.event("placement_inference", backend="anyplace", parent_points=len(parent), child_points=len(child))
+        client = AnyPlaceClient(cfg["url"], cfg["timeout_s"])
+        sequence = self.sequence
+        answer = self.infer(client.infer, sequence=sequence, parent=parent.tolist(), child=child.tolist(),
+                            candidates=cfg["candidates"], iterations=cfg["iterations"],
+                            input_geometry="partial_multiview_rgbd", init_current_orientation=True)
+        np.savez(self.active_directory / "anyplace_candidates.npz", parent=parent, child=child,
+                 relative=np.asarray(answer["transforms"]), object_input=object_input, tcp_to_object=tcp_to_object)
+        self.event("placement_candidates", backend="anyplace", count=len(answer["transforms"]),
+                   inference_s=answer.get("inference_s"), checkpoint_sha256=answer.get("checkpoint_sha256"))
+        candidates = [placement_to_tcp(np.asarray(relative), object_input, tcp_to_object)
+                      for relative in answer["transforms"]]
+        if not candidates:
+            raise RuntimeError("AnyPlace returned no placement candidates")
+        current = self.tcp_pose()
+        goal = min(candidates, key=lambda pose: np.linalg.norm(pose[:3, 3] - current[:3, 3])
+                   + Rotation.from_matrix(pose[:3, :3] @ current[:3, :3].T).magnitude())
         self.event("selected_placement", pose_world=goal.tolist(), backend=request.route()["placement"])
         preplace = goal.copy(); preplace[2, 3] = max(goal[2, 3] + .13, self.tcp_pose()[2, 3])
         self.move(preplace, label="transport")
@@ -303,8 +309,29 @@ class ArenaRuntime:
         return self.task.evaluate(self.env, row["name"], self.initial_z, destination,
                                   released=True, max_lift=self.max_lift, stability=stability)
 
+    def recover_fast(self, request):
+        row = self.resolve(request.target)
+        if self.held and self.task.evaluate(self.env, row["name"], self.initial_z, None,
+                released=False, max_lift=self.max_lift, stability=0.)["physical_success"]:
+            destination = self.resolve(request.destination, "destinations") if request.destination else None
+            self.event("fallback_keep_grasp", target=row["name"])
+            if destination is None:
+                return lambda task: self.task.evaluate(self.env, row["name"], self.initial_z, None,
+                    released=False, max_lift=self.max_lift, stability=0.)
+            return lambda task: self._place_held(task, row, destination)
+        # No successful lift: open the jaws and move above the observed scene,
+        # then GraspGenX observes the current object rather than replaying a pose.
+        self.event("fallback_reobserve")
+        self.gripper = 1.
+        for _ in range(25): self.tick()
+        self.held = None
+        retreat = self.tcp_pose(); retreat[2, 3] += .12
+        self.move(retreat, label="fallback_retreat")
+        return None
+
     def execute(self, command):
         self.current = command["command_id"]; self.events = []; started = time.time()
+        attempts = []
         directory = self.output / (time.strftime("%Y%m%d-%H%M%S") + "-" + uuid4().hex[:8])
         directory.mkdir()
         self.active_directory = directory
@@ -322,8 +349,11 @@ class ArenaRuntime:
                 request = ManipulationRequest(label, dest_label if skill == "pick_place" else None,
                     params.get("mode", "auto"), params.get("unfamiliar", False), params.get("cluttered", False),
                     params.get("precise", False), params.get("relation", "on"))
-                evaluation = self._pick_place(request)
-                result = {"ok": evaluation["physical_success"], "evaluation": evaluation, "route": request.route(),
+                evaluation, route, attempts = run_cascade(request,
+                    lambda task: fast_pick_place(self, task), self._pick_place, self.recover_fast, self.event,
+                    attempts=attempts)
+                result = {"ok": evaluation["physical_success"], "evaluation": evaluation, "route": route,
+                          "attempts": attempts, "fallback_used": len(attempts) > 1,
                           "message": "Physical task verified" if evaluation["physical_success"] else "Physical task failed verification"}
             elif skill in {"select_target", "perceive"}:
                 label = params.get("category") or self.selected_target or "red block"
@@ -344,6 +374,8 @@ class ArenaRuntime:
             self.goal = self.tcp_pose()
             result = {"ok": False, "state": "cancelled" if isinstance(exc, InterruptedError) else "failed",
                       "message": str(exc), "error_type": type(exc).__name__, "held_object": self.held}
+            if attempts:
+                result.update(attempts=attempts, fallback_used=len(attempts) > 1)
         result.update(command_id=self.current, skill=command["skill"], elapsed_s=time.time() - started,
                       evidence_dir=str(directory), events=self.events, tcp_pose_world=self.tcp_pose().tolist())
         self.last_result = {key: value for key, value in result.items() if key != "events"}

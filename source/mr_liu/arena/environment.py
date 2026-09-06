@@ -84,18 +84,22 @@ class PandaTask(NoTask):
                 "evaluation_source": "arena_task_simulation_ground_truth"}
 
 
-def _camera(path, width, height, position, lookat):
+def _camera_rotation(position, lookat):
     forward = np.asarray(lookat) - np.asarray(position)
     forward /= np.linalg.norm(forward)
     right = np.cross(forward, [0., 0., 1.]); right /= np.linalg.norm(right)
     down = np.cross(forward, right)
     quat = Rotation.from_matrix(np.stack([right, down, forward], axis=1)).as_quat()
+    return tuple(quat)
+
+
+def _camera(path, width, height, position, lookat, period):
     return CameraCfg(
-        prim_path=path, update_period=0., width=width, height=height,
+        prim_path=path, update_period=period, width=width, height=height,
         data_types=["rgb", "distance_to_image_plane", "semantic_segmentation"],
         colorize_semantic_segmentation=True,
         spawn=sim.PinholeCameraCfg(focal_length=18., horizontal_aperture=20.955, clipping_range=(.02, 5.)),
-        offset=CameraCfg.OffsetCfg(pos=position, rot=tuple(quat), convention="ros"),
+        offset=CameraCfg.OffsetCfg(pos=position, rot=_camera_rotation(position, lookat), convention="ros"),
     )
 
 
@@ -158,21 +162,24 @@ def build_environment(config, *, device="cuda:0"):
                     prim_path="{ENV_REGEX_NS}/" + obj["name"],
                     filter_prim_paths_expr=["{ENV_REGEX_NS}/" + destination["name"]], update_period=0.))
         width, height = config["camera"]["width"], config["camera"]["height"]
-        cfg.scene.scene_camera = _camera("{ENV_REGEX_NS}/SceneCamera", width, height,
-                                         (.52, -.02, .78), (.46, 0., 0.))
-        cfg.scene.side_camera = _camera("{ENV_REGEX_NS}/SideCamera", width, height,
-                                        (.95, .35, .55), (.45, 0., .03))
+        camera = config["camera"]
+        for name in ("scene", "side"):
+            view = camera[name]
+            setattr(cfg.scene, name + "_camera", _camera("{ENV_REGEX_NS}/" + name + "Camera",
+                width, height, view["position"], view["lookat"], camera["update_period_s"]))
+        wrist = camera["wrist"]
         cfg.scene.wrist_camera = CameraCfg(
-            prim_path="{ENV_REGEX_NS}/Robot/panda_hand/WristRGBD", update_period=0.,
+            prim_path="{ENV_REGEX_NS}/Robot/panda_hand/WristRGBD", update_period=camera["update_period_s"],
             update_latest_camera_pose=True,
             width=width, height=height, data_types=["rgb", "distance_to_image_plane", "semantic_segmentation"],
             colorize_semantic_segmentation=True,
-            spawn=sim.PinholeCameraCfg(focal_length=12., horizontal_aperture=20.955, clipping_range=(.02, 4.)),
-            offset=CameraCfg.OffsetCfg(pos=(.05, 0., .02), rot=(0., 0., 0., 1.), convention="ros"))
+            spawn=sim.PinholeCameraCfg(focal_length=12., horizontal_aperture=20.955, clipping_range=(.01, 4.)),
+            offset=CameraCfg.OffsetCfg(pos=tuple(wrist["position"]),
+                rot=_camera_rotation(wrist["position"], wrist["lookat"]), convention="ros"))
         cfg.sim.dt = 1 / 120
         cfg.seed = 0
         cfg.decimation = 2
-        cfg.sim.render_interval = 2
+        cfg.sim.render_interval = camera["render_interval"]
         cfg.sim.device = device
         cfg.wait_for_textures = False
         return cfg

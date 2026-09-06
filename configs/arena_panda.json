@@ -3,7 +3,13 @@
   "arena_revision": "8b4a3a47fc53de23e8205089d71109a2e2348acd",
   "isaaclab_revision": "e57379c634b42db5a0fe9f754341be6e2a7c7c43",
   "base_revision": "0576d673fa396d1373d9bcd298d45a93bc582904",
-  "camera": {"width": 640, "height": 480},
+  "camera": {
+    "width": 640, "height": 480, "render_interval": 8, "update_period_s": 0.06666666666666667,
+    "scene": {"position": [1.0, -0.6, 0.8], "lookat": [0.48, 0, 0.055]},
+    "side": {"position": [0.9, 0.62, 0.66], "lookat": [0.48, 0, 0.055]},
+    "wrist": {"position": [0.055, 0, 0.02], "lookat": [0, 0, 0.1034]}
+  },
+  "fast": {"phase_steps": [60, 50, 8, 25, 50, 80, 50, 25, 40, 1]},
   "controller": {"position_tolerance_m": 0.006, "rotation_tolerance_deg": 5, "max_steps": 360},
   "graspgenx": {"host": "127.0.0.1", "port": 5556, "timeout_ms": 120000, "num_grasps": 64},
   "anyplace": {"url": "http://127.0.0.1:5590", "timeout_s": 120, "candidates": 20, "iterations": 50},

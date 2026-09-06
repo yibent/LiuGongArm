@@ -11,7 +11,7 @@ from mr_liu.arena.contracts import ManipulationRequest, model_grasp_to_tcp, plac
 class ArenaContractTests(unittest.TestCase):
     def test_difficult_task_routes_both_models(self):
         self.assertEqual(ManipulationRequest("part", "tray", precise=True).route()["placement"], "anyplace")
-        self.assertEqual(ManipulationRequest("part", "tray").route()["grasp"], "arena_basic")
+        self.assertEqual(ManipulationRequest("part", "tray").route()["grasp"], "official_pick_place")
         self.assertIsNone(ManipulationRequest("part", mode="enhanced").route()["placement"])
 
     def test_placement_keeps_rotation_and_measured_grasp_offset(self):

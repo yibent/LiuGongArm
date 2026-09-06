@@ -8,18 +8,20 @@
 flowchart TD
   U[用户文字 / 语音] --> B[BusAgent：目标、目的地、任务模式]
   B --> R{auto / basic / enhanced}
-  R -->|普通任务| S[Arena 基础抓放技能]
+  R -->|普通任务| S[NVIDIA PickPlaceController 快速阶段控制]
   R -->|陌生 / 杂乱 / 精确任务| G[GraspGenX：目标点云 → 多个 6DoF 抓取]
   G --> A[Arena Panda IK：抓取、抬升、重新观测]
   A --> P[AnyPlace：物体与支撑区域点云 → 多个放置变换]
   P --> E[Arena Panda IK：搬运、放置、松爪、退离]
   S --> E
+  S -->|未抓住：重新观察| G
+  S -->|已抓住：仅升级放置| P
   E --> V[PandaTask：物理状态评测]
   V --> B
 ```
 
-- 场景、官方 Franka Panda、相机和动作管理来自 IsaacLab-Arena。机械臂由官方 `DifferentialInverseKinematicsActionCfg` 求解，项目只组织笛卡尔路径点和抓放步骤。
-- `auto` 在 `unfamiliar / cluttered / precise` 为真时启用增强路径。`basic` 不调用学习模型；`enhanced` 必须调用 GraspGenX 和 AnyPlace，失败时不会伪装成基础路径成功。
+- 场景、官方 Franka Panda、相机和动作管理来自 IsaacLab-Arena。机械臂由官方 `DifferentialInverseKinematicsActionCfg` 求解，快速路径复用原仓库使用的 NVIDIA `PickPlaceController` 底层阶段控制器，将其笛卡尔目标交给 Arena IK；模型路径组织模型生成的完整姿态。没有另外构造 RMPFlow 机械臂或复制官方插值算法。
+- `auto` 在 `unfamiliar / cluttered / precise` 为真时启用增强路径。`auto` 普通任务与 `basic` 均先执行官方快速抓放，成功时不调用模型；实际抓放失败时自动升级一次。未抓住则张开夹爪、退离、重新观测并调用 GraspGenX；仍成功持物则保留抓取，直接调用 AnyPlace 放置。`enhanced` 直接进入模型路径。停止请求不会触发升级，模型失败不会无限重试。
 - BusAgent 下发一次完整 `pick_place` 事务，含目标和目的地标签，不生成 XYZ、机械臂关节角或抓放姿态。
 - GraspGenX 与 AnyPlace 分别运行在 Python 3.11 模型环境。Isaac/Arena 使用独立 Python 3.12 环境，通过 ZMQ / HTTP 通信。
 - 相机、物理状态和 IK 只在仿真主线程访问。模型推理在工作线程等待时，仿真持续步进。命令去重账本禁止同一 `command_id` 重复执行；重启后未完成任务标记结果未知，不重放。
@@ -43,6 +45,20 @@ T_world_tcp_goal = T_world_object_final @ inverse(T_tcp_object)
 
 输入物体参考系与持物变换在抬升后的 RGB-D 观测上建立，持物阶段融合工作区、侧面与腕部三个视角，以缓解夹爪遮挡。腕部相机显式启用 `update_latest_camera_pose=True`，使每帧深度使用更新后的相机外参。候选保留完整旋转，按腕部转动幅度、平移距离和模型抓取分数排序；没有手写工作空间、俯视角度、放置高度或区域边界的硬拦截。区域和支撑关系由任务执行后的物理评测判断。
 
+## 速度与相机布置
+
+保留 120 Hz 物理与 60 Hz IK 动作更新，将三路 RTX 渲染从 60 Hz 降为 **15 Hz（仿真时间）**，默认使用 Isaac Lab `performance` 渲染预设。官方阶段控制器使用约 400 个动作步，加最终稳定性观察；相机低频更新前等待新帧，腕部外参随相机实时更新。执行耗时从 Arena 开始执行算到物理评测完成，包含点云观测，**不含启动仿真或 BusAgent 的语言理解等待**。
+
+相机参数集中在 `configs/arena_panda.json`。这些位置是根据当前桌面、机械臂遮挡与实际点云观测选择的工程配置，官方没有要求这一组固定坐标。
+
+| 相机 | 位置（米） | 朝向/作用 |
+| --- | --- | --- |
+| 工作区 | 世界 `[1.00, -0.60, 0.80]` | 看向 `[0.48, 0, 0.055]`，覆盖抓取与放置区域 |
+| 对侧 | 世界 `[0.90, 0.62, 0.66]` | 看向同一点，从另一侧补足夹爪、手臂遮挡 |
+| 腕部 | `panda_hand` 局部 `[0.055, 0, 0.02]` | 看向局部夹持中心 `[0, 0, 0.1034]`，偏离夹爪中线获得近距持物几何 |
+
+依照 [Isaac Lab 相机接口](https://isaac-sim.github.io/IsaacLab/v2.2.0/source/api/lab/isaaclab.sensors.html) 使用 ROS 光学坐标（前方 +Z、上方 −Y）、相机内参和 Z 深度反投影；分辨率为 640×480。抓取前融合两台固定相机，持物后加入腕部视角。保留真实观测点数量、相机外参和每视角点云包围范围，便于发现遮挡或错位；不复制点来凑模型输入。新视角下红方块初始观测融合约 1857 点，黄色圆柱约 1304 点，两个固定视角的世界坐标范围一致。
+
 ## 运行
 
 已部署机器的依赖位于 `_envs`、`_vendor` 和 `_models`；精确源码版本见 [版本清单](arena/versions.json)，`docs/arena/*-environment.txt` 是已部署环境快照（含继承包与本地 editable 路径），用于排查版本差异，并非跨机器直接安装的锁文件。BusAgent 的 `.env` 仅在服务器保存，使用独立 `busagent_arena` 数据库，连接本机 MariaDB 3307。
@@ -63,6 +79,9 @@ python3 ops/arena_stack.py start arena
 ```bash
 bash scripts/run_arena_panda.sh --smoke --mode basic --viz kit
 bash scripts/run_arena_panda.sh --smoke --mode enhanced --viz kit
+# 以下仅用于故障回归：分别制造一次抓空、成功抬升后触发升级。
+bash scripts/run_arena_panda.sh --smoke --mode auto --smoke-fault miss_grasp --viz kit
+bash scripts/run_arena_panda.sh --smoke --mode auto --smoke-fault after_lift --viz kit
 ```
 
 服务器的 Isaac Sim 为 **6.0.1-rc.7**。已处理版本兼容问题：Lab 接管 PhysX 前关闭 Sim 的重复初始化回调；用生产资产库的 `FrankaRobotics/FrankaPanda/franka.usd` 替换已经失效的 staging Panda 路径。接触传感器使用 `patches/isaaclab-sim6-contact-import.patch` 修正 Sim 6 的模块路径（在 IsaacLab 源码目录运行 `git apply --unidiff-zero` 应用）。下降放置使用 Lab 的接触传感器判断物体接触指定支撑面后松爪，避免继续压向模型目标。该机器的无界面模式无法返回深度，当前使用已有 X11 `:20` 的 `--viz kit`。这是实际验证过的运行模式。
@@ -98,19 +117,32 @@ HTTP 202 仅表示接受任务。最终 `completed` 必须来自物理评测；�
 
 ## 当前验证范围
 
-这是分层架构的第一版仿真集成，当前场景是红色方块、黄色圆柱与蓝色支撑垫。普通抓放已通过公网网页下发的完整事务，红方块距区域中心约 1.2 mm；GraspGenX + AnyPlace 红方块增强流程也已完成真实抓起、接触放置、释放、退离和稳定性验证。黄色圆柱增强抓放也通过公网网页端到端验证：抬升 16.0 cm，落点距区域中心 3.9 mm，聊天收到真实完成结果。BusAgent 195 项测试、Arena 10 项测试和前端构建通过。开发回归记录见 `docs/arena/validation.json`，其中保留了修复前的失败记录。
+这是分层架构的第一版仿真集成，当前场景是红色方块、黄色圆柱与蓝色支撑垫。本轮快速路径与相机优化的物理回归如下（均通过抬升、支撑、释放、退离、稳定性评测）：
+
+| 回归 | Arena 执行耗时 | 结果 |
+| --- | --- | --- |
+| 红方块快速抓放 | 18.45 秒（旧路径 48.45 秒） | 无模型调用，耗时减少 62%，落点距中心 4.9 mm |
+| 公网网页红方块快速抓放 | 17.28 秒（旧网页路径 48.45 秒） | 耗时减少 64%，页面显示真实路线，聊天收到完成结果 |
+| 黄色圆柱快速抓放 | 17.69 秒 | 无模型调用，落点距中心 4.0 mm |
+| 注入一次抓空，自动升级 | 47.43 秒 | 快速尝试 8.22 秒后真实未抬升，重新观察，GraspGenX + AnyPlace 接手成功 |
+| 成功抬起圆柱后注入故障 | 32.80 秒 | 保留夹持，仅 AnyPlace 接手，无第二次抓取，落点距中心 2.3 mm |
+
+两项恢复测试使用明确的故障注入，**不计作自然失败率或工业场景成功率**。模型、GPU和场景均已加载，未计入语言理解、排队与启动耗时。前端显示本次执行路线、是否升级及真实耗时。公网红方块回归中，从用户消息到聊天完成回复约 20 秒（页面时间精确到秒）。
+
+以下为此前集成阶段的网页记录：普通抓放已通过公网网页下发的完整事务，红方块距区域中心约 1.2 mm；GraspGenX + AnyPlace 红方块增强流程也已完成真实抓起、接触放置、释放、退离和稳定性验证。黄色圆柱增强抓放也通过公网网页端到端验证：抬升 16.0 cm，落点距区域中心 3.9 mm，聊天收到真实完成结果。BusAgent 195 项测试、Arena 16 项测试和前端构建通过。开发回归记录见 `docs/arena/validation.json`，其中保留了修复前的失败记录。
 
 以下能力尚不能宣称已完成：
 
-- **VLA 策略尚未加载。** 普通路径使用 Arena IK 技能，接口明确返回 `vla_loaded=false`。
+- **VLA 策略尚未加载。** 普通路径使用 NVIDIA 官方阶段控制器 + Arena IK，接口明确返回 `vla_loaded=false`。
 - **当前分割使用仿真语义标签。** 深度来自真实渲染相机，未用网格采样或重复点补足输入；分割仍是基准提供的标签，尚未接入开放词汇视觉分割。
 - **当前评测场景为支撑面放置。** 默认差分 IK 是局部控制器，模型候选可能到达关节极限；复杂场景仍需接入成熟运动规划器和相应 Arena 任务。这里没有自研关节控制器或宣称已经实现完整机械臂避障。
 - **AnyPlace 没有学习成功概率或碰撞保证。** 只将其作为姿态提议器，以执行后物理评测确认结果。
 - **尚无陌生工业物体数据集的成功率。** 示例测试不能外推为工业鲁棒性；需要继续接入工业 USD 资产、杂乱场景、随机姿态、多目标整理和遮挡回归。
-- 失败时可能保持持物；当前没有自动恢复或自动松爪。重启会重建场景并保留旧命令的未知结果记录。
+- 快速路径失败时会自动升级；增强路径失败或用户停止时可能保持持物并报告结果。重启会重建场景并保留旧命令的未知结果记录。
 
 ## 参考实现
 
+- [NVIDIA Franka Pick and Place 示例](https://docs.isaacsim.omniverse.nvidia.com/latest/examples/manipulation_franka_pick_place.html)
 - [IsaacLab-Arena](https://github.com/isaac-sim/IsaacLab-Arena)
 - [GraspGenX](https://github.com/NVlabs/GraspGenX)
 - [AnyPlace](https://github.com/ac-rad/anyplace)

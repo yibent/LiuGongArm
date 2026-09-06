@@ -2,7 +2,7 @@
   "date": "2026-09-06",
   "kind": "development integration runs, not a success-rate benchmark",
   "software_tests": {
-    "arena_unit_tests": 10,
+    "arena_unit_tests": 16,
     "busagent_full_suite_tests": 195,
     "frontend_build": "passed"
   },
@@ -121,10 +121,340 @@
       "elapsed_s": 53.38838744163513,
       "evidence_dir_server": "/root/gpufree-data/arena-panda/output/arena/20260906-163900-5c56db9a",
       "final_reply_observed": "已将黄色圆柱准确放置到蓝色区域，任务完成。"
+    },
+    {
+      "state": "completed",
+      "message": "Physical task verified",
+      "route": {
+        "decision": "busagent",
+        "grasp": "official_pick_place",
+        "placement": "official_pick_place",
+        "execution": "isaaclab_arena.franka_ik",
+        "robot": "franka_panda"
+      },
+      "evaluation": {
+        "physical_success": true,
+        "lifted": true,
+        "released": true,
+        "max_lift_m": 0.15223310142755508,
+        "final_position_world_m": [
+          0.45520931482315063,
+          0.20090028643608093,
+          0.03850001469254494
+        ],
+        "destination_xy_error_m": 0.004874544094648822,
+        "supported_region": true,
+        "support_gap_m": -1.3129027628955292e-08,
+        "gripper_opening_m": 0.07999995350837708,
+        "settle_displacement_m": 2.9802322387695312e-08,
+        "linear_speed_mps": 0.0001025842284434475,
+        "evaluation_source": "arena_task_simulation_ground_truth"
+      },
+      "elapsed_s": 18.45392417907715,
+      "attempts": [
+        {
+          "backend": "official_pick_place",
+          "ok": true,
+          "elapsed_s": 18.453347945585847
+        }
+      ],
+      "fallback_used": false,
+      "case": "fast-red-pass",
+      "evidence_dir_server": "/root/gpufree-data/arena-panda/output/arena/20260906-164712-ce64e838",
+      "test_fault": null,
+      "observations": [
+        {
+          "target": "red_block",
+          "points_by_camera": {
+            "scene_camera": 953,
+            "side_camera": 919
+          }
+        },
+        {
+          "target": "blue_pad",
+          "points_by_camera": {
+            "scene_camera": 4691,
+            "side_camera": 10861
+          }
+        }
+      ]
+    },
+    {
+      "state": "completed",
+      "message": "Physical task verified",
+      "route": {
+        "decision": "busagent",
+        "grasp": "official_pick_place",
+        "placement": "official_pick_place",
+        "execution": "isaaclab_arena.franka_ik",
+        "robot": "franka_panda"
+      },
+      "evaluation": {
+        "physical_success": true,
+        "lifted": true,
+        "released": true,
+        "max_lift_m": 0.15164633467793465,
+        "final_position_world_m": [
+          0.45619142055511475,
+          0.20116057991981506,
+          0.04100000113248825
+        ],
+        "destination_xy_error_m": 0.003981485041825541,
+        "supported_region": true,
+        "support_gap_m": -3.079919572851475e-09,
+        "gripper_opening_m": 0.07999998331069946,
+        "settle_displacement_m": 1.4901161193847656e-08,
+        "linear_speed_mps": 8.214943954953924e-05,
+        "evaluation_source": "arena_task_simulation_ground_truth"
+      },
+      "elapsed_s": 17.687487840652466,
+      "attempts": [
+        {
+          "backend": "official_pick_place",
+          "ok": true,
+          "elapsed_s": 17.686427956447005
+        }
+      ],
+      "fallback_used": false,
+      "case": "fast-yellow-pass",
+      "evidence_dir_server": "/root/gpufree-data/arena-panda/output/arena/20260906-165300-64dcfbb5",
+      "test_fault": null,
+      "observations": [
+        {
+          "target": "yellow_cylinder",
+          "points_by_camera": {
+            "scene_camera": 700,
+            "side_camera": 617
+          }
+        },
+        {
+          "target": "blue_pad",
+          "points_by_camera": {
+            "scene_camera": 4691,
+            "side_camera": 10861
+          }
+        }
+      ]
+    },
+    {
+      "state": "completed",
+      "message": "Physical task verified",
+      "route": {
+        "decision": "busagent",
+        "grasp": "graspgenx",
+        "placement": "anyplace",
+        "execution": "isaaclab_arena.franka_ik",
+        "robot": "franka_panda"
+      },
+      "evaluation": {
+        "physical_success": true,
+        "lifted": true,
+        "released": true,
+        "max_lift_m": 0.16020440682768822,
+        "final_position_world_m": [
+          0.46240562200546265,
+          0.20134608447551727,
+          0.038499992340803146
+        ],
+        "destination_xy_error_m": 0.002756621237746421,
+        "supported_region": true,
+        "support_gap_m": -4.320217921946479e-08,
+        "gripper_opening_m": 0.07999995350837708,
+        "settle_displacement_m": 1.2013700229374393e-07,
+        "linear_speed_mps": 0.00015221851936075836,
+        "evaluation_source": "arena_task_simulation_ground_truth"
+      },
+      "elapsed_s": 47.42723989486694,
+      "attempts": [
+        {
+          "backend": "official_pick_place",
+          "ok": false,
+          "error": "Fast grasp did not lift the target",
+          "elapsed_s": 8.218502085655928
+        },
+        {
+          "backend": "models",
+          "ok": true,
+          "elapsed_s": 35.622051222249866
+        }
+      ],
+      "fallback_used": true,
+      "case": "injected-missed-grasp-model-recovery",
+      "evidence_dir_server": "/root/gpufree-data/arena-panda/output/arena/20260906-165416-f28430d6",
+      "test_fault": "miss_grasp",
+      "observations": [
+        {
+          "target": "red_block",
+          "points_by_camera": {
+            "scene_camera": 953,
+            "side_camera": 919
+          }
+        },
+        {
+          "target": "blue_pad",
+          "points_by_camera": {
+            "scene_camera": 4691,
+            "side_camera": 10861
+          }
+        },
+        {
+          "target": "red_block",
+          "points_by_camera": {
+            "scene_camera": 953,
+            "side_camera": 919
+          }
+        },
+        {
+          "target": "red_block",
+          "points_by_camera": {
+            "scene_camera": 963,
+            "side_camera": 1032,
+            "wrist_camera": 30696
+          }
+        },
+        {
+          "target": "blue_pad",
+          "points_by_camera": {
+            "scene_camera": 4691,
+            "side_camera": 10861
+          }
+        }
+      ]
+    },
+    {
+      "state": "completed",
+      "message": "Physical task verified",
+      "route": {
+        "decision": "busagent",
+        "grasp": "official_pick_place",
+        "placement": "anyplace",
+        "execution": "isaaclab_arena.franka_ik",
+        "robot": "franka_panda"
+      },
+      "evaluation": {
+        "physical_success": true,
+        "lifted": true,
+        "released": true,
+        "max_lift_m": 0.15135325863957405,
+        "final_position_world_m": [
+          0.45887044072151184,
+          0.20200282335281372,
+          0.04100000113248825
+        ],
+        "destination_xy_error_m": 0.0022993924297941585,
+        "supported_region": true,
+        "support_gap_m": -6.63835751993358e-09,
+        "gripper_opening_m": 0.07999999076128006,
+        "settle_displacement_m": 9.548668278736097e-08,
+        "linear_speed_mps": 9.69130705925636e-05,
+        "evaluation_source": "arena_task_simulation_ground_truth"
+      },
+      "elapsed_s": 32.799925088882446,
+      "attempts": [
+        {
+          "backend": "official_pick_place",
+          "ok": false,
+          "error": "Injected failure after a real successful lift",
+          "elapsed_s": 8.46318719536066
+        },
+        {
+          "backend": "models",
+          "ok": true,
+          "elapsed_s": 24.331564212217927
+        }
+      ],
+      "fallback_used": true,
+      "case": "injected-after-lift-placement-only-recovery",
+      "evidence_dir_server": "/root/gpufree-data/arena-panda/output/arena/20260906-165557-a080d0d3",
+      "test_fault": "after_lift",
+      "observations": [
+        {
+          "target": "yellow_cylinder",
+          "points_by_camera": {
+            "scene_camera": 700,
+            "side_camera": 617
+          }
+        },
+        {
+          "target": "blue_pad",
+          "points_by_camera": {
+            "scene_camera": 4691,
+            "side_camera": 10861
+          }
+        },
+        {
+          "target": "yellow_cylinder",
+          "points_by_camera": {
+            "scene_camera": 549,
+            "side_camera": 424,
+            "wrist_camera": 21144
+          }
+        },
+        {
+          "target": "blue_pad",
+          "points_by_camera": {
+            "scene_camera": 4269,
+            "side_camera": 10861
+          }
+        }
+      ]
+    },
+    {
+      "state": "completed",
+      "message": "Physical task verified",
+      "route": {
+        "decision": "busagent",
+        "grasp": "official_pick_place",
+        "placement": "official_pick_place",
+        "execution": "isaaclab_arena.franka_ik",
+        "robot": "franka_panda"
+      },
+      "evaluation": {
+        "physical_success": true,
+        "lifted": true,
+        "released": true,
+        "max_lift_m": 0.15222997590899467,
+        "final_position_world_m": [
+          0.4558318853378296,
+          0.19965921342372894,
+          0.03850001096725464
+        ],
+        "destination_xy_error_m": 0.00418202287506497,
+        "supported_region": true,
+        "support_gap_m": -1.204713562935611e-08,
+        "gripper_opening_m": 0.07999995350837708,
+        "settle_displacement_m": 0.0,
+        "linear_speed_mps": 0.00010074379679281265,
+        "evaluation_source": "arena_task_simulation_ground_truth"
+      },
+      "elapsed_s": 17.27727198600769,
+      "attempts": [
+        {
+          "backend": "official_pick_place",
+          "ok": true,
+          "elapsed_s": 17.276079058647156
+        }
+      ],
+      "fallback_used": false,
+      "case": "web-fast-red-pass",
+      "evidence_dir_server": "/root/gpufree-data/arena-panda/output/arena/20260906-165803-b706f9a1",
+      "test_fault": null,
+      "final_reply_observed": "已将红色方块准确放置到蓝色区域，任务完成。",
+      "ui_route_observed": "官方快速抓放 · 17.3 秒",
+      "user_message_time_local": "16:58:01",
+      "completion_reply_time_local": "16:58:21"
     }
   ],
   "public_endpoints": {
     "busagent": "https://8byr7v21-8qne20ga-8991.zj02restapi.gpufree.cn:8443/",
     "preview": "https://8byr7v21-8qne20ga-8993.zj02restapi.gpufree.cn:8443/"
+  },
+  "speed_revision": {
+    "measurement": "wall-clock Arena execution including observation and final physical evaluation; excludes simulator startup and BusAgent language latency",
+    "physics_hz": 120,
+    "ik_action_hz": 60,
+    "camera_hz_simulated": 15,
+    "rendering_mode": "performance (first fast-red run used balanced)",
+    "comparison_note": "Development examples on one RTX 4090; camera placement, rendering cadence and motion sequence changed together. Not a success-rate or controlled per-factor benchmark."
   }
 }
