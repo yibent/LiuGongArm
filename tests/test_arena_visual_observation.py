@@ -53,3 +53,37 @@ def test_point_cloud_removes_mask_boundary_depth_bleed(tmp_path):
     np.savez(directory/'masks.npz', scene=mask)
     points, _ = bridge.cloud({'request_id':'edge'})
     assert np.allclose(points, [[2.,2.,1.]])
+
+
+def test_scene_queries_require_current_image_detections():
+    finder = Mock()
+    finder.describe.return_value = {'<DENSE_REGION_CAPTION>': {'labels': ['toy'], 'bboxes': [[1, 2, 4, 5]]}}
+    pipe = ImagePipeline(finder, Mock(), Mock())
+    pipe.observe = Mock(side_effect=[
+        (np.ones((8, 8), bool), {'label': 'yellow cylinder', 'status': 'observed'}),
+        (None, {'label': 'absent part', 'status': 'not_found'}),
+    ])
+    result = pipe.describe(np.zeros((8, 8, 3), np.uint8), camera='scene', sequence=20,
+                           scene_id='s', queries=['yellow cylinder', 'absent part'])
+    assert [o['label'] for o in result['objects']] == ['yellow cylinder']
+    assert result['unconfirmed_queries'] == [{'label': 'absent part', 'status': 'not_found'}]
+    assert result['regions'][0]['description'] == 'toy'
+    assert all(c.kwargs['reset'] for c in pipe.observe.call_args_list)
+
+
+def test_capture_scene_and_unknown_target_without_catalog_binding(tmp_path):
+    data = SimpleNamespace(output={'rgb': np.zeros((1, 8, 8, 4), np.uint8),
+                                  'distance_to_image_plane': np.ones((1, 8, 8, 1))},
+                           intrinsic_matrices=np.eye(3)[None], pos_w=np.zeros((1, 3)),
+                           quat_w_ros=np.array([[1., 0, 0, 0]]))
+    runtime = SimpleNamespace(held=None, current='command', sequence=20, bus_context={},
+        config={'objects': [{'name': 'yellow_cylinder', 'label': 'yellow cylinder'}], 'destinations': []},
+        env=SimpleNamespace(scene={name: SimpleNamespace(data=data) for name in ['scene_camera', 'side_camera']}))
+    bridge = PerceptionBridge(tmp_path, 'unused')
+    scene = bridge.capture(runtime, None)
+    assert scene['scope'] == 'scene'
+    assert [v['camera'] for v in scene['views']] == ['scene_camera', 'side_camera']
+    assert scene['queries'] == ['yellow cylinder']
+    target = bridge.capture(runtime, 'unregistered part')
+    assert target['scope'] == 'target' and target['label'] == 'unregistered part'
+    assert target['queries'] == []

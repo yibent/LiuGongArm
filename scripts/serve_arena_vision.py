@@ -43,6 +43,11 @@ def observe(body):
     with torch.inference_mode(), torch.autocast('cuda', dtype=torch.bfloat16):
         for view in request['views']:
             camera = view['camera']
+            if request.get('scope') == 'scene':
+                result = pipeline.describe(frames[camera+'_rgb'], camera=camera, sequence=view['sequence'],
+                    scene_id=request['scene_id'], queries=request.get('queries', []))
+                views.append(result)
+                continue
             mask, result = pipeline.observe(frames[camera+'_rgb'], scene_id=request['scene_id'],
                 camera=camera, label=request['label'], sequence=view['sequence'],
                 refine=request.get('refine', False), reset=request.get('reset', False))
@@ -51,7 +56,8 @@ def observe(body):
     np.savez_compressed(directory/'masks.npz', **masks)
     result = {'request_id': request_id, 'command_id': request.get('command_id'),
         'label': request['label'], 'views': views, 'result_ref': request_id,
-        'elapsed_s': time.perf_counter()-started, 'ok': bool(masks),
+        'scope': request.get('scope', 'target'), 'observed_at': request.get('observed_at'),
+        'elapsed_s': time.perf_counter()-started, 'ok': bool(views) if request.get('scope') == 'scene' else bool(masks),
         'perception_source': 'florence2_yoloe_sam2_lk_rgb'}
     (directory/'result.json').write_text(json.dumps(result, ensure_ascii=False, indent=2))
     print(json.dumps(result, ensure_ascii=False), flush=True)

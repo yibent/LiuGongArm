@@ -64,7 +64,7 @@ class ArenaRuntime:
         matches = [row for row in self.config[kind] if label in
                    [str(value).lower().replace("_", " ") for value in [row["name"], row["label"], *row.get("aliases", [])]]]
         if len(matches) != 1:
-            raise ValueError(f"Target is absent or ambiguous: {label}. Available: {[r['label'] for r in self.config[kind]]}")
+            raise ValueError(f"Task {kind} binding is unsupported or ambiguous: {label}. Configured {kind}: {[r['label'] for r in self.config[kind]]}. This is not a visual detection result.")
         return matches[0]
 
     def capabilities(self):
@@ -364,13 +364,30 @@ class ArenaRuntime:
                           "attempts": attempts, "fallback_used": len(attempts) > 1,
                           "message": "Physical task verified" if evaluation["physical_success"] else "Physical task failed verification"}
             elif skill in {"select_target", "perceive"}:
-                label = params.get("category") or self.selected_target or "red block"
-                color = params.get("attributes", {}).get("color", "")
-                if color and color not in label: label = color + " " + label
-                row = self.resolve(label)
-                self.selected_target = row["label"]
-                cloud = self.cloud(row["name"])
-                result = {"ok": True, "message": "Target observed", "points": len(cloud), "target": row["label"]}
+                if params.get('scope') == 'scene':
+                    self.selected_target = None
+                    self.observing = True
+                    try:
+                        while not self.vision_worker.available: self.tick()
+                        packet = self.perception.capture(self, None)
+                        self.event('visual_observation', scope='scene', request_id=packet['request_id'])
+                        observed = self.infer(self.perception.request, packet)
+                        self.visual_result = observed
+                        if not observed.get('ok'): raise RuntimeError(str(observed.get('error', 'Scene observation failed')))
+                        descriptions = {'detected_objects': sorted({o['label'] for v in observed['views'] for o in v.get('objects', [])}),
+                                        'region_descriptions': [r['description'] for v in observed['views'] for r in v.get('regions', [])]}
+                        result = {'ok': True, 'message': 'Fresh scene observation; detected_objects are model detections from this image. Regions may overlap and inventory may be incomplete. Empty results do not prove the scene is empty: '+json.dumps(descriptions),
+                                  'scope': 'scene'}
+                    finally:
+                        self.observing = False
+                else:
+                    label = params.get("category") or self.selected_target
+                    if not label: raise ValueError('Specify a target or scope=scene')
+                    color = params.get("attributes", {}).get("color", "")
+                    if color and color not in label: label = color + " " + label
+                    self.selected_target = label
+                    cloud = self.cloud(label)
+                    result = {"ok": True, "message": "Target observed", "points": len(cloud), "target": label}
             elif skill == "home":
                 goal = np.eye(4); goal[:3, :3] = np.diag([1., -1., -1.]); goal[:3, 3] = [.4, 0., .3]
                 self.move(goal, label="home")

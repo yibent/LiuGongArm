@@ -1,5 +1,6 @@
 """Freeze sensor data on the sim thread; vision runs directly; BusAgent receives only metadata."""
 import json
+import time
 from pathlib import Path
 from uuid import uuid4
 import numpy as np
@@ -19,8 +20,9 @@ class PerceptionBridge:
     def capture(self, runtime, name, *, refine=False, reset=False, cameras=None):
         request_id = uuid4().hex
         directory = self.root/request_id; directory.mkdir()
-        cameras = cameras or (['wrist_camera'] if runtime.held == name else ['scene_camera', 'side_camera'])
-        row = runtime.resolve(name, 'destinations' if name in [x['name'] for x in runtime.config['destinations']] else 'objects')
+        cameras = cameras or (['wrist_camera'] if name and runtime.held == name else ['scene_camera', 'side_camera'])
+        row = next((r for r in runtime.config['objects'] + runtime.config['destinations'] if r['name'] == name), None)
+        label = row['label'] if row else name
         arrays, views = {}, []
         for camera in cameras:
             data = runtime.env.scene[camera].data
@@ -30,7 +32,10 @@ class PerceptionBridge:
             arrays[camera+'_T'] = pose_matrix(numpy_data(data.pos_w)[0], numpy_data(data.quat_w_ros)[0])
             views.append({'camera': camera, 'sequence': runtime.sequence})
         request = {'request_id': request_id, 'scene_id': self.scene_id, 'command_id': runtime.current or 'observe',
-            'label': row['label'], 'views': views, 'refine': refine, 'reset': reset, **runtime.bus_context}
+            'label': label or 'scene', 'scope': 'target' if name else 'scene',
+            'observed_at': time.time(),
+            'queries': [r['label'] for r in runtime.config['objects'] + runtime.config['destinations']] if not name else [],
+            'views': views, 'refine': refine, 'reset': reset, **runtime.bus_context}
         np.savez_compressed(directory/'frames.npz', **arrays)
         (directory/'request.json').write_text(json.dumps(request))
         return request
@@ -45,6 +50,7 @@ class PerceptionBridge:
                 result = json.load(response)
         except (urllib.error.URLError, TimeoutError) as error:
             result = {'request_id': request['request_id'], 'command_id': request['command_id'],
+                      'scope': request['scope'], 'observed_at': request['observed_at'],
                       'label': request['label'], 'ok': False, 'views': [], 'error': str(error)}
         if result.get('request_id') != request['request_id']:
             raise RuntimeError('Vision returned a different observation reference')

@@ -23,6 +23,23 @@ class ImagePipeline:
         self.florence, self.yoloe, self.sam = florence, yoloe, sam
         self.tracks = OrderedDict()
 
+    def describe(self, rgb, *, camera, sequence, scene_id, queries=()):
+        started = time.perf_counter()
+        parsed = self.florence.describe(np.ascontiguousarray(rgb[:, :, ::-1]), detail='regions', beams=1)
+        block = parsed.get('<DENSE_REGION_CAPTION>', parsed)
+        regions = [{'description': label, 'box': box} for label, box in zip(block.get('labels', []), block.get('bboxes', []))]
+        objects, unconfirmed = [], []
+        for label in queries:
+            # Queries are vocabulary hints, never evidence that an object exists.
+            # A scene refresh must localize again, not inherit an old target track.
+            mask, detection = self.observe(rgb, camera=camera, sequence=sequence, scene_id=scene_id, label=label, refine=True, reset=True)
+            if mask is not None: objects.append(detection)
+            else: unconfirmed.append({'label': label, 'status': detection['status']})
+        return {'camera': camera, 'sequence': sequence, 'status': 'described', 'regions': regions,
+                'objects': objects, 'unconfirmed_queries': unconfirmed,
+                'stages': [{'model': 'florence2', 'operation': 'dense_region_caption'}],
+                'elapsed_s': time.perf_counter()-started}
+
     def observe(self, rgb, *, scene_id, camera, label, sequence, refine=False, reset=False):
         started = time.perf_counter()
         key = (scene_id, camera, label)
