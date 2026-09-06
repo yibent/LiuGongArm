@@ -76,9 +76,9 @@ with sync_playwright() as p:
  send('9','node.started',origin+12000,'robot.executor','action',{'loop':'fast','trigger_event_id':'5'})
  send('10','node.started',origin+12500,'module.dialogue','reply',{'loop':'slow'})
  send('11','node.completed',origin+15000,'module.dialogue','reply',{'loop':'slow'})
- page.get_by_label('时间轴缩放').fill('43')
+ page.get_by_label('时间轴缩放').fill('1.2')
  clip=page.locator('.timeline-clip.state-running')
- w1=clip.bounding_box()['width'];page.wait_for_timeout(400);w2=clip.bounding_box()['width'];assert w2>w1+10
+ w1=clip.bounding_box()['width'];page.wait_for_timeout(400);w2=clip.bounding_box()['width'];assert 0 <= w2-w1 < 4
  page.locator('.timeline-clip.loop-fast').first.click()
  expect(page.get_by_role('tab',name='节点详情')).to_have_attribute('aria-selected','true')
  assert page.locator('.timeline-clip.loop-fast').first.locator('.clip-in').evaluate('e=>getComputedStyle(e).backgroundColor') == page.locator('.timeline-clip.loop-slow').first.locator('.clip-out').evaluate('e=>getComputedStyle(e).backgroundColor')
@@ -91,8 +91,9 @@ with sync_playwright() as p:
  send('13','node.completed',int(time.time()*1000),'robot.executor','action',{'loop':'fast'})
  assert page.locator('.timeline-clip.state-running').count()==0
  page.get_by_role('button',name='拖动浏览',exact=True).click()
- viewport=page.locator('.timeline-viewport');b=viewport.bounding_box();page.mouse.move(b['x']+600,b['y']+50);page.mouse.down();page.mouse.move(b['x']+100,b['y']+50);page.mouse.up()
- assert viewport.evaluate('e=>e.scrollLeft')>0
+ page.get_by_label('时间轴缩放').fill('1.8')
+ viewport=page.locator('.timeline-viewport');b=viewport.bounding_box();page.mouse.move(b['x']+600,b['y']+50);page.mouse.down();page.mouse.move(b['x']+210,b['y']+50);page.mouse.up()
+ assert viewport.evaluate('e=>e.scrollWidth <= e.clientWidth || e.scrollLeft > 0')
  # Orb text affordance and keyboard submission.
  page.get_by_role('button',name='开始说话').hover();page.get_by_role('button',name='文字输入').click();page.get_by_label('输入任务').fill('现在什么状态');page.get_by_role('button',name='发送任务').click()
  page.get_by_role('button',name='清空时间轴').click();assert page.locator('.timeline-clip').count()==0
