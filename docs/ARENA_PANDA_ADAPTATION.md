@@ -22,7 +22,7 @@ flowchart TD
 
 - 场景、官方 Franka Panda、相机和动作管理来自 IsaacLab-Arena。机械臂由官方 `DifferentialInverseKinematicsActionCfg` 求解，快速路径复用原仓库使用的 NVIDIA `PickPlaceController` 底层阶段控制器，将其笛卡尔目标交给 Arena IK；模型路径组织模型生成的完整姿态。没有另外构造 RMPFlow 机械臂或复制官方插值算法。
 - `auto` 在 `unfamiliar / cluttered / precise` 为真时启用增强路径。`auto` 普通任务与 `basic` 均先执行官方快速抓放，成功时不调用 GraspGenX / AnyPlace（视觉模型仍负责识别）；实际抓放失败时自动升级一次。未抓住则张开夹爪、退离、重新观测并调用 GraspGenX；仍成功持物则保留抓取，直接调用 AnyPlace 放置。`enhanced` 直接进入模型路径。停止请求不会触发升级，模型失败不会无限重试。
-- BusAgent 下发一次完整 `pick_place` 事务，含目标和目的地标签，不生成 XYZ、机械臂关节角或抓放姿态。
+- BusAgent 可下发完整 `pick_place`，也可分别下发 `grasp` 与 `place_held`；只传目标和目的地语义，不生成 XYZ、机械臂关节角或抓放姿态。
 - GraspGenX 与 AnyPlace 分别运行在 Python 3.11 模型环境。Isaac/Arena 使用独立 Python 3.12 环境，通过 ZMQ / HTTP 通信。
 - 相机、物理状态和 IK 只在仿真主线程访问。模型推理在工作线程等待时，仿真持续步进。命令去重账本禁止同一 `command_id` 重复执行；重启后未完成任务标记结果未知，不重放。
 
@@ -54,7 +54,9 @@ flowchart TD
 {"command_id":"place-2","skill":"place_held","params":{"destination":{"label":"blue pad"},"mode":"auto"}}
 ```
 
-这些接口通过同一 Arena 任务队列执行，支持命令去重、停止和物理评测。按用户调整的顺序，BusAgent 的多步规划及新入口的语言接线留到后续阶段，本轮没有改动 BusAgent。
+这些接口通过同一 Arena 任务队列执行，支持命令去重、停止和物理评测。2026-09-07 已把 `place_held` 接通 BusAgent 的语义解析、技能目录、规划、执行和新工作台结果显示。实时 `holding` 的标签与验证状态进入文字上下文，图像、掩码和点云仍留在视觉服务。点名当前持物时也可续放，无需强制使用“手里的”这一说法。多物体自动整理规划仍是独立待办。
+
+“放下”默认当前桌面的空位，命令为 `destination:{type:"named_region",label:"table",selection:"free_space"}`。Arena 用 SAM3 定位支撑面，从同帧 RGB-D 提取完整场景障碍，按观测到的物体尺寸和 Panda 夹指范围寻找支撑充分的空位，优先靠近当前位置。没有配置目的地名称或预设坐标表；未观测区域不作为空位。普通放置使用官方快速阶段控制器，AnyPlace 续放同样约束在所选空闲区域内。返回所选位置与实测落点距离，保留实际接触、释放和稳定性评测。
 
 ## 坐标约定
 
@@ -121,9 +123,9 @@ bash scripts/run_arena_panda.sh --smoke --mode auto --smoke-fault after_lift --v
 
 | 端口 | 服务 |
 | --- | --- |
-| 8991 | BusAgent Panda 控制台，`/v1/` 代理后端，`/preview/` 打开观察台 |
+| 8991 | 新版工作台，`/v1/` 代理 BusAgent，`/api/` 接入场景编辑和 Panda 控制 |
 | 8993 | 三路实时 RGB-D 相机观察台，仅代理只读状态和图像 |
-| 8999 | 预留，未占用 |
+| 8999 | 新版工作台兼容入口，与 8991 使用相同后端 |
 | 127.0.0.1:7861 | Arena 任务接口 |
 | 127.0.0.1:5556 | GraspGenX ZMQ |
 | 127.0.0.1:5590 | AnyPlace HTTP |

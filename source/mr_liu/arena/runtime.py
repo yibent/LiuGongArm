@@ -15,6 +15,7 @@ import torch
 
 from mr_liu.arena.perception import PerceptionBridge
 from mr_liu.arena.holding import holding_measurement
+from mr_liu.arena.free_space import choose_free_support
 from mr_liu.arena.instances import InstanceConflict
 from mr_liu.vision.worker import VisionWorker
 from mr_liu.arena.cascade import run_cascade
@@ -70,9 +71,9 @@ class ArenaRuntime:
         data = self.env.scene[name].data
         return pose_matrix(numpy_data(data.root_pos_w)[0], numpy_data(data.root_quat_w)[0])
 
-    def locate(self, label):
+    def locate(self, label, **vision_options):
         """Visual geometry first. Physical IDs are evaluation witnesses only."""
-        points = self.cloud(label, associate=True)
+        points = self.cloud(label, associate=True, **vision_options)
         observation = self.visual_result
         name = observation['physical_witness']['instance_id']
         votes = observation['physical_witness']['votes']
@@ -83,6 +84,22 @@ class ArenaRuntime:
                    observation_ref=observation['request_id'], witness_votes=votes,
                    association_source='model_mask_to_rendered_physical_instance')
         return row
+
+    def locate_destination(self, request):
+        if not request.destination: return None
+        options = {'vision_mode': 'slow', 'slow_provider': 'sam3'} if request.placement_selection == 'free_space' else {}
+        return self.locate(request.destination, **options)
+
+    def placement_support(self, request, destination, child, preferred):
+        parent = self.cloud(destination['name'])
+        if request.placement_selection != 'free_space':
+            return np.r_[np.quantile(parent[:, :2], [.02, .98], axis=0).mean(axis=0),
+                         np.quantile(parent[:, 2], .95)]
+        scene = self.perception.scene_cloud(self.visual_result)
+        centre, details = choose_free_support(parent, scene, child, preferred)
+        destination['selected_position_world_m'] = centre.tolist()
+        self.event('free_space_selected', observation_ref=self.visual_result['request_id'], **details)
+        return centre
 
     def remember_hold(self, row):
         self.held = row['name']
@@ -336,7 +353,7 @@ class ArenaRuntime:
             raise ValueError('夹爪仍持有物体，可使用 place_held 指定目的地继续放置。')
         self.gripper = 1.
         row = self.locate(request.target)
-        destination = self.locate(request.destination) if request.destination else None
+        destination = self.locate_destination(request)
         if destination and destination['name'] == row['name']:
             raise ValueError('抓取对象和支撑对象相同，请指定另一个放置对象。')
         self.target_name = row["name"]
@@ -387,6 +404,14 @@ class ArenaRuntime:
         # Placement needs the named support surface, excluding other objects
         # inside its box. Use semantic segmentation for this geometry task.
         parent = self.cloud(destination["name"], vision_mode='slow', slow_provider='sam3')
+        free_patch = None
+        if request.placement_selection == 'free_space':
+            centre, free_patch = choose_free_support(parent, self.perception.scene_cloud(self.visual_result),
+                                                     child, self.tcp_pose()[:3, 3])
+            destination['selected_position_world_m'] = centre.tolist()
+            self.event('free_space_selected', observation_ref=self.visual_result['request_id'], **free_patch)
+            parent = parent[(np.linalg.norm(parent[:, :2] - centre[:2], axis=1) < free_patch['clearance_m']) &
+                            (np.abs(parent[:, 2] - centre[2]) < .008)]
         cfg = self.config["anyplace"]
         self.event("placement_inference", backend="anyplace", parent_points=len(parent), child_points=len(child))
         client = AnyPlaceClient(cfg["url"], cfg["timeout_s"])
@@ -401,8 +426,17 @@ class ArenaRuntime:
                    input_sampling=answer.get('input_sampling'))
         candidates = [placement_to_tcp(np.asarray(relative), object_input, tcp_to_object)
                       for relative in answer["transforms"]]
+        if free_patch is not None:
+            candidates = []
+            for relative in answer['transforms']:
+                placed = transform_points(np.asarray(relative), child)
+                low, high = np.quantile(placed, [.02, .98], axis=0)
+                centre = (low + high) / 2
+                radius = max(.05, np.linalg.norm(high[:2] - low[:2]) / 2 + .015)
+                if np.linalg.norm(centre[:2] - np.asarray(free_patch['position_world_m'])[:2]) + radius <= free_patch['clearance_m']:
+                    candidates.append(placement_to_tcp(np.asarray(relative), object_input, tcp_to_object))
         if not candidates:
-            raise RuntimeError("AnyPlace returned no placement candidates")
+            raise RuntimeError("AnyPlace returned no placement candidates fitting the requested support")
         current = self.tcp_pose()
         goal = min(candidates, key=lambda pose: np.linalg.norm(pose[:3, 3] - current[:3, 3])
                    + Rotation.from_matrix(pose[:3, :3] @ current[:3, :3].T).magnitude())
@@ -428,7 +462,7 @@ class ArenaRuntime:
         row = self.observed_entities[self.target_name]
         self.prepared_clouds.clear()
         if self.holding_status()['verified']:
-            destination = self.locate(request.destination) if request.destination else None
+            destination = self.locate_destination(request)
             self.event("fallback_keep_grasp", target=row["name"])
             if destination is None:
                 return lambda task: self.task.evaluate(self.env, row["name"], self.initial_z, None,
@@ -451,7 +485,7 @@ class ArenaRuntime:
                 self.clear_hold()
             raise RuntimeError('当前没有确认仍在夹爪中的物体，未执行放置。')
         row = self.observed_entities[self.held]
-        destination = self.locate(request.destination)
+        destination = self.locate_destination(request)
         if row['name'] == destination['name']:
             raise ValueError('持有物体不能作为它自身的放置目标。')
         self.target_name = row['name']; self.selected_target = row['label']
@@ -493,7 +527,8 @@ class ArenaRuntime:
                     raise ValueError('请指定放置目的地。')
                 request = ManipulationRequest((self.held_context or {}).get('label', 'held object'), label,
                     params.get('mode', 'auto'), params.get('unfamiliar', False), params.get('cluttered', False),
-                    params.get('precise', False), params.get('relation', 'on'))
+                    params.get('precise', False), params.get('relation', 'on'),
+                    dest.get('selection', 'center') if isinstance(dest, dict) else 'center')
                 result = self.place_held(request, attempts)
             elif skill in {"grasp", "pick_place"}:
                 target = params.get("target", {})
@@ -506,7 +541,8 @@ class ArenaRuntime:
                     raise ValueError("pick_place requires a destination label")
                 request = ManipulationRequest(label, dest_label if skill == "pick_place" else None,
                     params.get("mode", "auto"), params.get("unfamiliar", False), params.get("cluttered", False),
-                    params.get("precise", False), params.get("relation", "on"))
+                    params.get("precise", False), params.get("relation", "on"),
+                    dest.get('selection', 'center') if isinstance(dest, dict) else 'center')
                 evaluation, route, attempts = run_cascade(request,
                     lambda task: fast_pick_place(self, task), self._pick_place, self.recover_fast, self.event,
                     attempts=attempts)

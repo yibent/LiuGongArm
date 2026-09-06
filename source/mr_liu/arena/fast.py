@@ -48,9 +48,9 @@ def fast_pick_place(runtime, request):
     pick = (low + high) / 2
     place = pick.copy()
     if destination:
-        parent = runtime.cloud(destination["name"])
-        place[:2] = (np.quantile(parent[:, :2], .02, axis=0) + np.quantile(parent[:, :2], .98, axis=0)) / 2
-        place[2] = np.quantile(parent[:, 2], .95) + (high[2] - low[2]) / 2 + .003
+        support = runtime.placement_support(request, destination, points, runtime.tcp_pose()[:3, 3])
+        place[:2] = support[:2]
+        place[2] = support[2] + (high[2] - low[2]) / 2 + .003
     runtime.event("planning", route=request.route(), object_points=len(points),
                   algorithm="isaacsim PickPlaceController / Arena IK")
     steps = runtime.config["fast"]["phase_steps"]
@@ -89,13 +89,13 @@ Warm the controller's first phases with detached adapters, without stepping
 the robot. Then use its original transport/release/retreat interpolation.
 """
     child = runtime.held_cloud()
-    parent = runtime.cloud(destination['name'])
     tcp = runtime.tcp_pose()
+    support = runtime.placement_support(request, destination, child, tcp[:3, 3])
     low, high = np.quantile(child, [.02, .98], axis=0)
     centre = (low + high) / 2
     place = tcp[:3, 3].copy()
-    place[:2] += np.quantile(parent[:, :2], [.02, .98], axis=0).mean(axis=0) - centre[:2]
-    place[2] = np.quantile(parent[:, 2], .95) + tcp[2, 3] - low[2] + .003
+    place[:2] += support[:2] - centre[:2]
+    place[2] = support[2] + tcp[2, 3] - low[2] + .003
     pick = tcp[:3, 3].copy()
     orientation = np.roll(Rotation.from_matrix(tcp[:3, :3]).as_quat(), 1)
     detached = SimpleNamespace()

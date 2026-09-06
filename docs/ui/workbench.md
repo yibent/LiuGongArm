@@ -1,6 +1,6 @@
 # 刘工智能工作台
 
-新版 UI 位于独立工作树 `LiuGongArm-ui`，BusAgent 位于其独立工作树 `BusAgent`，分支均为 `codex/liugong-ui`。已合并机械臂分支的 `38cd058`，保留其视觉实例执行、持物续接和工业场景实现。没有改写机械臂调试工作树。
+新版 UI 原先在独立工作树 `LiuGongArm-ui` 开发，现已合并到主开发分支 `codex/arena-panda-grasp-place`。保留视觉实例执行、持物续接、工业场景与新版手动控制，BusAgent 子模块固定对应集成版本。
 
 ## 界面与品牌
 
@@ -30,13 +30,17 @@ Isaac Lab 3 的状态通过 `numpy_data` 读取 Warp 数组，写入采用实际
 
 ## 部署
 
-新版工作台：https://8byr7v21-8qne20ga-8999.zj02restapi.gpufree.cn:8443/ 。8993 的独立观察页也已替换 Logo。8991 的旧控制台保留兼容入口。
+新版工作台主入口：https://8byr7v21-8qne20ga-8991.zj02restapi.gpufree.cn:8443/ 。8999 同步同一版本，8993 保持独立观察页。
 
 8999 的 nginx 配置为 `ops/arena-ui-preview-nginx.conf`，静态目录 `/root/gpufree-data/liugong-ui-preview`，复用 7861 仿真 HTTP 和 3100 BusAgent WebSocket。8993 保持只读预览。
 
 2026-09-06 已在工业场景运行版本上部署 `service.py`、`workspace.py`、`teleop.py`，核对原始源码 SHA 后仅重启 Arena 载入接口，保留当前工业场景配置。未覆盖运行中的 runtime、模型、视觉服务或 BusAgent 后端。原后端文件及状态备份在服务器 `output/ui-control-release/backup-20260906-232704`；部署前静态资源备份为 `/root/gpufree-data/liugong-ui-before-controls-20260906.tar.gz`。
 
-BusAgent 的精细 `node.started/updated/completed/failed` 追踪代码仍保留在本工作树，尚未替换云端 BusAgent 进程。旧后端的结果事件按事件时刻显示，仅明确起止的调用显示持续时间。手动编辑不是伪造的 BusAgent 节点。后续启用精细节点遥测时再单独部署 BusAgent。
+2026-09-07 已部署合并后的 BusAgent 后端，启用 `node.started/updated/completed/failed` 的实际调用追踪和独立持物放置。手动编辑仍直接调用仿真接口。机械臂面板显示持物标签、放置结果和距所选空位的误差；时间轴接收真实语言、视觉、执行事件。
+
+真实网页联调使用 `scripts/check_ui_held_placement.py`，不拦截 WebSocket、不直接调用抓放 API、不重置中间场景。验证“拿起齿轮”后单独“在桌子上随便找个地方放下”，以及再次拿起后“把手里的齿轮放到蓝色托盘”；两次续放均保留原抓取，并通过接触、松爪、退离和稳定性评测。具体命令、耗时、成功及失败记录见 [持物续放网页验证](../arena/workbench-held-placement-validation.json)。
+
+联调时云端 Qwen 返回 HTTP 400 `Arrearage`（欠费停用），TTS 同时不可用。已补齐常见中文物体/颜色提示的本地解析回退，未知标签不会映射成配置资产；任意复杂语义理解仍依赖恢复模型服务，不能把本地回退宣称为完整大模型能力。
 
 ## 验证
 

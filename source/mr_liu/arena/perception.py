@@ -110,3 +110,20 @@ class PerceptionBridge:
                 core = binary_erosion(mask)
                 views[camera] = instance_votes(core if core.any() else mask, instances[camera], labels[camera], bodies)
         return consistent_witness(views), dict(sum(views.values(), Counter()))
+
+    def scene_cloud(self, result):
+        """Unmasked depth from the same observation, for placement obstacles."""
+        clouds = []
+        with np.load(self.root/result['request_id']/'frames.npz', allow_pickle=False) as frames:
+            for key in frames.files:
+                if not key.endswith('_depth'): continue
+                camera = key[:-6]
+                depth, K, T = (frames[camera+s] for s in ['_depth', '_K', '_T'])
+                valid = np.isfinite(depth) & (depth > .02) & (depth < 3.)
+                valid[1::2] = False
+                valid[:, 1::2] = False
+                rows, cols = np.nonzero(valid)
+                z = depth[rows, cols]
+                points = np.stack([(cols-K[0,2])*z/K[0,0], (rows-K[1,2])*z/K[1,1], z], axis=1)
+                clouds.append(transform_points(T, points))
+        return np.concatenate(clouds) if clouds else np.empty((0, 3))

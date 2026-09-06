@@ -16,6 +16,7 @@ class ManipulationRequest:
     cluttered: bool = False
     precise: bool = False
     relation: str = "on"
+    placement_selection: Literal['center', 'free_space'] = 'center'
 
     def __post_init__(self):
         if not self.target.strip() or len(self.target) > 256:
@@ -24,6 +25,8 @@ class ManipulationRequest:
             raise ValueError("A destination label is required for placement")
         if self.mode not in {"auto", "basic", "enhanced"}:
             raise ValueError("mode must be auto, basic or enhanced")
+        if self.placement_selection not in {'center', 'free_space'}:
+            raise ValueError('placement_selection must be center or free_space')
         if self.relation not in {"on", "inside"}:
             raise ValueError("Insertion and hanging require contact skills that are not yet available")
 

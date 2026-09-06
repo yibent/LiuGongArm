@@ -58,6 +58,17 @@ def test_point_cloud_removes_mask_boundary_depth_bleed(tmp_path):
     assert np.allclose(points, [[2.,2.,1.]])
 
 
+def test_placement_obstacles_use_unmasked_depth_from_the_same_frame(tmp_path):
+    bridge = PerceptionBridge(tmp_path, 'unused')
+    directory = tmp_path/'scene'; directory.mkdir()
+    depth = np.ones((4,4)); depth[0,2] = np.nan
+    pose = np.eye(4); pose[:3,3] = [1,2,3]
+    np.savez(directory/'frames.npz', scene_depth=depth, scene_K=np.eye(3), scene_T=pose)
+    # No target masks or simulator instance sidecars are needed for obstacles.
+    points = bridge.scene_cloud({'request_id': 'scene'})
+    assert np.allclose(points, [[1,2,4], [1,4,4], [3,4,4]])
+
+
 def test_scene_queries_require_current_image_detections():
     finder = Mock()
     finder.describe.return_value = {'<DENSE_REGION_CAPTION>': {'labels': ['toy'], 'bboxes': [[1, 2, 4, 5]]}}

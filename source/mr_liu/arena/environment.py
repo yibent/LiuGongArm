@@ -68,6 +68,10 @@ class PandaTask(NoTask):
             support_position = numpy_data(base.root_pos_w)[0]
             support = support_metrics(position, support_position, self.support_force(env, name, destination),
                                       numpy_data(base.root_lin_vel_w)[0])
+            if 'selected_position_world_m' in destination:
+                selected = np.asarray(destination['selected_position_world_m'])
+                support['selected_position_world_m'] = selected.tolist()
+                support['selected_position_xy_error_m'] = float(np.linalg.norm(position[:2] - selected[:2]))
         robot = env.scene["robot"]
         finger_ids, _ = robot.find_joints("panda_finger_joint.*")
         opening = float(numpy_data(robot.data.joint_pos)[0, finger_ids].sum())

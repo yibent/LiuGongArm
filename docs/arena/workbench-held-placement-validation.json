@@ -1,0 +1,879 @@
+{
+  "date": "2026-09-07",
+  "transport": "Real Chromium browser typing in deployed workbench; /v1/stt -> BusAgent -> Arena; no mocked sockets or direct manipulation API",
+  "frontend": "8991 and 8999 integrated workbench",
+  "scene": "industrial; no resets between commands",
+  "tests": {
+    "backend": 215,
+    "frontend_unit": 11,
+    "mocked_browser_interactions": 18,
+    "browser_errors": 0,
+    "python_cloud": 139
+  },
+  "limits": [
+    "Qwen returned HTTP 400 Arrearage; these trials used deterministic semantic fallback, not the online LLM. TTS also unavailable.",
+    "Generic bolt prompt returned multiple SAM3 candidates; no movement occurred. A gold bolt prompt resolved the intended part.",
+    "First Chinese tray prompt exposed missing offline normalization; retained grasp was subsequently placed on a free table patch.",
+    "AnyPlace free-space candidate filtering is implemented but was not physically exercised in these trials.",
+    "No claim of general clutter avoidance, hanging/insertion, or multi-object task planning."
+  ],
+  "commands": [
+    {
+      "command_id": "evt_311a9c6e-bc5b-43d9-89c3-8864725bcfae:1",
+      "skill": "grasp",
+      "ok": true,
+      "message": "Physical task verified",
+      "evaluation": {
+        "physical_success": true,
+        "lifted": true,
+        "released": false,
+        "max_lift_m": 0.10573362372815609,
+        "final_position_world_m": [
+          0.6268032193183899,
+          -0.16530530154705048,
+          0.10573362559080124
+        ],
+        "destination_xy_error_m": null,
+        "supported_region": false,
+        "support_linear_speed_mps": 0.0,
+        "support_gap_m": null,
+        "gripper_opening_m": 0.0711049735546112,
+        "settle_displacement_m": 0.0,
+        "linear_speed_mps": 0.1531994491815567,
+        "evaluation_source": "arena_task_simulation_ground_truth"
+      },
+      "route": {
+        "decision": "busagent",
+        "grasp": "official_pick_place",
+        "placement": null,
+        "execution": "isaaclab_arena.franka_ik",
+        "robot": "franka_panda"
+      },
+      "attempts": [
+        {
+          "backend": "official_pick_place",
+          "ok": true,
+          "elapsed_s": 9.66761464998126
+        }
+      ],
+      "elapsed_s": 9.669909954071045,
+      "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260907-000335-b28a59b8",
+      "text": "拿起齿轮",
+      "web_elapsed_s": 14.223633875000814,
+      "instruction": {
+        "intent": "pick",
+        "target": {
+          "category": "gear",
+          "attributes": {},
+          "spatial_ref": null,
+          "ordinal": null,
+          "quantity": 1
+        },
+        "destination": null,
+        "constraints": {
+          "order": null,
+          "avoid": []
+        },
+        "needs_clarification": false,
+        "clarification_question": null,
+        "source_text": "拿起齿轮",
+        "manipulation": {
+          "mode": "auto",
+          "precise": false,
+          "unfamiliar": false,
+          "cluttered": false
+        }
+      },
+      "holding_after": {
+        "verified": true,
+        "label": "gear",
+        "grasp_command_id": "evt_311a9c6e-bc5b-43d9-89c3-8864725bcfae:1"
+      },
+      "observations": [],
+      "phases": [
+        "attempt_started",
+        "visual_observation",
+        "observation",
+        "instance_observed",
+        "planning",
+        "pregrasp",
+        "approach",
+        "settle_grasp",
+        "close_gripper",
+        "lift",
+        "lift_verified",
+        "attempt_finished"
+      ]
+    },
+    {
+      "command_id": "evt_3e6be371-ebfd-4e6f-87d6-bfea44df4f5d:1",
+      "skill": "place_held",
+      "ok": false,
+      "message": "本次画面未找到目标：蓝色托盘",
+      "evaluation": null,
+      "route": null,
+      "attempts": null,
+      "elapsed_s": 0.8578946590423584,
+      "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260907-000348-54842a28",
+      "text": "把手里的齿轮放到蓝色托盘",
+      "web_elapsed_s": 3.402272666004137,
+      "instruction": {
+        "intent": "place_held",
+        "target": {
+          "category": "gear",
+          "attributes": {},
+          "spatial_ref": null,
+          "ordinal": null,
+          "quantity": 1
+        },
+        "destination": {
+          "type": "named_region",
+          "label": "蓝色托盘"
+        },
+        "constraints": {
+          "order": null,
+          "avoid": []
+        },
+        "needs_clarification": false,
+        "clarification_question": null,
+        "source_text": "把手里的齿轮放到蓝色托盘",
+        "manipulation": {
+          "mode": "auto",
+          "precise": false,
+          "unfamiliar": false,
+          "cluttered": false
+        }
+      },
+      "holding_after": {
+        "verified": true,
+        "label": "gear",
+        "grasp_command_id": "evt_311a9c6e-bc5b-43d9-89c3-8864725bcfae:1"
+      },
+      "observations": [],
+      "phases": [
+        "visual_observation"
+      ]
+    },
+    {
+      "command_id": "evt_a0d17d81-12d8-4e60-9172-ba178314dcbe:1",
+      "skill": "place_held",
+      "ok": true,
+      "message": "Physical placement verified",
+      "evaluation": {
+        "physical_success": true,
+        "lifted": true,
+        "released": true,
+        "max_lift_m": 0.1359375398606062,
+        "final_position_world_m": [
+          0.7224351167678833,
+          -0.17012403905391693,
+          3.725290298461914e-09
+        ],
+        "destination_xy_error_m": 0.4554048776626587,
+        "destination_position_world_m": [
+          0.30000001192092896,
+          0.0,
+          -0.019999999552965164
+        ],
+        "support_contact": true,
+        "support_force_world_n": [
+          4.400029865792021e-06,
+          5.922021273363498e-07,
+          2.3546624183654785
+        ],
+        "supported_region": true,
+        "support_linear_speed_mps": 0.0,
+        "selected_position_world_m": [
+          0.726570306167688,
+          -0.16536930186900678,
+          0.0005715004554935899
+        ],
+        "selected_position_xy_error_m": 0.006301374220741433,
+        "support_gap_m": null,
+        "gripper_opening_m": 0.07999993860721588,
+        "settle_displacement_m": 1.501712528671799e-08,
+        "linear_speed_mps": 2.2591195374843664e-05,
+        "evaluation_source": "arena_task_simulation_ground_truth"
+      },
+      "route": {
+        "decision": "busagent",
+        "grasp": "retained_from_previous_command",
+        "placement": "official_pick_place",
+        "execution": "isaaclab_arena.franka_ik",
+        "robot": "franka_panda"
+      },
+      "attempts": [
+        {
+          "backend": "official_pick_place",
+          "ok": true,
+          "elapsed_s": 13.803059324622154
+        }
+      ],
+      "elapsed_s": 15.44817328453064,
+      "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260907-000624-fd62e6dc",
+      "text": "在桌子上随便找个地方放下",
+      "web_elapsed_s": 19.125706582999555,
+      "instruction": {
+        "intent": "place_held",
+        "target": {
+          "category": "个地方放下",
+          "attributes": {},
+          "spatial_ref": null,
+          "ordinal": null,
+          "quantity": 1
+        },
+        "destination": {
+          "type": "named_region",
+          "label": "table",
+          "selection": "free_space"
+        },
+        "constraints": {
+          "order": null,
+          "avoid": []
+        },
+        "needs_clarification": false,
+        "clarification_question": null,
+        "source_text": "在桌子上随便找个地方放下",
+        "manipulation": {
+          "mode": "auto",
+          "precise": false,
+          "unfamiliar": false,
+          "cluttered": false
+        }
+      },
+      "holding_after": {
+        "verified": false,
+        "label": null,
+        "grasp_command_id": null
+      },
+      "observations": [
+        {
+          "phase": "holding_resumed",
+          "sequence": 6654,
+          "time": 1788710786.026567,
+          "instance_id": "entity_03",
+          "label": "gear",
+          "grasp_command_id": "evt_311a9c6e-bc5b-43d9-89c3-8864725bcfae:1",
+          "initial_z": 1.862645149230957e-09,
+          "max_lift_m": 0.10573362372815609,
+          "tcp_to_object_at_grasp": [
+            [
+              0.9999787635038236,
+              -0.003336829935288461,
+              0.005598044957574716,
+              4.426123202161403e-05
+            ],
+            [
+              -0.003377361730561302,
+              -0.9999680396938508,
+              0.007246586684655788,
+              -7.882872847242428e-05
+            ],
+            [
+              0.005573685414966012,
+              -0.007265339415351044,
+              -0.9999580735581243,
+              0.01683075140684326
+            ],
+            [
+              0,
+              0,
+              0,
+              1
+            ]
+          ],
+          "verified": true,
+          "gripper_opening_m": 0.0711144357919693,
+          "relative_translation_drift_m": 2.8036297146437695e-05
+        },
+        {
+          "phase": "free_space_selected",
+          "sequence": 6668,
+          "time": 1788710787.0140452,
+          "observation_ref": "845dbb0100524e3389f6c4c5611ccf9c",
+          "position_world_m": [
+            0.726570306167688,
+            -0.16536930186900678,
+            0.0005715004554935899
+          ],
+          "footprint_radius_m": 0.05596317407866684,
+          "clearance_m": 0.066,
+          "support_points": 16000,
+          "obstacle_points": 10724,
+          "candidate_count": 6755,
+          "source": "model_support_mask_and_scene_rgbd"
+        }
+      ],
+      "phases": [
+        "visual_observation",
+        "observation",
+        "instance_observed",
+        "holding_resumed",
+        "attempt_started",
+        "visual_observation",
+        "observation",
+        "held_geometry_recorded",
+        "free_space_selected",
+        "planning",
+        "transport",
+        "place_approach",
+        "release",
+        "retreat",
+        "finish",
+        "attempt_finished"
+      ]
+    },
+    {
+      "command_id": "evt_489b0721-4ea4-49a9-a89d-4200bcb5e085:1",
+      "skill": "grasp",
+      "ok": true,
+      "message": "Physical task verified",
+      "evaluation": {
+        "physical_success": true,
+        "lifted": true,
+        "released": false,
+        "max_lift_m": 0.16500800475478172,
+        "final_position_world_m": [
+          0.7256602048873901,
+          -0.17788560688495636,
+          0.16500800848007202
+        ],
+        "destination_xy_error_m": null,
+        "supported_region": false,
+        "support_linear_speed_mps": 0.0,
+        "support_gap_m": null,
+        "gripper_opening_m": 0.06471231579780579,
+        "settle_displacement_m": 0.0,
+        "linear_speed_mps": 0.04659295454621315,
+        "evaluation_source": "arena_task_simulation_ground_truth"
+      },
+      "route": {
+        "decision": "busagent",
+        "grasp": "graspgenx",
+        "placement": null,
+        "execution": "isaaclab_arena.franka_ik",
+        "robot": "franka_panda"
+      },
+      "attempts": [
+        {
+          "backend": "official_pick_place",
+          "ok": false,
+          "error": "Fast grasp did not lift the target",
+          "elapsed_s": 10.134235545992851
+        },
+        {
+          "backend": "models",
+          "ok": true,
+          "elapsed_s": 16.245391979813576
+        }
+      ],
+      "elapsed_s": 30.718876361846924,
+      "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260907-000735-4e5269dd",
+      "text": "拿起齿轮",
+      "web_elapsed_s": 34.49494137500005,
+      "instruction": {
+        "intent": "pick",
+        "target": {
+          "category": "gear",
+          "attributes": {},
+          "spatial_ref": null,
+          "ordinal": null,
+          "quantity": 1
+        },
+        "destination": null,
+        "constraints": {
+          "order": null,
+          "avoid": []
+        },
+        "needs_clarification": false,
+        "clarification_question": null,
+        "source_text": "拿起齿轮",
+        "manipulation": {
+          "mode": "auto",
+          "precise": false,
+          "unfamiliar": false,
+          "cluttered": false
+        }
+      },
+      "holding_after": {
+        "verified": true,
+        "label": "gear",
+        "grasp_command_id": "evt_489b0721-4ea4-49a9-a89d-4200bcb5e085:1"
+      },
+      "observations": [],
+      "phases": [
+        "attempt_started",
+        "visual_observation",
+        "observation",
+        "instance_observed",
+        "planning",
+        "pregrasp",
+        "approach",
+        "settle_grasp",
+        "close_gripper",
+        "lift",
+        "attempt_finished",
+        "model_fallback",
+        "fallback_reobserve",
+        "fallback_retreat",
+        "attempt_started",
+        "visual_observation",
+        "observation",
+        "instance_observed",
+        "planning",
+        "grasp_candidates",
+        "selected_grasp",
+        "pregrasp",
+        "approach",
+        "close_gripper",
+        "lift",
+        "lift_verified",
+        "attempt_finished"
+      ]
+    },
+    {
+      "command_id": "evt_0bca20ea-dd66-4742-bf15-0851a68b8ae4:1",
+      "skill": "place_held",
+      "ok": true,
+      "message": "Physical placement verified",
+      "evaluation": {
+        "physical_success": true,
+        "lifted": true,
+        "released": true,
+        "max_lift_m": 0.18167613074183464,
+        "final_position_world_m": [
+          0.35418835282325745,
+          0.21713577210903168,
+          0.008000004105269909
+        ],
+        "destination_xy_error_m": 0.002284788992255926,
+        "destination_position_world_m": [
+          0.35499998927116394,
+          0.2150000035762787,
+          0.0
+        ],
+        "support_contact": true,
+        "support_force_world_n": [
+          -2.987428388223634e-06,
+          -1.5030467466203845e-06,
+          2.3542866706848145
+        ],
+        "supported_region": true,
+        "support_linear_speed_mps": 0.0,
+        "support_gap_m": null,
+        "gripper_opening_m": 0.07999998331069946,
+        "settle_displacement_m": 3.725290298461914e-09,
+        "linear_speed_mps": 5.320111813489348e-05,
+        "evaluation_source": "arena_task_simulation_ground_truth"
+      },
+      "route": {
+        "decision": "busagent",
+        "grasp": "retained_from_previous_command",
+        "placement": "official_pick_place",
+        "execution": "isaaclab_arena.franka_ik",
+        "robot": "franka_panda"
+      },
+      "attempts": [
+        {
+          "backend": "official_pick_place",
+          "ok": true,
+          "elapsed_s": 16.177371110767126
+        }
+      ],
+      "elapsed_s": 17.474846839904785,
+      "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260907-000809-0eb12f07",
+      "text": "把手里的齿轮放到蓝色托盘",
+      "web_elapsed_s": 20.00671829100611,
+      "instruction": {
+        "intent": "place_held",
+        "target": {
+          "category": "gear",
+          "attributes": {},
+          "spatial_ref": null,
+          "ordinal": null,
+          "quantity": 1
+        },
+        "destination": {
+          "type": "named_region",
+          "label": "blue tray"
+        },
+        "constraints": {
+          "order": null,
+          "avoid": []
+        },
+        "needs_clarification": false,
+        "clarification_question": null,
+        "source_text": "把手里的齿轮放到蓝色托盘",
+        "manipulation": {
+          "mode": "auto",
+          "precise": false,
+          "unfamiliar": false,
+          "cluttered": false
+        }
+      },
+      "holding_after": {
+        "verified": false,
+        "label": null,
+        "grasp_command_id": null
+      },
+      "observations": [
+        {
+          "phase": "holding_resumed",
+          "sequence": 8706,
+          "time": 1788710890.4436777,
+          "instance_id": "entity_03",
+          "label": "gear",
+          "grasp_command_id": "evt_489b0721-4ea4-49a9-a89d-4200bcb5e085:1",
+          "initial_z": 3.725290298461914e-09,
+          "max_lift_m": 0.16500800475478172,
+          "tcp_to_object_at_grasp": [
+            [
+              0.96528039785033,
+              0.2580658840339538,
+              -0.04044444366884895,
+              0.005307531236268481
+            ],
+            [
+              0.25784944261361953,
+              -0.9661272941210608,
+              -0.010569602554630722,
+              -0.003158320618253052
+            ],
+            [
+              -0.041802134751165024,
+              -0.00022594709777682995,
+              -0.9991258831989862,
+              0.024463210833683607
+            ],
+            [
+              0,
+              0,
+              0,
+              1
+            ]
+          ],
+          "verified": true,
+          "gripper_opening_m": 0.06471177935600281,
+          "relative_translation_drift_m": 5.246642354244727e-05
+        }
+      ],
+      "phases": [
+        "visual_observation",
+        "observation",
+        "instance_observed",
+        "holding_resumed",
+        "attempt_started",
+        "visual_observation",
+        "observation",
+        "held_geometry_recorded",
+        "planning",
+        "transport",
+        "place_approach",
+        "release",
+        "retreat",
+        "finish",
+        "attempt_finished"
+      ]
+    },
+    {
+      "command_id": "evt_26096b1b-cc79-48ce-a9f3-7b4ad7cc8054:1",
+      "skill": "grasp",
+      "ok": false,
+      "message": "目标不唯一，请指定其中一个：bolt",
+      "evaluation": null,
+      "route": null,
+      "attempts": [
+        {
+          "backend": "official_pick_place",
+          "ok": false,
+          "error": "目标不唯一，请指定其中一个：bolt",
+          "elapsed_s": 0.7824724763631821
+        },
+        {
+          "backend": "models",
+          "ok": false,
+          "error": "目标不唯一，请指定其中一个：bolt",
+          "elapsed_s": 0.7616382986307144
+        }
+      ],
+      "elapsed_s": 1.5501360893249512,
+      "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260907-000923-640908db",
+      "text": "拿起螺栓",
+      "web_elapsed_s": 5.436015250001219,
+      "instruction": {
+        "intent": "pick",
+        "target": {
+          "category": "bolt",
+          "attributes": {},
+          "spatial_ref": null,
+          "ordinal": null,
+          "quantity": 1
+        },
+        "destination": null,
+        "constraints": {
+          "order": null,
+          "avoid": []
+        },
+        "needs_clarification": false,
+        "clarification_question": null,
+        "source_text": "拿起螺栓",
+        "manipulation": {
+          "mode": "auto",
+          "precise": false,
+          "unfamiliar": false,
+          "cluttered": false
+        }
+      },
+      "holding_after": {
+        "verified": false,
+        "label": null,
+        "grasp_command_id": null
+      },
+      "observations": [],
+      "phases": [
+        "attempt_started",
+        "visual_observation",
+        "attempt_finished",
+        "model_fallback",
+        "attempt_started",
+        "visual_observation",
+        "attempt_finished"
+      ]
+    },
+    {
+      "command_id": "evt_06b54f96-a7ac-45b2-9c0d-7e2522fbc0ae:1",
+      "skill": "grasp",
+      "ok": true,
+      "message": "Physical task verified",
+      "evaluation": {
+        "physical_success": true,
+        "lifted": true,
+        "released": false,
+        "max_lift_m": 0.10548294149339199,
+        "final_position_world_m": [
+          0.34806954860687256,
+          -0.07696784287691116,
+          0.10548292845487595
+        ],
+        "destination_xy_error_m": null,
+        "supported_region": false,
+        "support_linear_speed_mps": 0.0,
+        "support_gap_m": null,
+        "gripper_opening_m": 0.020637549459934235,
+        "settle_displacement_m": 0.0,
+        "linear_speed_mps": 0.14972595870494843,
+        "evaluation_source": "arena_task_simulation_ground_truth"
+      },
+      "route": {
+        "decision": "busagent",
+        "grasp": "official_pick_place",
+        "placement": null,
+        "execution": "isaaclab_arena.franka_ik",
+        "robot": "franka_panda"
+      },
+      "attempts": [
+        {
+          "backend": "official_pick_place",
+          "ok": true,
+          "elapsed_s": 10.072847794741392
+        }
+      ],
+      "elapsed_s": 10.075281143188477,
+      "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260907-001008-646bfabd",
+      "text": "拿起金色螺栓",
+      "web_elapsed_s": 13.853531708002265,
+      "instruction": {
+        "intent": "pick",
+        "target": {
+          "category": "bolt",
+          "attributes": {
+            "color": "gold"
+          },
+          "spatial_ref": null,
+          "ordinal": null,
+          "quantity": 1
+        },
+        "destination": null,
+        "constraints": {
+          "order": null,
+          "avoid": []
+        },
+        "needs_clarification": false,
+        "clarification_question": null,
+        "source_text": "拿起金色螺栓",
+        "manipulation": {
+          "mode": "auto",
+          "precise": false,
+          "unfamiliar": false,
+          "cluttered": false
+        }
+      },
+      "holding_after": {
+        "verified": true,
+        "label": "gold bolt",
+        "grasp_command_id": "evt_06b54f96-a7ac-45b2-9c0d-7e2522fbc0ae:1"
+      },
+      "observations": [],
+      "phases": [
+        "attempt_started",
+        "visual_observation",
+        "observation",
+        "instance_observed",
+        "planning",
+        "pregrasp",
+        "approach",
+        "settle_grasp",
+        "close_gripper",
+        "lift",
+        "lift_verified",
+        "attempt_finished"
+      ]
+    },
+    {
+      "command_id": "evt_64c6ea24-693e-4673-bd8f-a5782c3cb9a4:1",
+      "skill": "place_held",
+      "ok": true,
+      "message": "Physical placement verified",
+      "evaluation": {
+        "physical_success": true,
+        "lifted": true,
+        "released": true,
+        "max_lift_m": 0.1613383125513792,
+        "final_position_world_m": [
+          0.5748063921928406,
+          0.2662864625453949,
+          0.008000006899237633
+        ],
+        "destination_xy_error_m": 0.005350552499294281,
+        "destination_position_world_m": [
+          0.5799999833106995,
+          0.26499998569488525,
+          0.0
+        ],
+        "support_contact": true,
+        "support_force_world_n": [
+          -0.0004985196283087134,
+          0.0004501818330027163,
+          0.7847605347633362
+        ],
+        "supported_region": true,
+        "support_linear_speed_mps": 0.0,
+        "support_gap_m": null,
+        "gripper_opening_m": 0.07999992370605469,
+        "settle_displacement_m": 3.725290298461914e-09,
+        "linear_speed_mps": 0.00012100495223421603,
+        "evaluation_source": "arena_task_simulation_ground_truth"
+      },
+      "route": {
+        "decision": "busagent",
+        "grasp": "retained_from_previous_command",
+        "placement": "official_pick_place",
+        "execution": "isaaclab_arena.franka_ik",
+        "robot": "franka_panda"
+      },
+      "attempts": [
+        {
+          "backend": "official_pick_place",
+          "ok": true,
+          "elapsed_s": 14.74209481664002
+        }
+      ],
+      "elapsed_s": 15.572824239730835,
+      "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260907-001021-0f4c6a4a",
+      "text": "把金色螺栓放到橙色托盘",
+      "web_elapsed_s": 18.024122792005073,
+      "instruction": {
+        "intent": "place_held",
+        "target": {
+          "category": "bolt",
+          "attributes": {
+            "color": "gold"
+          },
+          "spatial_ref": null,
+          "ordinal": null,
+          "quantity": 1
+        },
+        "destination": {
+          "type": "named_region",
+          "label": "orange tray"
+        },
+        "constraints": {
+          "order": null,
+          "avoid": []
+        },
+        "needs_clarification": false,
+        "clarification_question": null,
+        "source_text": "把金色螺栓放到橙色托盘",
+        "manipulation": {
+          "mode": "auto",
+          "precise": false,
+          "unfamiliar": false,
+          "cluttered": false
+        }
+      },
+      "holding_after": {
+        "verified": false,
+        "label": null,
+        "grasp_command_id": null
+      },
+      "observations": [
+        {
+          "phase": "holding_resumed",
+          "sequence": 11312,
+          "time": 1788711022.7133932,
+          "instance_id": "entity_05",
+          "label": "gold bolt",
+          "grasp_command_id": "evt_06b54f96-a7ac-45b2-9c0d-7e2522fbc0ae:1",
+          "initial_z": -1.30385160446167e-08,
+          "max_lift_m": 0.10548294149339199,
+          "tcp_to_object_at_grasp": [
+            [
+              0.9999059497847603,
+              0.00018395604844838212,
+              0.013713414790202064,
+              -0.0030778323470266877
+            ],
+            [
+              -2.1195529351329012e-05,
+              -0.9998881185501007,
+              0.014958273065054227,
+              -0.0007467905653230217
+            ],
+            [
+              0.01371463217827693,
+              -0.014957156899338544,
+              -0.99979407495829,
+              0.037645970494332825
+            ],
+            [
+              0,
+              0,
+              0,
+              1
+            ]
+          ],
+          "verified": true,
+          "gripper_opening_m": 0.020638255402445793,
+          "relative_translation_drift_m": 3.7425914706590706e-06
+        }
+      ],
+      "phases": [
+        "visual_observation",
+        "observation",
+        "instance_observed",
+        "holding_resumed",
+        "attempt_started",
+        "visual_observation",
+        "observation",
+        "held_geometry_recorded",
+        "planning",
+        "transport",
+        "place_approach",
+        "release",
+        "retreat",
+        "finish",
+        "attempt_finished"
+      ]
+    }
+  ]
+}
