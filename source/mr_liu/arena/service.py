@@ -97,7 +97,8 @@ def serve(runtime, app, port):
                 if result and result["state"] == "running":
                     result = {**result, "phase": runtime.snapshot.get("phase"),
                               "progress_seq": runtime.snapshot.get("sequence"),
-                              "held_object": runtime.snapshot.get("held_object")}
+                              "held_object": runtime.snapshot.get("held_object"),
+                              "vision": runtime.snapshot.get("vision")}
                 return self.respond(200 if result else 404, result or {"ok": False, "error": "unknown command"})
             if path.startswith("/api/frame/"):
                 key = path.rsplit("/", 1)[1].removesuffix(".jpg")
@@ -143,4 +144,5 @@ def serve(runtime, app, port):
             runtime.stop_requested.clear()
     finally:
         server.shutdown()
+        runtime.vision_worker.close()
         runtime.pool.shutdown(wait=False, cancel_futures=True)

@@ -5,6 +5,15 @@
     "IsaacLab-Arena/submodules/IsaacLab": "e57379c634b42db5a0fe9f754341be6e2a7c7c43",
     "GraspGenX": "b9429097728cb1c430dd78b92edf17ba318aad03",
     "anyplace": "3049f78ad226ba0d9e54c63e2ca7ad7bbcfaa45e",
-    "airobot": "7ae04feb07d554835bf6d917063def26c8b7e1d1"
+    "airobot": "7ae04feb07d554835bf6d917063def26c8b7e1d1",
+    "sam2": "2b90b9f5ceec907a1c18123530e92e794ad901a4"
+  },
+  "vision": {
+    "torch": "2.11.0+cu128",
+    "transformers": "5.16.1",
+    "ultralytics": "8.4.138",
+    "sam2_tiny_sha256": "7402e0d864fa82708a20fbd15bc84245c2f26dff0eb43a4b5b93452deb34be69",
+    "yoloe_26x_sha256": "d08d390a08f98195f7c87807839fe4ff93a5491645fef1bc3bf0700efafdd639",
+    "florence_revision": "4271c66b88cdbc05735372ec13b2360108de5317"
   }
 }

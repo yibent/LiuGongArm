@@ -8,24 +8,20 @@ import time
 from uuid import uuid4
 
 import numpy as np
-from mr_liu.arena.arrays import numpy_data, semantic_selection
-from PIL import Image
+from mr_liu.arena.arrays import numpy_data, pose_matrix
+from PIL import Image, ImageDraw
 from scipy.spatial.transform import Rotation, Slerp
 import torch
 
+from mr_liu.arena.perception import PerceptionBridge
+from mr_liu.vision.worker import VisionWorker
 from mr_liu.arena.cascade import run_cascade
 from mr_liu.arena.fast import fast_pick_place
 from mr_liu.arena.contracts import ManipulationRequest, model_grasp_to_tcp, placement_to_tcp
 from mr_liu.grasp.backends.graspgenx import ZmqGraspGenXTransport
-from mr_liu.grasp.transforms import invert_transform, transform_points
+from mr_liu.grasp.transforms import invert_transform
 from mr_liu.place.anyplace import AnyPlaceClient
 
-
-def pose_matrix(position, quaternion):
-    result = np.eye(4)
-    result[:3, :3] = Rotation.from_quat(quaternion).as_matrix()
-    result[:3, 3] = position
-    return result
 
 
 class ArenaRuntime:
@@ -38,6 +34,12 @@ class ArenaRuntime:
         self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="pose-inference")
         self.frames = {}; self.snapshot = {}; self.sequence = 0
         self.phase = "initializing"; self.current = None; self.held = None
+        self.bus_context = {}
+        self.perception = PerceptionBridge(Path(__file__).resolve().parents[3]/'output/perception', config['vision']['service_url'])
+        self.vision_worker = VisionWorker(self.perception.request)
+        self.visual_result = None
+        self.observing = False
+        self.last_track = 0
         self.gripper = 1.
         self.goal = self.tcp_pose()
         self.events = []
@@ -71,7 +73,7 @@ class ArenaRuntime:
                 "grasp": {"backend": "official_pick_place_or_graspgenx", "ready": True},
                 "placement": {"backend": "official_pick_place_or_anyplace", "relations": ["on"]},
                 "routing": "fast_first_then_models_once; complex_tasks_use_models_directly",
-                "vla_loaded": False, "perception_source": "rendered_rgbd_with_simulator_semantic_masks",
+                "vla_loaded": False, "perception_source": "florence2_yoloe_sam2_lk_rgbd",
                 "frame": "world", "quaternion": "xyzw", "units": "metres",
                 "objects": self.config["objects"], "destinations": self.config["destinations"]}
 
@@ -83,6 +85,7 @@ class ArenaRuntime:
                          "held_object": self.held, "command_id": self.current,
                          "tcp_pose_world": tcp.tolist(), "prompt": self.selected_target,
                          "last_result": self.last_result,
+                         "vision": self.visual_result,
                          "motion": {"mode": "hold" if self.phase == "idle" else "moving",
                                     "active_command_id": self.current,
                                     "joint_positions_deg": dict(zip(robot.joint_names[:7], np.rad2deg(numpy_data(robot.data.joint_pos)[0, :7]).tolist())),
@@ -105,9 +108,26 @@ class ArenaRuntime:
         if self.sequence % 6 == 0:
             for key, camera_name in [("scene", "scene_camera"), ("side", "side_camera"), ("wrist", "wrist_camera")]:
                 rgb = self.env.scene[camera_name].data.output["rgb"][0, :, :, :3].detach().cpu().numpy()
-                encoded = BytesIO(); Image.fromarray(rgb.astype(np.uint8)).save(encoded, "JPEG", quality=80)
+                picture = Image.fromarray(rgb.astype(np.uint8))
+                for view in (self.visual_result or {}).get('views', []):
+                    if view['camera'] == camera_name and view.get('box') and self.sequence-view['sequence'] < 90:
+                        draw = ImageDraw.Draw(picture)
+                        draw.rectangle(view['box'], outline='#efc651', width=2)
+                        draw.text((view['box'][0], max(0,view['box'][1]-14)), view['label']+' / '+str(view['sequence']), fill='#efc651')
+                encoded = BytesIO(); picture.save(encoded, "JPEG", quality=80)
                 self.frames[key] = encoded.getvalue()
             self.refresh_snapshot()
+        if hasattr(self, 'vision_worker'):
+            try:
+                result = self.vision_worker.poll()
+                if result and result.get('command_id') == self.current: self.visual_result = result
+            except Exception as error:
+                self.visual_result = {'ok': False, 'error': str(error), 'views': []}
+            if (self.target_name and self.current and not self.observing and self.vision_worker.available
+                    and self.sequence-self.last_track >= self.config['vision']['track_every_steps']):
+                self.last_track = self.sequence
+                packet = self.perception.capture(self, self.target_name, cameras=['scene_camera'])
+                self.vision_worker.submit(packet)
 
     def event(self, phase, **data):
         self.phase = phase
@@ -116,41 +136,27 @@ class ArenaRuntime:
         self.refresh_snapshot()
 
     def cloud(self, name):
-        """Fuse rendered depth; add the wrist view after grasping."""
-        # Let the lower-frequency RTX stream acquire a fresh synchronized frame.
-        for _ in range(self.config["camera"]["render_interval"]): self.tick()
-        clouds = []
-        diagnostics = {}
-        cameras = ["scene_camera", "side_camera"]
-        if self.held == name: cameras.append("wrist_camera")
-        for camera_name in cameras:
-            data = self.env.scene[camera_name].data
-            depth = data.output["distance_to_image_plane"][0].detach().cpu().numpy().squeeze()
-            mask_ids = data.output["semantic_segmentation"][0].detach().cpu().numpy().squeeze()
-            info = data.info[0]["semantic_segmentation"]["idToLabels"]
-            valid = semantic_selection(mask_ids, info, name) & np.isfinite(depth) & (depth > .02) & (depth < 3.)
-            if not np.any(valid):
-                print("[Arena Panda] missing semantic geometry", camera_name, name,
-                      mask_ids.shape, mask_ids.dtype, "labels", info,
-                      "values", np.unique(mask_ids.reshape(-1, mask_ids.shape[-1]) if mask_ids.ndim == 3 else mask_ids)[:12], flush=True)
-            rows, cols = np.nonzero(valid)
-            intrinsic = numpy_data(data.intrinsic_matrices)[0]
-            z = depth[rows, cols]
-            points = np.stack([(cols - intrinsic[0, 2]) * z / intrinsic[0, 0],
-                               (rows - intrinsic[1, 2]) * z / intrinsic[1, 1], z], axis=1)
-            world_camera = pose_matrix(numpy_data(data.pos_w)[0],
-                                       numpy_data(data.quat_w_ros)[0])
-            world_points = transform_points(world_camera, points)
-            clouds.append(world_points)
-            diagnostics[camera_name] = {"points": len(points), "camera_world": world_camera.tolist(),
-                "intrinsics": intrinsic.tolist(), "bounds_world": [world_points.min(0).tolist(), world_points.max(0).tolist()] if len(points) else None}
-        points = np.concatenate(clouds)
-        self.event("observation", target=name, views=diagnostics)
-        if not len(points):
-            raise ValueError(f"Insufficient visible RGB-D geometry for {name}: {len(points)}")
-        _, indices = np.unique(np.round(points / .0005).astype(int), axis=0, return_index=True)
-        points = points[np.sort(indices)]
-        return points[np.linspace(0, len(points) - 1, min(len(points), 16000), dtype=int)]
+        self.observing = True
+        try:
+            # Retire a tracking request before requesting a geometric observation.
+            while not self.vision_worker.available: self.tick()
+            for _ in range(self.config['camera']['render_interval']): self.tick()
+            packet = self.perception.capture(self, name, refine=True)
+            self.event('visual_observation', target=name, request_id=packet['request_id'])
+            result = self.infer(self.perception.request, packet)
+            if not result.get('ok') and self.held == name:
+                packet = self.perception.capture(self, name, refine=True, cameras=['scene_camera', 'side_camera'])
+                result = self.infer(self.perception.request, packet)
+            self.visual_result = result
+            if not result.get('ok'):
+                raise RuntimeError('Visual observation failed: '+str(result.get('error') or result.get('views')))
+            points, views = self.perception.cloud(result)
+            self.event('observation', target=name, request_id=packet['request_id'],
+                       perception_source=result['perception_source'], views=views, models=result['views'])
+            return points
+        finally:
+            self.observing = False
+            self.last_track = self.sequence
 
     def infer(self, function, *args, **kwargs):
         future = self.pool.submit(function, *args, **kwargs)
@@ -272,7 +278,7 @@ class ArenaRuntime:
         # evaluation; the held reference is estimated from measured cloud bounds.
         child = self.cloud(row["name"])
         object_input = np.eye(4)
-        object_input[:3, 3] = (np.min(child, axis=0) + np.max(child, axis=0)) / 2
+        object_input[:3, 3] = np.quantile(child, [.02, .98], axis=0).mean(axis=0)
         tcp_to_object = invert_transform(self.tcp_pose()) @ object_input
         parent = self.cloud(destination["name"])
         cfg = self.config["anyplace"]
@@ -331,6 +337,8 @@ class ArenaRuntime:
 
     def execute(self, command):
         self.current = command["command_id"]; self.events = []; started = time.time()
+        self.visual_result = None
+        self.bus_context = {key:command[key] for key in ('task_id','task_version','correlation_id','causation_id') if key in command}
         attempts = []
         directory = self.output / (time.strftime("%Y%m%d-%H%M%S") + "-" + uuid4().hex[:8])
         directory.mkdir()
@@ -377,7 +385,7 @@ class ArenaRuntime:
             if attempts:
                 result.update(attempts=attempts, fallback_used=len(attempts) > 1)
         result.update(command_id=self.current, skill=command["skill"], elapsed_s=time.time() - started,
-                      evidence_dir=str(directory), events=self.events, tcp_pose_world=self.tcp_pose().tolist())
+                      evidence_dir=str(directory), events=self.events, vision=self.visual_result, tcp_pose_world=self.tcp_pose().tolist())
         self.last_result = {key: value for key, value in result.items() if key != "events"}
         (directory / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2))
         for name, data in self.frames.items(): (directory / f"{name}.jpg").write_bytes(data)

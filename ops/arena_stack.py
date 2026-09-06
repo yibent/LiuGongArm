@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 STATE = ROOT / "output/services"
 NODE = os.environ.get("BUSAGENT_NODE") or shutil.which("node") or "/root/gpufree-data/tools/node/bin/node"
 SERVICES = {
+    "vision": (["bash", str(ROOT / "scripts/run_arena_vision.sh")], ROOT),
     "graspgenx": (["bash", str(ROOT / "scripts/run_graspgenx_server.sh")], ROOT),
     "anyplace": (["bash", str(ROOT / "scripts/run_anyplace_server.sh")], ROOT),
     "arena": (["bash", str(ROOT / "scripts/run_arena_panda.sh"), "--viz", "kit"], ROOT),

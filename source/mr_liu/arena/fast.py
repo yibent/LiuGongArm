@@ -48,7 +48,7 @@ def fast_pick_place(runtime, request):
     place = pick.copy()
     if destination:
         parent = runtime.cloud(destination["name"])
-        place[:2] = np.asarray(destination["position"])[:2]
+        place[:2] = (np.quantile(parent[:, :2], .02, axis=0) + np.quantile(parent[:, :2], .98, axis=0)) / 2
         place[2] = np.quantile(parent[:, 2], .95) + (high[2] - low[2]) / 2 + .003
     runtime.event("planning", route=request.route(), object_points=len(points),
                   algorithm="isaacsim PickPlaceController / Arena IK")

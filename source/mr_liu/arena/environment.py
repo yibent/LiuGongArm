@@ -96,8 +96,7 @@ def _camera_rotation(position, lookat):
 def _camera(path, width, height, position, lookat, period):
     return CameraCfg(
         prim_path=path, update_period=period, width=width, height=height,
-        data_types=["rgb", "distance_to_image_plane", "semantic_segmentation"],
-        colorize_semantic_segmentation=True,
+        data_types=["rgb", "distance_to_image_plane"],
         spawn=sim.PinholeCameraCfg(focal_length=18., horizontal_aperture=20.955, clipping_range=(.02, 5.)),
         offset=CameraCfg.OffsetCfg(pos=position, rot=_camera_rotation(position, lookat), convention="ros"),
     )
@@ -138,7 +137,6 @@ def build_environment(config, *, device="cuda:0"):
             mass_props=sim.MassPropertiesCfg(mass=row.get("mass", .1)),
             physics_material=sim.RigidBodyMaterialCfg(static_friction=1.2, dynamic_friction=1.),
             visual_material=sim.PreviewSurfaceCfg(diffuse_color=tuple(row["color"])),
-            semantic_tags=[("class", row["name"])],
         )
         spawner = (sim.CylinderCfg(radius=row["size"][0] / 2, height=row["size"][2], **shape)
                    if row.get("shape") == "cylinder" else sim.CuboidCfg(size=tuple(row["size"]), **shape))
@@ -171,9 +169,8 @@ def build_environment(config, *, device="cuda:0"):
         cfg.scene.wrist_camera = CameraCfg(
             prim_path="{ENV_REGEX_NS}/Robot/panda_hand/WristRGBD", update_period=camera["update_period_s"],
             update_latest_camera_pose=True,
-            width=width, height=height, data_types=["rgb", "distance_to_image_plane", "semantic_segmentation"],
-            colorize_semantic_segmentation=True,
-            spawn=sim.PinholeCameraCfg(focal_length=12., horizontal_aperture=20.955, clipping_range=(.01, 4.)),
+            width=width, height=height, data_types=["rgb", "distance_to_image_plane"],
+                spawn=sim.PinholeCameraCfg(focal_length=12., horizontal_aperture=20.955, clipping_range=(.01, 4.)),
             offset=CameraCfg.OffsetCfg(pos=tuple(wrist["position"]),
                 rot=_camera_rotation(wrist["position"], wrist["lookat"]), convention="ros"))
         cfg.sim.dt = 1 / 120

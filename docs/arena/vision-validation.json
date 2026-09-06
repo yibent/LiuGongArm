@@ -1,0 +1,2149 @@
+{
+  "date": "2026-09-06",
+  "scope": "Development integration runs, not an industrial success-rate benchmark",
+  "tests": {
+    "arena_and_vision": 21,
+    "busagent": 197,
+    "frontend_build": "passed"
+  },
+  "runs": [
+    {
+      "command_id": "vision-red-1",
+      "ok": true,
+      "elapsed_s": 22.445733070373535,
+      "evaluation": {
+        "physical_success": true,
+        "lifted": true,
+        "released": true,
+        "max_lift_m": 0.15343434736132622,
+        "final_position_world_m": [
+          0.45885202288627625,
+          0.2004508227109909,
+          0.03850001096725464
+        ],
+        "destination_xy_error_m": 0.0012333258167973086,
+        "supported_region": true,
+        "support_gap_m": -1.4801536926678516e-08,
+        "gripper_opening_m": 0.07999995350837708,
+        "settle_displacement_m": 2.9802322387695312e-08,
+        "linear_speed_mps": 9.365160076413304e-05,
+        "evaluation_source": "arena_task_simulation_ground_truth"
+      },
+      "route": {
+        "decision": "busagent",
+        "grasp": "official_pick_place",
+        "placement": "official_pick_place",
+        "execution": "isaaclab_arena.franka_ik",
+        "robot": "franka_panda"
+      },
+      "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-172920-023562ce",
+      "attempts": [
+        {
+          "backend": "official_pick_place",
+          "ok": true,
+          "elapsed_s": 22.4446180742234
+        }
+      ],
+      "case": "vision-red",
+      "observations": [
+        {
+          "phase": "observation",
+          "sequence": 465,
+          "time": 1788686962.4042118,
+          "target": "red_block",
+          "request_id": "2b6c628092f5432790cd28fd68bb2f05",
+          "perception_source": "florence2_yoloe_sam2_lk_rgb",
+          "views": {
+            "scene_camera": {
+              "points": 987,
+              "camera_world": [
+                [
+                  0.7556891464260086,
+                  0.44814070853202614,
+                  -0.477602155910486,
+                  1.0
+                ],
+                [
+                  0.6549304649914587,
+                  -0.5170855883243711,
+                  0.5510794682922878,
+                  -0.6000000238418579
+                ],
+                [
+                  -4.8396003538009325e-08,
+                  -0.7292409750580754,
+                  -0.6842569694905162,
+                  0.800000011920929
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "intrinsics": [
+                [
+                  549.7494506835938,
+                  0.0,
+                  320.0
+                ],
+                [
+                  0.0,
+                  549.7494506835938,
+                  240.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "bounds_world": [
+                [
+                  0.4232677105605347,
+                  -0.14332145294135,
+                  0.000689248385791652
+                ],
+                [
+                  0.5028307103775014,
+                  -0.06761511538438691,
+                  0.04569752148404438
+                ]
+              ]
+            },
+            "side_camera": {
+              "points": 963,
+              "camera_world": [
+                [
+                  -0.827918660490075,
+                  0.352453473164483,
+                  -0.43626510388365103,
+                  0.8999999761581421
+                ],
+                [
+                  0.5608481894526535,
+                  0.5202883745731159,
+                  -0.644010338171481,
+                  0.6200000047683716
+                ],
+                [
+                  -1.8659775280482904e-08,
+                  -0.7778666701552124,
+                  -0.6284293464357322,
+                  0.6600000262260437
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "intrinsics": [
+                [
+                  549.7494506835938,
+                  0.0,
+                  320.0
+                ],
+                [
+                  0.0,
+                  549.7494506835938,
+                  240.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "bounds_world": [
+                [
+                  0.42534654087529467,
+                  -0.19977985884801674,
+                  0.0007439670585885905
+                ],
+                [
+                  0.5041351103083804,
+                  -0.09630498260769293,
+                  0.04575638155025963
+                ]
+              ]
+            }
+          },
+          "models": [
+            {
+              "camera": "scene_camera",
+              "label": "red block",
+              "sequence": 443,
+              "status": "observed",
+              "box": [
+                261.0,
+                265.0,
+                296.0,
+                305.0
+              ],
+              "mask_pixels": 987,
+              "stages": [
+                {
+                  "model": "florence2",
+                  "operation": "find",
+                  "candidates": 1
+                },
+                {
+                  "model": "yoloe",
+                  "operation": "visual_prompt",
+                  "candidates": 1
+                },
+                {
+                  "model": "sam2_tiny",
+                  "operation": "segment",
+                  "score": 0.96484375
+                }
+              ],
+              "elapsed_s": 0.5506637524813414
+            },
+            {
+              "camera": "side_camera",
+              "label": "red block",
+              "sequence": 443,
+              "status": "observed",
+              "box": [
+                268.0,
+                202.0,
+                302.0,
+                240.0
+              ],
+              "mask_pixels": 963,
+              "stages": [
+                {
+                  "model": "florence2",
+                  "operation": "find",
+                  "candidates": 1
+                },
+                {
+                  "model": "yoloe",
+                  "operation": "visual_prompt",
+                  "candidates": 1
+                },
+                {
+                  "model": "sam2_tiny",
+                  "operation": "segment",
+                  "score": 0.96875
+                }
+              ],
+              "elapsed_s": 0.4919131677597761
+            }
+          ]
+        },
+        {
+          "phase": "observation",
+          "sequence": 494,
+          "time": 1788686964.0064805,
+          "target": "blue_pad",
+          "request_id": "0ab1df0db2f64519bf48c33c8fcf7fdc",
+          "perception_source": "florence2_yoloe_sam2_lk_rgb",
+          "views": {
+            "scene_camera": {
+              "points": 4718,
+              "camera_world": [
+                [
+                  0.7556891464260086,
+                  0.44814070853202614,
+                  -0.477602155910486,
+                  1.0
+                ],
+                [
+                  0.6549304649914587,
+                  -0.5170855883243711,
+                  0.5510794682922878,
+                  -0.6000000238418579
+                ],
+                [
+                  -4.8396003538009325e-08,
+                  -0.7292409750580754,
+                  -0.6842569694905162,
+                  0.800000011920929
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "intrinsics": [
+                [
+                  549.7494506835938,
+                  0.0,
+                  320.0
+                ],
+                [
+                  0.0,
+                  549.7494506835938,
+                  240.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "bounds_world": [
+                [
+                  0.36020748311140827,
+                  0.10835873329568202,
+                  0.0007658840916024978
+                ],
+                [
+                  0.5498114574850754,
+                  0.2895056451281859,
+                  0.01687840042390687
+                ]
+              ]
+            },
+            "side_camera": {
+              "points": 10870,
+              "camera_world": [
+                [
+                  -0.827918660490075,
+                  0.352453473164483,
+                  -0.43626510388365103,
+                  0.8999999761581421
+                ],
+                [
+                  0.5608481894526535,
+                  0.5202883745731159,
+                  -0.644010338171481,
+                  0.6200000047683716
+                ],
+                [
+                  -1.8659775280482904e-08,
+                  -0.7778666701552124,
+                  -0.6284293464357322,
+                  0.6600000262260437
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "intrinsics": [
+                [
+                  549.7494506835938,
+                  0.0,
+                  320.0
+                ],
+                [
+                  0.0,
+                  549.7494506835938,
+                  240.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "bounds_world": [
+                [
+                  0.35688537397350995,
+                  0.109518730003214,
+                  0.0005530800676570857
+                ],
+                [
+                  0.5512356717726534,
+                  0.2896348966089525,
+                  0.016679907905828517
+                ]
+              ]
+            }
+          },
+          "models": [
+            {
+              "camera": "scene_camera",
+              "label": "blue pad",
+              "sequence": 473,
+              "status": "observed",
+              "box": [
+                314.0,
+                170.0,
+                427.0,
+                247.0
+              ],
+              "mask_pixels": 4718,
+              "stages": [
+                {
+                  "model": "florence2",
+                  "operation": "find",
+                  "candidates": 1
+                },
+                {
+                  "model": "yoloe",
+                  "operation": "visual_prompt",
+                  "candidates": 1
+                },
+                {
+                  "model": "sam2_tiny",
+                  "operation": "segment",
+                  "score": 0.98046875
+                }
+              ],
+              "elapsed_s": 0.4951599147170782
+            },
+            {
+              "camera": "side_camera",
+              "label": "blue pad",
+              "sequence": 473,
+              "status": "observed",
+              "box": [
+                322.0,
+                269.0,
+                484.0,
+                393.0
+              ],
+              "mask_pixels": 10870,
+              "stages": [
+                {
+                  "model": "florence2",
+                  "operation": "find",
+                  "candidates": 1
+                },
+                {
+                  "model": "yoloe",
+                  "operation": "visual_prompt",
+                  "candidates": 1
+                },
+                {
+                  "model": "sam2_tiny",
+                  "operation": "segment",
+                  "score": 0.984375
+                }
+              ],
+              "elapsed_s": 0.501324838027358
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "command_id": "evt_a85686a6-9739-44d1-a6ef-f900e1d8ee2f:1",
+      "ok": false,
+      "elapsed_s": 51.450376987457275,
+      "evaluation": {
+        "physical_success": false,
+        "lifted": true,
+        "released": true,
+        "max_lift_m": 0.17700383439660072,
+        "final_position_world_m": [
+          0.4680570363998413,
+          0.26839011907577515,
+          0.035999976098537445
+        ],
+        "destination_xy_error_m": 0.06886308316323826,
+        "supported_region": false,
+        "support_gap_m": -0.008156083432693265,
+        "gripper_opening_m": 0.07999976724386215,
+        "settle_displacement_m": 0.0017958274683972147,
+        "linear_speed_mps": 0.0032952716574072838,
+        "evaluation_source": "arena_task_simulation_ground_truth"
+      },
+      "route": {
+        "decision": "busagent",
+        "grasp": "graspgenx",
+        "placement": "anyplace",
+        "execution": "isaaclab_arena.franka_ik",
+        "robot": "franka_panda"
+      },
+      "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-173135-7309aaec",
+      "attempts": [
+        {
+          "backend": "models",
+          "ok": false,
+          "elapsed_s": 51.44884796068072
+        }
+      ],
+      "case": "vision-yellow-fail",
+      "observations": [
+        {
+          "phase": "observation",
+          "sequence": 895,
+          "time": 1788687097.072449,
+          "target": "yellow_cylinder",
+          "request_id": "c1adc6d330944167954232f6c600f359",
+          "perception_source": "florence2_yoloe_sam2_lk_rgb",
+          "views": {
+            "scene_camera": {
+              "points": 725,
+              "camera_world": [
+                [
+                  0.7556891464260086,
+                  0.44814070853202614,
+                  -0.477602155910486,
+                  1.0
+                ],
+                [
+                  0.6549304649914587,
+                  -0.5170855883243711,
+                  0.5510794682922878,
+                  -0.6000000238418579
+                ],
+                [
+                  -4.8396003538009325e-08,
+                  -0.7292409750580754,
+                  -0.6842569694905162,
+                  0.800000011920929
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "intrinsics": [
+                [
+                  549.7494506835938,
+                  0.0,
+                  320.0
+                ],
+                [
+                  0.0,
+                  549.7494506835938,
+                  240.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "bounds_world": [
+                [
+                  0.5198576551455101,
+                  -0.20027969268606843,
+                  0.0006426780635933049
+                ],
+                [
+                  0.5888595678934683,
+                  -0.13299733047094964,
+                  0.05063846980148001
+                ]
+              ]
+            },
+            "side_camera": {
+              "points": 648,
+              "camera_world": [
+                [
+                  -0.827918660490075,
+                  0.352453473164483,
+                  -0.43626510388365103,
+                  0.8999999761581421
+                ],
+                [
+                  0.5608481894526535,
+                  0.5202883745731159,
+                  -0.644010338171481,
+                  0.6200000047683716
+                ],
+                [
+                  -1.8659775280482904e-08,
+                  -0.7778666701552124,
+                  -0.6284293464357322,
+                  0.6600000262260437
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "intrinsics": [
+                [
+                  549.7494506835938,
+                  0.0,
+                  320.0
+                ],
+                [
+                  0.0,
+                  549.7494506835938,
+                  240.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "bounds_world": [
+                [
+                  0.5233107587194351,
+                  -0.2681364669638664,
+                  0.0007488302012108594
+                ],
+                [
+                  0.5905291325131576,
+                  -0.1613945829590161,
+                  0.050746465434560295
+                ]
+              ]
+            }
+          },
+          "models": [
+            {
+              "camera": "scene_camera",
+              "label": "yellow cylinder",
+              "sequence": 872,
+              "status": "observed",
+              "box": [
+                280.0,
+                310.0,
+                304.0,
+                347.0
+              ],
+              "mask_pixels": 725,
+              "stages": [
+                {
+                  "model": "florence2",
+                  "operation": "find",
+                  "candidates": 1
+                },
+                {
+                  "model": "yoloe",
+                  "operation": "visual_prompt",
+                  "candidates": 1
+                },
+                {
+                  "model": "sam2_tiny",
+                  "operation": "segment",
+                  "score": 0.96875
+                }
+              ],
+              "elapsed_s": 0.734195014461875
+            },
+            {
+              "camera": "side_camera",
+              "label": "yellow cylinder",
+              "sequence": 872,
+              "status": "observed",
+              "box": [
+                217.0,
+                203.0,
+                240.0,
+                237.0
+              ],
+              "mask_pixels": 648,
+              "stages": [
+                {
+                  "model": "florence2",
+                  "operation": "find",
+                  "candidates": 1
+                },
+                {
+                  "model": "yoloe",
+                  "operation": "visual_prompt",
+                  "candidates": 0
+                },
+                {
+                  "model": "sam2_tiny",
+                  "operation": "segment",
+                  "score": 0.96484375
+                }
+              ],
+              "elapsed_s": 0.5516058076173067
+            }
+          ]
+        },
+        {
+          "phase": "observation",
+          "sequence": 1316,
+          "time": 1788687117.5921376,
+          "target": "yellow_cylinder",
+          "request_id": "1d756f4447db4b7b94fe591e4a2937b5",
+          "perception_source": "florence2_yoloe_sam2_lk_rgb",
+          "views": {
+            "scene_camera": {
+              "points": 753,
+              "camera_world": [
+                [
+                  0.7556891464260086,
+                  0.44814070853202614,
+                  -0.477602155910486,
+                  1.0
+                ],
+                [
+                  0.6549304649914587,
+                  -0.5170855883243711,
+                  0.5510794682922878,
+                  -0.6000000238418579
+                ],
+                [
+                  -4.8396003538009325e-08,
+                  -0.7292409750580754,
+                  -0.6842569694905162,
+                  0.800000011920929
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "intrinsics": [
+                [
+                  549.7494506835938,
+                  0.0,
+                  320.0
+                ],
+                [
+                  0.0,
+                  549.7494506835938,
+                  240.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "bounds_world": [
+                [
+                  0.43190437851686014,
+                  -0.2208312643714091,
+                  0.0007125963505077992
+                ],
+                [
+                  0.5912577575024651,
+                  -0.017286143632463058,
+                  0.23920425767555964
+                ]
+              ]
+            },
+            "side_camera": {
+              "points": 5091,
+              "camera_world": [
+                [
+                  -0.827918660490075,
+                  0.352453473164483,
+                  -0.43626510388365103,
+                  0.8999999761581421
+                ],
+                [
+                  0.5608481894526535,
+                  0.5202883745731159,
+                  -0.644010338171481,
+                  0.6200000047683716
+                ],
+                [
+                  -1.8659775280482904e-08,
+                  -0.7778666701552124,
+                  -0.6284293464357322,
+                  0.6600000262260437
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "intrinsics": [
+                [
+                  549.7494506835938,
+                  0.0,
+                  320.0
+                ],
+                [
+                  0.0,
+                  549.7494506835938,
+                  240.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "bounds_world": [
+                [
+                  0.3311480857887612,
+                  -1.0000430775902074,
+                  0.0009001597574539444
+                ],
+                [
+                  0.6248337479109646,
+                  -0.08467407753046452,
+                  0.3683658295521033
+                ]
+              ]
+            },
+            "wrist_camera": {
+              "points": 19925,
+              "camera_world": [
+                [
+                  0.23458393176544967,
+                  -0.7973616403118281,
+                  -0.5560438773304616,
+                  0.6278620958328247
+                ],
+                [
+                  -0.9720945031167306,
+                  -0.19145823657921834,
+                  -0.13555818181213694,
+                  -0.17198814451694489
+                ],
+                [
+                  0.0016297139930531168,
+                  0.5723269679171221,
+                  -0.8200238934489006,
+                  0.2909081280231476
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "intrinsics": [
+                [
+                  366.4996337890625,
+                  0.0,
+                  320.0
+                ],
+                [
+                  0.0,
+                  366.4996337890625,
+                  240.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "bounds_world": [
+                [
+                  0.37923430077036724,
+                  -0.2967841928656198,
+                  -7.117422859265199e-05
+                ],
+                [
+                  0.5921020015067755,
+                  -0.1558467718195904,
+                  0.25026271588046267
+                ]
+              ]
+            }
+          },
+          "models": [
+            {
+              "camera": "scene_camera",
+              "label": "yellow cylinder",
+              "sequence": 1290,
+              "status": "observed",
+              "box": [
+                267.0,
+                247.0,
+                300.0,
+                288.0
+              ],
+              "mask_pixels": 753,
+              "stages": [
+                {
+                  "model": "lk",
+                  "flow_reason": "lk_forward_backward",
+                  "flow_points": 12,
+                  "flow_shift_px": [
+                    -0.0518646240234375,
+                    -1.4855270385742188
+                  ],
+                  "flow_fb_median_px": 0.003823904786258936
+                },
+                {
+                  "model": "sam2_tiny",
+                  "operation": "segment",
+                  "score": 0.921875
+                }
+              ],
+              "elapsed_s": 0.04951052740216255
+            },
+            {
+              "camera": "side_camera",
+              "label": "yellow cylinder",
+              "sequence": 1290,
+              "status": "observed",
+              "box": [
+                156.0,
+                43.0,
+                255.0,
+                163.0
+              ],
+              "mask_pixels": 5093,
+              "stages": [
+                {
+                  "model": "lk",
+                  "flow_reason": "forward_backward_rejected",
+                  "flow_points": 0
+                },
+                {
+                  "model": "yoloe",
+                  "operation": "relocalize",
+                  "candidates": 0
+                },
+                {
+                  "model": "florence2",
+                  "operation": "find",
+                  "candidates": 1
+                },
+                {
+                  "model": "yoloe",
+                  "operation": "visual_prompt",
+                  "candidates": 1
+                },
+                {
+                  "model": "sam2_tiny",
+                  "operation": "segment",
+                  "score": 0.91015625
+                }
+              ],
+              "elapsed_s": 0.7443497572094202
+            },
+            {
+              "camera": "wrist_camera",
+              "label": "yellow cylinder",
+              "sequence": 1290,
+              "status": "observed",
+              "box": [
+                255.0,
+                118.0,
+                401.0,
+                294.0
+              ],
+              "mask_pixels": 19925,
+              "stages": [
+                {
+                  "model": "florence2",
+                  "operation": "find",
+                  "candidates": 1
+                },
+                {
+                  "model": "yoloe",
+                  "operation": "visual_prompt",
+                  "candidates": 1
+                },
+                {
+                  "model": "sam2_tiny",
+                  "operation": "segment",
+                  "score": 0.98828125
+                }
+              ],
+              "elapsed_s": 0.49952156096696854
+            }
+          ]
+        },
+        {
+          "phase": "observation",
+          "sequence": 1344,
+          "time": 1788687119.3512173,
+          "target": "blue_pad",
+          "request_id": "d7f69b258bee4262a6a040ab9eec2867",
+          "perception_source": "florence2_yoloe_sam2_lk_rgb",
+          "views": {
+            "scene_camera": {
+              "points": 4607,
+              "camera_world": [
+                [
+                  0.7556891464260086,
+                  0.44814070853202614,
+                  -0.477602155910486,
+                  1.0
+                ],
+                [
+                  0.6549304649914587,
+                  -0.5170855883243711,
+                  0.5510794682922878,
+                  -0.6000000238418579
+                ],
+                [
+                  -4.8396003538009325e-08,
+                  -0.7292409750580754,
+                  -0.6842569694905162,
+                  0.800000011920929
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "intrinsics": [
+                [
+                  549.7494506835938,
+                  0.0,
+                  320.0
+                ],
+                [
+                  0.0,
+                  549.7494506835938,
+                  240.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "bounds_world": [
+                [
+                  0.36913145639650535,
+                  0.10853797532273357,
+                  0.0007658840916024978
+                ],
+                [
+                  0.55004243942673,
+                  0.30850320577092694,
+                  0.016878400540477956
+                ]
+              ]
+            },
+            "side_camera": {
+              "points": 10859,
+              "camera_world": [
+                [
+                  -0.827918660490075,
+                  0.352453473164483,
+                  -0.43626510388365103,
+                  0.8999999761581421
+                ],
+                [
+                  0.5608481894526535,
+                  0.5202883745731159,
+                  -0.644010338171481,
+                  0.6200000047683716
+                ],
+                [
+                  -1.8659775280482904e-08,
+                  -0.7778666701552124,
+                  -0.6284293464357322,
+                  0.6600000262260437
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "intrinsics": [
+                [
+                  549.7494506835938,
+                  0.0,
+                  320.0
+                ],
+                [
+                  0.0,
+                  549.7494506835938,
+                  240.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "bounds_world": [
+                [
+                  0.35688537397350995,
+                  0.10964935772098372,
+                  0.0005530799615129922
+                ],
+                [
+                  0.5512356717726534,
+                  0.28970302792464114,
+                  0.016679907905828517
+                ]
+              ]
+            }
+          },
+          "models": [
+            {
+              "camera": "scene_camera",
+              "label": "blue pad",
+              "sequence": 1324,
+              "status": "observed",
+              "box": [
+                320.0,
+                170.0,
+                428.0,
+                247.0
+              ],
+              "mask_pixels": 4607,
+              "stages": [
+                {
+                  "model": "florence2",
+                  "operation": "find",
+                  "candidates": 1
+                },
+                {
+                  "model": "yoloe",
+                  "operation": "visual_prompt",
+                  "candidates": 1
+                },
+                {
+                  "model": "sam2_tiny",
+                  "operation": "segment",
+                  "score": 0.9765625
+                }
+              ],
+              "elapsed_s": 0.5378834027796984
+            },
+            {
+              "camera": "side_camera",
+              "label": "blue pad",
+              "sequence": 1324,
+              "status": "observed",
+              "box": [
+                322.0,
+                269.0,
+                484.0,
+                394.0
+              ],
+              "mask_pixels": 10859,
+              "stages": [
+                {
+                  "model": "florence2",
+                  "operation": "find",
+                  "candidates": 1
+                },
+                {
+                  "model": "yoloe",
+                  "operation": "visual_prompt",
+                  "candidates": 1
+                },
+                {
+                  "model": "sam2_tiny",
+                  "operation": "segment",
+                  "score": 0.984375
+                }
+              ],
+              "elapsed_s": 0.525018535554409
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "command_id": "vision-yellow-wrist",
+      "ok": true,
+      "elapsed_s": 46.90723156929016,
+      "evaluation": {
+        "physical_success": true,
+        "lifted": true,
+        "released": true,
+        "max_lift_m": 0.16080335341393948,
+        "final_position_world_m": [
+          0.4526549279689789,
+          0.20423325896263123,
+          0.04100000113248825
+        ],
+        "destination_xy_error_m": 0.008477650888399834,
+        "supported_region": true,
+        "support_gap_m": -6.982075712730351e-09,
+        "gripper_opening_m": 0.07999998331069946,
+        "settle_displacement_m": 5.385589709431291e-08,
+        "linear_speed_mps": 0.00011487365554785356,
+        "evaluation_source": "arena_task_simulation_ground_truth"
+      },
+      "route": {
+        "decision": "busagent",
+        "grasp": "graspgenx",
+        "placement": "anyplace",
+        "execution": "isaaclab_arena.franka_ik",
+        "robot": "franka_panda"
+      },
+      "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-173613-e4a39f57",
+      "attempts": [
+        {
+          "backend": "models",
+          "ok": true,
+          "elapsed_s": 46.906117640435696
+        }
+      ],
+      "case": "vision-yellow-wrist",
+      "observations": [
+        {
+          "phase": "observation",
+          "sequence": 2814,
+          "time": 1788687375.316089,
+          "target": "yellow_cylinder",
+          "request_id": "da1946bb9453425d87bc9a98c15a8beb",
+          "perception_source": "florence2_yoloe_sam2_lk_rgb",
+          "views": {
+            "scene_camera": {
+              "points": 638,
+              "camera_world": [
+                [
+                  0.7556891464260086,
+                  0.44814070853202614,
+                  -0.477602155910486,
+                  1.0
+                ],
+                [
+                  0.6549304649914587,
+                  -0.5170855883243711,
+                  0.5510794682922878,
+                  -0.6000000238418579
+                ],
+                [
+                  -4.8396003538009325e-08,
+                  -0.7292409750580754,
+                  -0.6842569694905162,
+                  0.800000011920929
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "intrinsics": [
+                [
+                  549.7494506835938,
+                  0.0,
+                  320.0
+                ],
+                [
+                  0.0,
+                  549.7494506835938,
+                  240.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "bounds_world": [
+                [
+                  0.5516366772966566,
+                  -0.19914317343007082,
+                  0.000796950159996368
+                ],
+                [
+                  0.5888595678934683,
+                  -0.1628245201553724,
+                  0.0506385632765074
+                ]
+              ]
+            },
+            "side_camera": {
+              "points": 555,
+              "camera_world": [
+                [
+                  -0.827918660490075,
+                  0.352453473164483,
+                  -0.43626510388365103,
+                  0.8999999761581421
+                ],
+                [
+                  0.5608481894526535,
+                  0.5202883745731159,
+                  -0.644010338171481,
+                  0.6200000047683716
+                ],
+                [
+                  -1.8659775280482904e-08,
+                  -0.7778666701552124,
+                  -0.6284293464357322,
+                  0.6600000262260437
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "intrinsics": [
+                [
+                  549.7494506835938,
+                  0.0,
+                  320.0
+                ],
+                [
+                  0.0,
+                  549.7494506835938,
+                  240.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "bounds_world": [
+                [
+                  0.5534250657488123,
+                  -0.19701040977656925,
+                  0.0012957385071590277
+                ],
+                [
+                  0.5899942419270763,
+                  -0.16198990943895974,
+                  0.05074646525551452
+                ]
+              ]
+            }
+          },
+          "models": [
+            {
+              "camera": "scene_camera",
+              "label": "yellow cylinder",
+              "sequence": 2792,
+              "status": "observed",
+              "box": [
+                279.0,
+                310.0,
+                304.0,
+                347.0
+              ],
+              "mask_pixels": 729,
+              "stages": [
+                {
+                  "model": "florence2",
+                  "operation": "find",
+                  "candidates": 1
+                },
+                {
+                  "model": "yoloe",
+                  "operation": "visual_prompt",
+                  "candidates": 1
+                },
+                {
+                  "model": "sam2_tiny",
+                  "operation": "segment",
+                  "score": 0.97265625
+                }
+              ],
+              "elapsed_s": 0.5396594479680061
+            },
+            {
+              "camera": "side_camera",
+              "label": "yellow cylinder",
+              "sequence": 2792,
+              "status": "observed",
+              "box": [
+                217.0,
+                203.0,
+                240.0,
+                237.0
+              ],
+              "mask_pixels": 644,
+              "stages": [
+                {
+                  "model": "florence2",
+                  "operation": "find",
+                  "candidates": 1
+                },
+                {
+                  "model": "yoloe",
+                  "operation": "visual_prompt",
+                  "candidates": 1
+                },
+                {
+                  "model": "sam2_tiny",
+                  "operation": "segment",
+                  "score": 0.96484375
+                }
+              ],
+              "elapsed_s": 0.48445146158337593
+            }
+          ]
+        },
+        {
+          "phase": "observation",
+          "sequence": 3221,
+          "time": 1788687393.8234282,
+          "target": "yellow_cylinder",
+          "request_id": "2e91315216cc4a48b6c9f75750e0ea8c",
+          "perception_source": "florence2_yoloe_sam2_lk_rgb",
+          "views": {
+            "wrist_camera": {
+              "points": 18030,
+              "camera_world": [
+                [
+                  -0.16617656615373422,
+                  -0.8071479878066813,
+                  -0.5664781325355628,
+                  0.6313151717185974
+                ],
+                [
+                  -0.9860760873312472,
+                  0.13966958973997112,
+                  0.09025716423290922,
+                  -0.19139045476913452
+                ],
+                [
+                  0.006268879872177224,
+                  0.5735891661123781,
+                  -0.8191191425327908,
+                  0.29131564497947693
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "intrinsics": [
+                [
+                  366.4996337890625,
+                  0.0,
+                  320.0
+                ],
+                [
+                  0.0,
+                  366.4996337890625,
+                  240.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "bounds_world": [
+                [
+                  0.5534640112576711,
+                  -0.202088111753203,
+                  0.15958117620511078
+                ],
+                [
+                  0.5900556260523852,
+                  -0.16421865685802295,
+                  0.20984748343604537
+                ]
+              ]
+            }
+          },
+          "models": [
+            {
+              "camera": "wrist_camera",
+              "label": "yellow cylinder",
+              "sequence": 3210,
+              "status": "observed",
+              "box": [
+                256.0,
+                128.0,
+                396.0,
+                294.0
+              ],
+              "mask_pixels": 18495,
+              "stages": [
+                {
+                  "model": "florence2",
+                  "operation": "find",
+                  "candidates": 1
+                },
+                {
+                  "model": "yoloe",
+                  "operation": "visual_prompt",
+                  "candidates": 1
+                },
+                {
+                  "model": "sam2_tiny",
+                  "operation": "segment",
+                  "score": 0.98828125
+                }
+              ],
+              "elapsed_s": 0.5336151421070099
+            }
+          ]
+        },
+        {
+          "phase": "observation",
+          "sequence": 3251,
+          "time": 1788687395.5577433,
+          "target": "blue_pad",
+          "request_id": "9f96e608d0594126a10ad1ec8fdf18a4",
+          "perception_source": "florence2_yoloe_sam2_lk_rgb",
+          "views": {
+            "scene_camera": {
+              "points": 3770,
+              "camera_world": [
+                [
+                  0.7556891464260086,
+                  0.44814070853202614,
+                  -0.477602155910486,
+                  1.0
+                ],
+                [
+                  0.6549304649914587,
+                  -0.5170855883243711,
+                  0.5510794682922878,
+                  -0.6000000238418579
+                ],
+                [
+                  -4.8396003538009325e-08,
+                  -0.7292409750580754,
+                  -0.6842569694905162,
+                  0.800000011920929
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "intrinsics": [
+                [
+                  549.7494506835938,
+                  0.0,
+                  320.0
+                ],
+                [
+                  0.0,
+                  549.7494506835938,
+                  240.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "bounds_world": [
+                [
+                  0.37161328216746137,
+                  0.10984892882959496,
+                  0.0017694299325002882
+                ],
+                [
+                  0.5487470056398494,
+                  0.28783316082181765,
+                  0.01687641059001599
+                ]
+              ]
+            },
+            "side_camera": {
+              "points": 10531,
+              "camera_world": [
+                [
+                  -0.827918660490075,
+                  0.352453473164483,
+                  -0.43626510388365103,
+                  0.8999999761581421
+                ],
+                [
+                  0.5608481894526535,
+                  0.5202883745731159,
+                  -0.644010338171481,
+                  0.6200000047683716
+                ],
+                [
+                  -1.8659775280482904e-08,
+                  -0.7778666701552124,
+                  -0.6284293464357322,
+                  0.6600000262260437
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "intrinsics": [
+                [
+                  549.7494506835938,
+                  0.0,
+                  320.0
+                ],
+                [
+                  0.0,
+                  549.7494506835938,
+                  240.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "bounds_world": [
+                [
+                  0.37163024307340786,
+                  0.11144901983071365,
+                  0.0015613784232701988
+                ],
+                [
+                  0.5503856389604169,
+                  0.2892407975277001,
+                  0.01667850747704469
+                ]
+              ]
+            }
+          },
+          "models": [
+            {
+              "camera": "scene_camera",
+              "label": "blue pad",
+              "sequence": 3229,
+              "status": "observed",
+              "box": [
+                337.0,
+                170.0,
+                428.0,
+                247.0
+              ],
+              "mask_pixels": 3989,
+              "stages": [
+                {
+                  "model": "florence2",
+                  "operation": "find",
+                  "candidates": 1
+                },
+                {
+                  "model": "yoloe",
+                  "operation": "visual_prompt",
+                  "candidates": 1
+                },
+                {
+                  "model": "sam2_tiny",
+                  "operation": "segment",
+                  "score": 0.9765625
+                }
+              ],
+              "elapsed_s": 0.537438839673996
+            },
+            {
+              "camera": "side_camera",
+              "label": "blue pad",
+              "sequence": 3229,
+              "status": "observed",
+              "box": [
+                322.0,
+                269.0,
+                484.0,
+                393.0
+              ],
+              "mask_pixels": 10871,
+              "stages": [
+                {
+                  "model": "florence2",
+                  "operation": "find",
+                  "candidates": 1
+                },
+                {
+                  "model": "yoloe",
+                  "operation": "visual_prompt",
+                  "candidates": 1
+                },
+                {
+                  "model": "sam2_tiny",
+                  "operation": "segment",
+                  "score": 0.984375
+                }
+              ],
+              "elapsed_s": 0.5294526927173138
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "command_id": "evt_085b8214-9770-4ca3-a7e1-b5ab460d4f42:1",
+      "ok": true,
+      "elapsed_s": 23.476958990097046,
+      "evaluation": {
+        "physical_success": true,
+        "lifted": true,
+        "released": true,
+        "max_lift_m": 0.15075011178851128,
+        "final_position_world_m": [
+          0.45849692821502686,
+          0.2002405971288681,
+          0.03850000724196434
+        ],
+        "destination_xy_error_m": 0.0015222062176991605,
+        "supported_region": true,
+        "support_gap_m": -3.162512092827474e-08,
+        "gripper_opening_m": 0.07999995350837708,
+        "settle_displacement_m": 0.0,
+        "linear_speed_mps": 2.29022916755639e-05,
+        "evaluation_source": "arena_task_simulation_ground_truth"
+      },
+      "route": {
+        "decision": "busagent",
+        "grasp": "official_pick_place",
+        "placement": "official_pick_place",
+        "execution": "isaaclab_arena.franka_ik",
+        "robot": "franka_panda"
+      },
+      "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-173839-e09f528f",
+      "attempts": [
+        {
+          "backend": "official_pick_place",
+          "ok": true,
+          "elapsed_s": 23.47580593638122
+        }
+      ],
+      "case": "vision-web-red",
+      "observations": [
+        {
+          "phase": "observation",
+          "sequence": 621,
+          "time": 1788687520.825253,
+          "target": "red_block",
+          "request_id": "ad305fa6018d4866bd711894dae20205",
+          "perception_source": "florence2_yoloe_sam2_lk_rgb",
+          "views": {
+            "scene_camera": {
+              "points": 894,
+              "camera_world": [
+                [
+                  0.7556891464260086,
+                  0.44814070853202614,
+                  -0.477602155910486,
+                  1.0
+                ],
+                [
+                  0.6549304649914587,
+                  -0.5170855883243711,
+                  0.5510794682922878,
+                  -0.6000000238418579
+                ],
+                [
+                  -4.8396003538009325e-08,
+                  -0.7292409750580754,
+                  -0.6842569694905162,
+                  0.800000011920929
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "intrinsics": [
+                [
+                  549.7494506835938,
+                  0.0,
+                  320.0
+                ],
+                [
+                  0.0,
+                  549.7494506835938,
+                  240.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "bounds_world": [
+                [
+                  0.4575444002551189,
+                  -0.14263232116537228,
+                  0.0010919363230967871
+                ],
+                [
+                  0.501396161364758,
+                  -0.09931302619537574,
+                  0.045696090128324096
+                ]
+              ]
+            },
+            "side_camera": {
+              "points": 860,
+              "camera_world": [
+                [
+                  -0.827918660490075,
+                  0.352453473164483,
+                  -0.43626510388365103,
+                  0.8999999761581421
+                ],
+                [
+                  0.5608481894526535,
+                  0.5202883745731159,
+                  -0.644010338171481,
+                  0.6200000047683716
+                ],
+                [
+                  -1.8659775280482904e-08,
+                  -0.7778666701552124,
+                  -0.6284293464357322,
+                  0.6600000262260437
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "intrinsics": [
+                [
+                  549.7494506835938,
+                  0.0,
+                  320.0
+                ],
+                [
+                  0.0,
+                  549.7494506835938,
+                  240.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "bounds_world": [
+                [
+                  0.4592048886047056,
+                  -0.14044437480782634,
+                  0.001128759181433181
+                ],
+                [
+                  0.5029648792668061,
+                  -0.09850669272761914,
+                  0.04575451869709446
+                ]
+              ]
+            }
+          },
+          "models": [
+            {
+              "camera": "scene_camera",
+              "label": "red block",
+              "sequence": 599,
+              "status": "observed",
+              "box": [
+                261.0,
+                265.0,
+                296.0,
+                305.0
+              ],
+              "mask_pixels": 991,
+              "stages": [
+                {
+                  "model": "florence2",
+                  "operation": "find",
+                  "candidates": 1
+                },
+                {
+                  "model": "yoloe",
+                  "operation": "visual_prompt",
+                  "candidates": 1
+                },
+                {
+                  "model": "sam2_tiny",
+                  "operation": "segment",
+                  "score": 0.9609375
+                }
+              ],
+              "elapsed_s": 0.548436064273119
+            },
+            {
+              "camera": "side_camera",
+              "label": "red block",
+              "sequence": 599,
+              "status": "observed",
+              "box": [
+                268.0,
+                202.0,
+                302.0,
+                240.0
+              ],
+              "mask_pixels": 961,
+              "stages": [
+                {
+                  "model": "florence2",
+                  "operation": "find",
+                  "candidates": 1
+                },
+                {
+                  "model": "yoloe",
+                  "operation": "visual_prompt",
+                  "candidates": 1
+                },
+                {
+                  "model": "sam2_tiny",
+                  "operation": "segment",
+                  "score": 0.96875
+                }
+              ],
+              "elapsed_s": 0.59218923561275
+            }
+          ]
+        },
+        {
+          "phase": "observation",
+          "sequence": 650,
+          "time": 1788687522.5181415,
+          "target": "blue_pad",
+          "request_id": "6395f2c82ab94051b51dc30fb68e090c",
+          "perception_source": "florence2_yoloe_sam2_lk_rgb",
+          "views": {
+            "scene_camera": {
+              "points": 4489,
+              "camera_world": [
+                [
+                  0.7556891464260086,
+                  0.44814070853202614,
+                  -0.477602155910486,
+                  1.0
+                ],
+                [
+                  0.6549304649914587,
+                  -0.5170855883243711,
+                  0.5510794682922878,
+                  -0.6000000238418579
+                ],
+                [
+                  -4.8396003538009325e-08,
+                  -0.7292409750580754,
+                  -0.6842569694905162,
+                  0.800000011920929
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "intrinsics": [
+                [
+                  549.7494506835938,
+                  0.0,
+                  320.0
+                ],
+                [
+                  0.0,
+                  549.7494506835938,
+                  240.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "bounds_world": [
+                [
+                  0.3699725378380543,
+                  0.1098453023791579,
+                  0.0017694299325002882
+                ],
+                [
+                  0.5487470056398494,
+                  0.28644750166643096,
+                  0.01687641059001599
+                ]
+              ]
+            },
+            "side_camera": {
+              "points": 10530,
+              "camera_world": [
+                [
+                  -0.827918660490075,
+                  0.352453473164483,
+                  -0.43626510388365103,
+                  0.8999999761581421
+                ],
+                [
+                  0.5608481894526535,
+                  0.5202883745731159,
+                  -0.644010338171481,
+                  0.6200000047683716
+                ],
+                [
+                  -1.8659775280482904e-08,
+                  -0.7778666701552124,
+                  -0.6284293464357322,
+                  0.6600000262260437
+                ],
+                [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "intrinsics": [
+                [
+                  549.7494506835938,
+                  0.0,
+                  320.0
+                ],
+                [
+                  0.0,
+                  549.7494506835938,
+                  240.0
+                ],
+                [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              ],
+              "bounds_world": [
+                [
+                  0.37163024307340786,
+                  0.11140630754636904,
+                  0.002373601922654456
+                ],
+                [
+                  0.5503856389604169,
+                  0.2892407975277001,
+                  0.01667850747704469
+                ]
+              ]
+            }
+          },
+          "models": [
+            {
+              "camera": "scene_camera",
+              "label": "blue pad",
+              "sequence": 629,
+              "status": "observed",
+              "box": [
+                314.0,
+                170.0,
+                427.0,
+                247.0
+              ],
+              "mask_pixels": 4721,
+              "stages": [
+                {
+                  "model": "florence2",
+                  "operation": "find",
+                  "candidates": 1
+                },
+                {
+                  "model": "yoloe",
+                  "operation": "visual_prompt",
+                  "candidates": 1
+                },
+                {
+                  "model": "sam2_tiny",
+                  "operation": "segment",
+                  "score": 0.98046875
+                }
+              ],
+              "elapsed_s": 0.5530375707894564
+            },
+            {
+              "camera": "side_camera",
+              "label": "blue pad",
+              "sequence": 629,
+              "status": "observed",
+              "box": [
+                322.0,
+                269.0,
+                484.0,
+                393.0
+              ],
+              "mask_pixels": 10871,
+              "stages": [
+                {
+                  "model": "florence2",
+                  "operation": "find",
+                  "candidates": 1
+                },
+                {
+                  "model": "yoloe",
+                  "operation": "visual_prompt",
+                  "candidates": 1
+                },
+                {
+                  "model": "sam2_tiny",
+                  "operation": "segment",
+                  "score": 0.984375
+                }
+              ],
+              "elapsed_s": 0.4997142404317856
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "bus_metadata_audit": {
+    "events": 120,
+    "deliveries": [
+      {
+        "agent_id": "robot.vision",
+        "count": 60
+      }
+    ],
+    "binary_fields_present": false,
+    "example": {
+      "type": "perception.reported",
+      "source": "robot.vision",
+      "task_id": "task_evt_ac417e01-a6d5-4f1c-a591-7728f5e761cf",
+      "correlation_id": "deaf43ac-d5e3-477a-affb-3970a346155a",
+      "causation_id": "evt_ecf6923e-39aa-440a-9e62-fa7331e9e112"
+    },
+    "fields": [
+      "eventId",
+      "eventType",
+      "appId",
+      "sourceAgentId",
+      "correlationId",
+      "causationId",
+      "taskId",
+      "taskVersion",
+      "priority",
+      "createdAt",
+      "payload",
+      "command_id",
+      "request_id",
+      "label",
+      "ok",
+      "elapsed_s",
+      "views",
+      "0",
+      "camera",
+      "sequence",
+      "status",
+      "box",
+      "1",
+      "2",
+      "3",
+      "mask_pixels",
+      "stages",
+      "model",
+      "flow_reason",
+      "flow_points",
+      "flow_shift_px",
+      "flow_fb_median_px",
+      "result_ref",
+      "observation",
+      "perception_source",
+      "operation",
+      "candidates",
+      "score",
+      "4"
+    ]
+  },
+  "notes": [
+    "vision-yellow-fail retained: side-camera mask included gripper. Held observations changed to wrist-first; mask boundary depth removed.",
+    "vision-web-red and the pre-fix vision-yellow-fail were public web commands through BusAgent; other runs called Arena HTTP directly.",
+    "Arena execution durations include image and pose inference, exclude language understanding and startup.",
+    "Images and masks stored locally in output/perception; only observation metadata enters BusAgent."
+  ]
+}
