@@ -74,6 +74,8 @@ class CommandQueue:
 
 
 def serve(runtime, app, port):
+    from mr_liu.arena.workspace import Workspace
+    workspace = Workspace(runtime)
     commands = CommandQueue(runtime.output / "commands.json")
 
     class Handler(BaseHTTPRequestHandler):
@@ -90,6 +92,7 @@ def serve(runtime, app, port):
         def do_GET(self):
             path = self.path.split("?", 1)[0]
             if path in {"/health", "/healthz"}: return self.respond(200, {"ready": True, "service": "arena-panda"})
+            if path == "/api/workspace": return self.respond(200, workspace.snapshot)
             if path == "/api/status": return self.respond(200, runtime.snapshot)
             if path == "/api/capabilities": return self.respond(200, runtime.capabilities())
             if path.startswith("/api/commands/"):
@@ -122,7 +125,7 @@ def serve(runtime, app, port):
                     return self.respond(200, {"ok": True, "state": "completed", "command_id": body.get("command_id"),
                                               "message": "Arena Panda state", "status": runtime.snapshot,
                                               **(runtime.capabilities() if skill == "capabilities" else {})})
-                if skill not in runtime.capabilities()["skills"]: raise ValueError("Unsupported skill")
+                if skill != "workspace" and skill not in runtime.capabilities()["skills"]: raise ValueError("Unsupported skill")
                 return self.respond(202, commands.submit(body))
             except (ValueError, TypeError, KeyError) as exc:
                 return self.respond(422, {"ok": False, "state": "failed", "message": str(exc)})
@@ -141,7 +144,9 @@ def serve(runtime, app, port):
                 continue
             if not commands.claim(command["command_id"]):
                 continue
-            commands.update(command["command_id"], runtime.execute(command))
+            result = workspace.execute(command) if command["skill"] == "workspace" else runtime.execute(command)
+            commands.update(command["command_id"], result)
+            workspace.refresh()
             runtime.stop_requested.clear()
     finally:
         server.shutdown()
