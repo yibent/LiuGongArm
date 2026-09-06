@@ -11,7 +11,8 @@ git submodule update --init BusAgent
 ```
 
 服务器启动：`python3 ops/arena_stack.py start`。端口为 8991（控制台）、8993（观察台）；8999 预留。
-验证结果和当前未完成的能力见上述适配文档。
+视觉已接入 [按任务选择的快慢环](docs/FAST_SLOW_LOOPS.md)：YOLOE／SAM2／光流优先，困难概念由 SAM3 定位，Florence 提供场景描述。视觉参考持久保存，图像不进入上层语言模型；Qwen 多模态 API 仍为计划。
+验证结果和当前未完成的能力见上述适配文档及 [视觉链路](docs/ARENA_VISION_PIPELINE.md)。
 
 ## 原分支实验记录
 

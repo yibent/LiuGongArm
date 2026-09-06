@@ -40,6 +40,8 @@ class ArenaRuntime:
         self.visual_result = None
         self.observing = False
         self.last_track = 0
+        self.tracking = None
+        self.tracking_stop = threading.Event()
         self.gripper = 1.
         self.goal = self.tcp_pose()
         self.events = []
@@ -73,7 +75,11 @@ class ArenaRuntime:
                 "grasp": {"backend": "official_pick_place_or_graspgenx", "ready": True},
                 "placement": {"backend": "official_pick_place_or_anyplace", "relations": ["on"]},
                 "routing": "fast_first_then_models_once; complex_tasks_use_models_directly",
-                "vla_loaded": False, "perception_source": "florence2_yoloe_sam2_lk_rgbd",
+                "vla_loaded": False, "perception_source": "task_routed_rgbd",
+                "vision": {"architecture": "task_routed_fast_slow", "visual_tracking": True,
+                    "persistent_memory": True, "fast": ["yoloe_text", "yoloe_visual", "sam2_tiny", "lk"],
+                    "slow_localizer": self.config['vision'].get('slow_localizer'),
+                    "scene_description": "florence2", "planned_disabled": ["qwen_multimodal"]},
                 "frame": "world", "quaternion": "xyzw", "units": "metres",
                 "objects": self.config["objects"], "destinations": self.config["destinations"]}
 
@@ -86,6 +92,8 @@ class ArenaRuntime:
                          "tcp_pose_world": tcp.tolist(), "prompt": self.selected_target,
                          "last_result": self.last_result,
                          "vision": self.visual_result,
+                         "visual_tracking": {"enabled": self.tracking is not None,
+                             "target": self.tracking['label'] if self.tracking else None},
                          "motion": {"mode": "hold" if self.phase == "idle" else "moving",
                                     "active_command_id": self.current,
                                     "joint_positions_deg": dict(zip(robot.joint_names[:7], np.rad2deg(numpy_data(robot.data.joint_pos)[0, :7]).tolist())),
@@ -118,15 +126,28 @@ class ArenaRuntime:
                 self.frames[key] = encoded.getvalue()
             self.refresh_snapshot()
         if hasattr(self, 'vision_worker'):
+            if self.tracking_stop.is_set():
+                self.tracking = None
+                self.tracking_stop.clear()
             try:
                 result = self.vision_worker.poll()
-                if result and result.get('command_id') == self.current: self.visual_result = result
+                expected = self.current or (self.tracking['command_id'] if self.tracking else None)
+                if result and result.get('command_id') == expected:
+                    self.visual_result = result
+                    if self.tracking and not self.current:
+                        # One slow recovery per loss episode; keep looking with the fast detector afterwards.
+                        self.tracking['lost'] = not result.get('ok', False)
             except Exception as error:
                 self.visual_result = {'ok': False, 'error': str(error), 'views': []}
-            if (self.target_name and self.current and not self.observing and self.vision_worker.available
+            track_label = self.target_name if self.current else (self.tracking['label'] if self.tracking else None)
+            if (track_label and not self.observing and self.vision_worker.available
                     and self.sequence-self.last_track >= self.config['vision']['track_every_steps']):
                 self.last_track = self.sequence
-                packet = self.perception.capture(self, self.target_name, cameras=['scene_camera'])
+                packet = self.perception.capture(self, track_label, cameras=['scene_camera'], transient=True,
+                    vision_mode='fast' if self.tracking and self.tracking['lost'] else 'auto')
+                if self.tracking and not self.current:
+                    packet.update(command_id=self.tracking['command_id'], **self.tracking['context'])
+                    (self.perception.root/packet['request_id']/'request.json').write_text(json.dumps(packet))
                 self.vision_worker.submit(packet)
 
     def event(self, phase, **data):
@@ -135,21 +156,26 @@ class ArenaRuntime:
         print(json.dumps(self.events[-1], ensure_ascii=False), flush=True)
         self.refresh_snapshot()
 
-    def cloud(self, name):
+    def cloud(self, name, **vision_options):
         self.observing = True
         try:
             # Retire a tracking request before requesting a geometric observation.
             while not self.vision_worker.available: self.tick()
             for _ in range(self.config['camera']['render_interval']): self.tick()
-            packet = self.perception.capture(self, name, refine=True)
+            packet = self.perception.capture(self, name, refine=True, **vision_options)
             self.event('visual_observation', target=name, request_id=packet['request_id'])
             result = self.infer(self.perception.request, packet)
             if not result.get('ok') and self.held == name:
-                packet = self.perception.capture(self, name, refine=True, cameras=['scene_camera', 'side_camera'])
+                packet = self.perception.capture(self, name, refine=True, cameras=['scene_camera', 'side_camera'], **vision_options)
                 result = self.infer(self.perception.request, packet)
             self.visual_result = result
             if not result.get('ok'):
-                raise RuntimeError('Visual observation failed: '+str(result.get('error') or result.get('views')))
+                states = {v.get('status') for v in result.get('views', [])}
+                message = ('目标不唯一，请指定其中一个' if 'ambiguous' in states else
+                           '所选视觉模型不可用' if 'provider_unavailable' in states else
+                           '视觉服务调用失败' if result.get('error') else '本次画面未找到目标')
+                # Full diagnostics remain in result.vision, not in the console's action label.
+                raise RuntimeError(f'{message}：{name}')
             points, views = self.perception.cloud(result)
             self.event('observation', target=name, request_id=packet['request_id'],
                        perception_source=result['perception_source'], views=views, models=result['views'])
@@ -280,7 +306,9 @@ class ArenaRuntime:
         object_input = np.eye(4)
         object_input[:3, 3] = np.quantile(child, [.02, .98], axis=0).mean(axis=0)
         tcp_to_object = invert_transform(self.tcp_pose()) @ object_input
-        parent = self.cloud(destination["name"])
+        # Placement needs the named support surface, excluding other objects
+        # inside its box. Use semantic segmentation for this geometry task.
+        parent = self.cloud(destination["name"], vision_mode='slow', slow_provider='sam3')
         cfg = self.config["anyplace"]
         self.event("placement_inference", backend="anyplace", parent_points=len(parent), child_points=len(child))
         client = AnyPlaceClient(cfg["url"], cfg["timeout_s"])
@@ -337,6 +365,7 @@ class ArenaRuntime:
 
     def execute(self, command):
         self.current = command["command_id"]; self.events = []; started = time.time()
+        self.tracking = None
         self.visual_result = None
         self.bus_context = {key:command[key] for key in ('task_id','task_version','correlation_id','causation_id') if key in command}
         attempts = []
@@ -369,7 +398,7 @@ class ArenaRuntime:
                     self.observing = True
                     try:
                         while not self.vision_worker.available: self.tick()
-                        packet = self.perception.capture(self, None)
+                        packet = self.perception.capture(self, None, scene_mode=params.get('scene_mode', 'describe'))
                         self.event('visual_observation', scope='scene', request_id=packet['request_id'])
                         observed = self.infer(self.perception.request, packet)
                         self.visual_result = observed
@@ -386,8 +415,17 @@ class ArenaRuntime:
                     color = params.get("attributes", {}).get("color", "")
                     if color and color not in label: label = color + " " + label
                     self.selected_target = label
-                    cloud = self.cloud(label)
-                    result = {"ok": True, "message": "Target observed", "points": len(cloud), "target": label}
+                    cloud = self.cloud(label, vision_mode=params.get('vision_mode', 'auto'),
+                                       slow_provider=params.get('slow_provider'))
+                    semantic = self.visual_result.get('semantic_status', 'unknown')
+                    result = {"ok": True, "message": "Target matched by detector" if semantic == 'detected' else
+                        "Only a provisional visual region was located. The queried category is unconfirmed; do not report it as a confirmed object.",
+                        "points": len(cloud), "target": label, "semantic_status": semantic}
+                    if params.get('tracking'):
+                        self.tracking = {'label': label, 'command_id': self.current,
+                                         'context': self.bus_context.copy(), 'lost': False}
+                        result.update(visual_tracking=True,
+                            message='Visual tracking enabled; robot pose is unchanged. Target semantics: '+semantic)
             elif skill == "home":
                 goal = np.eye(4); goal[:3, :3] = np.diag([1., -1., -1.]); goal[:3, 3] = [.4, 0., .3]
                 self.move(goal, label="home")

@@ -114,6 +114,7 @@ def serve(runtime, app, port):
                 if self.path != "/api/command": return self.respond(404, {"error": "not found"})
                 skill = body.get("skill")
                 if skill in {"hold", "stop"}:
+                    runtime.tracking_stop.set()
                     commands.interrupt(runtime.stop_requested)
                     return self.respond(200, {"ok": True, "state": "completed", "command_id": body.get("command_id"),
                                               "message": "Stop requested; active command reports measured termination separately"})

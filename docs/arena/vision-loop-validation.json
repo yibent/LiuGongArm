@@ -1,0 +1,1953 @@
+{
+  "date": "2026-09-06",
+  "hardware": "RTX 4090, 24 GB; Isaac, grasp/place and vision services shared GPU",
+  "scope": "Development regression on recorded real Isaac camera images and live BusAgent queries; not an industrial accuracy benchmark",
+  "image_cases": [
+    {
+      "case": "red_fast",
+      "result": {
+        "request_id": "5b17fb1cbc824ee7960c86a2169093f2",
+        "command_id": "red_fast",
+        "label": "red block",
+        "views": [
+          {
+            "camera": "scene_camera",
+            "label": "red block",
+            "sequence": 1,
+            "status": "observed",
+            "semantic_status": "detected",
+            "origin": "yoloe_text",
+            "score": 0.8558511734008789,
+            "score_model": "yoloe_visual",
+            "memory_id": "1788697348-53a765f9",
+            "loop": "fast",
+            "fallback_reason": null,
+            "stages": [
+              {
+                "model": "yoloe",
+                "loop": "fast",
+                "operation": "memory_recall",
+                "memory_id": "1788697348-53a765f9",
+                "candidates": 1,
+                "best_score": 0.8558511734008789
+              },
+              {
+                "model": "sam2_tiny",
+                "loop": "fast",
+                "operation": "segment",
+                "mask_score": 0.96484375
+              }
+            ],
+            "elapsed_s": 0.8264654651284218,
+            "box": [
+              261.0,
+              265.0,
+              296.0,
+              305.0
+            ],
+            "mask_pixels": 987
+          },
+          {
+            "camera": "side_camera",
+            "label": "red block",
+            "sequence": 1,
+            "status": "observed",
+            "semantic_status": "detected",
+            "origin": "yoloe_text",
+            "score": 0.685949444770813,
+            "score_model": "yoloe_visual",
+            "memory_id": "1788697348-53a765f9",
+            "loop": "fast",
+            "fallback_reason": null,
+            "stages": [
+              {
+                "model": "yoloe",
+                "loop": "fast",
+                "operation": "memory_recall",
+                "memory_id": "1788697348-53a765f9",
+                "candidates": 1,
+                "best_score": 0.685949444770813
+              },
+              {
+                "model": "sam2_tiny",
+                "loop": "fast",
+                "operation": "segment",
+                "mask_score": 0.96875
+              }
+            ],
+            "elapsed_s": 0.1422018874436617,
+            "box": [
+              268.0,
+              202.0,
+              302.0,
+              240.0
+            ],
+            "mask_pixels": 942
+          }
+        ],
+        "result_ref": "5b17fb1cbc824ee7960c86a2169093f2",
+        "scope": "target",
+        "observed_at": 1788697627.473332,
+        "elapsed_s": 0.9831426981836557,
+        "ok": true,
+        "perception_source": "task_routed_image_models",
+        "transient": false,
+        "loop": "fast",
+        "fallback_reasons": [],
+        "semantic_status": "detected"
+      }
+    },
+    {
+      "case": "red_flow",
+      "result": {
+        "request_id": "aed0fb3de4564ab39bb663be88869520",
+        "command_id": "red_flow",
+        "label": "red block",
+        "views": [
+          {
+            "camera": "scene_camera",
+            "label": "red block",
+            "sequence": 2,
+            "status": "observed",
+            "semantic_status": "detected",
+            "origin": "yoloe_text",
+            "score": 0.8558511734008789,
+            "score_model": "yoloe_visual",
+            "memory_id": "1788697348-53a765f9",
+            "loop": "fast",
+            "fallback_reason": null,
+            "stages": [
+              {
+                "model": "lk",
+                "loop": "fast",
+                "flow_reason": "lk_forward_backward",
+                "flow_points": 66,
+                "flow_shift_px": [
+                  0.0,
+                  0.0
+                ],
+                "flow_fb_median_px": 0.0
+              }
+            ],
+            "elapsed_s": 0.008504077792167664,
+            "box": [
+              261.0,
+              265.0,
+              296.0,
+              305.0
+            ],
+            "mask_pixels": 987
+          },
+          {
+            "camera": "side_camera",
+            "label": "red block",
+            "sequence": 2,
+            "status": "observed",
+            "semantic_status": "detected",
+            "origin": "yoloe_text",
+            "score": 0.685949444770813,
+            "score_model": "yoloe_visual",
+            "memory_id": "1788697348-53a765f9",
+            "loop": "fast",
+            "fallback_reason": null,
+            "stages": [
+              {
+                "model": "lk",
+                "loop": "fast",
+                "flow_reason": "lk_forward_backward",
+                "flow_points": 55,
+                "flow_shift_px": [
+                  0.0,
+                  0.0
+                ],
+                "flow_fb_median_px": 0.0
+              }
+            ],
+            "elapsed_s": 0.0076368749141693115,
+            "box": [
+              268.0,
+              202.0,
+              302.0,
+              240.0
+            ],
+            "mask_pixels": 942
+          }
+        ],
+        "result_ref": "aed0fb3de4564ab39bb663be88869520",
+        "scope": "target",
+        "observed_at": 1788697628.4830852,
+        "elapsed_s": 0.02924085035920143,
+        "ok": true,
+        "perception_source": "task_routed_image_models",
+        "transient": false,
+        "loop": "fast",
+        "fallback_reasons": [],
+        "semantic_status": "detected"
+      }
+    },
+    {
+      "case": "yellow_auto",
+      "result": {
+        "request_id": "3382ea285e2a407db85da7c096117de4",
+        "command_id": "yellow_auto",
+        "label": "yellow cylinder",
+        "views": [
+          {
+            "camera": "scene_camera",
+            "label": "yellow cylinder",
+            "sequence": 3,
+            "status": "observed",
+            "semantic_status": "detected",
+            "origin": "sam3",
+            "score": 0.93408203125,
+            "score_model": "sam3",
+            "memory_id": "1788697350-d4e6c241",
+            "loop": "slow",
+            "fallback_reason": "no_text_detection",
+            "stages": [
+              {
+                "model": "yoloe",
+                "loop": "fast",
+                "operation": "memory_recall",
+                "memory_id": "1788697350-d4e6c241",
+                "candidates": 0,
+                "best_score": 0.3849121630191803
+              },
+              {
+                "model": "yoloe",
+                "loop": "fast",
+                "operation": "memory_recall",
+                "memory_id": "1788697350-d4e6c241",
+                "candidates": 0,
+                "best_score": 0.22815649211406708
+              },
+              {
+                "model": "yoloe",
+                "loop": "fast",
+                "operation": "text_detect",
+                "candidates": 0,
+                "accepted": 0,
+                "best_score": 0.0,
+                "elapsed_s": 0.6732864063233137
+              },
+              {
+                "model": "sam3",
+                "loop": "slow",
+                "operation": "find",
+                "reason": "no_text_detection",
+                "candidates": 1
+              }
+            ],
+            "elapsed_s": 1.4304115194827318,
+            "box": [
+              279.0,
+              310.0,
+              303.0,
+              346.0
+            ],
+            "mask_pixels": 723
+          },
+          {
+            "camera": "side_camera",
+            "label": "yellow cylinder",
+            "sequence": 3,
+            "status": "observed",
+            "semantic_status": "detected",
+            "origin": "sam3",
+            "score": 0.916015625,
+            "score_model": "sam3",
+            "memory_id": "1788697350-d4e6c241",
+            "loop": "slow",
+            "fallback_reason": "low_confidence",
+            "stages": [
+              {
+                "model": "yoloe",
+                "loop": "fast",
+                "operation": "memory_recall",
+                "memory_id": "1788697350-d4e6c241",
+                "candidates": 0,
+                "best_score": 0.3415825068950653
+              },
+              {
+                "model": "yoloe",
+                "loop": "fast",
+                "operation": "memory_recall",
+                "memory_id": "1788697350-d4e6c241",
+                "candidates": 0,
+                "best_score": 0.19682618975639343
+              },
+              {
+                "model": "yoloe",
+                "loop": "fast",
+                "operation": "text_detect",
+                "candidates": 1,
+                "accepted": 0,
+                "best_score": 0.14414885640144348,
+                "elapsed_s": 0.06803782470524311
+              },
+              {
+                "model": "sam3",
+                "loop": "slow",
+                "operation": "find",
+                "reason": "low_confidence",
+                "candidates": 1
+              }
+            ],
+            "elapsed_s": 0.4274333603680134,
+            "box": [
+              217.0,
+              203.0,
+              240.0,
+              237.0
+            ],
+            "mask_pixels": 640
+          }
+        ],
+        "result_ref": "3382ea285e2a407db85da7c096117de4",
+        "scope": "target",
+        "observed_at": 1788697628.5153544,
+        "elapsed_s": 1.871916325762868,
+        "ok": true,
+        "perception_source": "task_routed_image_models",
+        "transient": false,
+        "loop": "slow",
+        "fallback_reasons": [
+          "low_confidence",
+          "no_text_detection"
+        ],
+        "semantic_status": "detected"
+      }
+    },
+    {
+      "case": "yellow_sam3",
+      "result": {
+        "request_id": "711a6cceba974b218ff9941ed768c63a",
+        "command_id": "yellow_sam3",
+        "label": "yellow cylinder",
+        "views": [
+          {
+            "camera": "scene_camera",
+            "label": "yellow cylinder",
+            "sequence": 4,
+            "status": "observed",
+            "semantic_status": "detected",
+            "origin": "sam3",
+            "score": 0.93408203125,
+            "score_model": "sam3",
+            "memory_id": "1788697350-d4e6c241",
+            "loop": "slow",
+            "fallback_reason": "frame_gap_or_reset",
+            "stages": [
+              {
+                "model": "sam3",
+                "loop": "slow",
+                "operation": "find",
+                "reason": "frame_gap_or_reset",
+                "candidates": 1
+              }
+            ],
+            "elapsed_s": 0.13793841563165188,
+            "box": [
+              279.0,
+              310.0,
+              303.0,
+              346.0
+            ],
+            "mask_pixels": 723
+          },
+          {
+            "camera": "side_camera",
+            "label": "yellow cylinder",
+            "sequence": 4,
+            "status": "observed",
+            "semantic_status": "detected",
+            "origin": "sam3",
+            "score": 0.916015625,
+            "score_model": "sam3",
+            "memory_id": "1788697350-d4e6c241",
+            "loop": "slow",
+            "fallback_reason": "frame_gap_or_reset",
+            "stages": [
+              {
+                "model": "sam3",
+                "loop": "slow",
+                "operation": "find",
+                "reason": "frame_gap_or_reset",
+                "candidates": 1
+              }
+            ],
+            "elapsed_s": 0.14187845215201378,
+            "box": [
+              217.0,
+              203.0,
+              240.0,
+              237.0
+            ],
+            "mask_pixels": 640
+          }
+        ],
+        "result_ref": "711a6cceba974b218ff9941ed768c63a",
+        "scope": "target",
+        "observed_at": 1788697630.390644,
+        "elapsed_s": 0.29358716681599617,
+        "ok": true,
+        "perception_source": "task_routed_image_models",
+        "transient": false,
+        "loop": "slow",
+        "fallback_reasons": [
+          "frame_gap_or_reset"
+        ],
+        "semantic_status": "detected"
+      }
+    },
+    {
+      "case": "yellow_flow",
+      "result": {
+        "request_id": "2f61a085c026410d9a4c1bc10e707638",
+        "command_id": "yellow_flow",
+        "label": "yellow cylinder",
+        "views": [
+          {
+            "camera": "scene_camera",
+            "label": "yellow cylinder",
+            "sequence": 5,
+            "status": "observed",
+            "semantic_status": "detected",
+            "origin": "sam3",
+            "score": 0.93408203125,
+            "score_model": "sam3",
+            "memory_id": "1788697350-d4e6c241",
+            "loop": "fast",
+            "fallback_reason": null,
+            "stages": [
+              {
+                "model": "lk",
+                "loop": "fast",
+                "flow_reason": "lk_forward_backward",
+                "flow_points": 51,
+                "flow_shift_px": [
+                  0.0,
+                  0.0
+                ],
+                "flow_fb_median_px": 0.0
+              }
+            ],
+            "elapsed_s": 0.008158976212143898,
+            "box": [
+              279.0,
+              310.0,
+              303.0,
+              346.0
+            ],
+            "mask_pixels": 723
+          },
+          {
+            "camera": "side_camera",
+            "label": "yellow cylinder",
+            "sequence": 5,
+            "status": "observed",
+            "semantic_status": "detected",
+            "origin": "sam3",
+            "score": 0.916015625,
+            "score_model": "sam3",
+            "memory_id": "1788697350-d4e6c241",
+            "loop": "fast",
+            "fallback_reason": null,
+            "stages": [
+              {
+                "model": "lk",
+                "loop": "fast",
+                "flow_reason": "lk_forward_backward",
+                "flow_points": 34,
+                "flow_shift_px": [
+                  0.0,
+                  0.0
+                ],
+                "flow_fb_median_px": 0.0
+              }
+            ],
+            "elapsed_s": 0.007326681166887283,
+            "box": [
+              217.0,
+              203.0,
+              240.0,
+              237.0
+            ],
+            "mask_pixels": 640
+          }
+        ],
+        "result_ref": "2f61a085c026410d9a4c1bc10e707638",
+        "scope": "target",
+        "observed_at": 1788697630.6878593,
+        "elapsed_s": 0.029283206909894943,
+        "ok": true,
+        "perception_source": "task_routed_image_models",
+        "transient": false,
+        "loop": "fast",
+        "fallback_reasons": [],
+        "semantic_status": "detected"
+      }
+    },
+    {
+      "case": "yellow_recall",
+      "result": {
+        "request_id": "e4dea72e30b04e4ca79c2077e1c9bdaa",
+        "command_id": "yellow_recall",
+        "label": "yellow cylinder",
+        "views": [
+          {
+            "camera": "scene_camera",
+            "label": "yellow cylinder",
+            "sequence": 500,
+            "status": "observed",
+            "semantic_status": "detected",
+            "origin": "sam3",
+            "score": 0.46101677417755127,
+            "score_model": "yoloe_visual",
+            "memory_id": "1788697350-d4e6c241",
+            "loop": "fast",
+            "fallback_reason": null,
+            "stages": [
+              {
+                "model": "yoloe",
+                "loop": "fast",
+                "operation": "memory_recall",
+                "memory_id": "1788697350-d4e6c241",
+                "candidates": 1,
+                "best_score": 0.46101677417755127
+              },
+              {
+                "model": "sam2_tiny",
+                "loop": "fast",
+                "operation": "segment",
+                "mask_score": 0.96875
+              }
+            ],
+            "elapsed_s": 0.24013485573232174,
+            "box": [
+              279.0,
+              310.0,
+              304.0,
+              347.0
+            ],
+            "mask_pixels": 732
+          },
+          {
+            "camera": "side_camera",
+            "label": "yellow cylinder",
+            "sequence": 500,
+            "status": "observed",
+            "semantic_status": "detected",
+            "origin": "sam3",
+            "score": 0.5078118443489075,
+            "score_model": "yoloe_visual",
+            "memory_id": "1788697350-d4e6c241",
+            "loop": "fast",
+            "fallback_reason": null,
+            "stages": [
+              {
+                "model": "yoloe",
+                "loop": "fast",
+                "operation": "memory_recall",
+                "memory_id": "1788697350-d4e6c241",
+                "candidates": 1,
+                "best_score": 0.5078118443489075
+              },
+              {
+                "model": "sam2_tiny",
+                "loop": "fast",
+                "operation": "segment",
+                "mask_score": 0.96875
+              }
+            ],
+            "elapsed_s": 0.21601074002683163,
+            "box": [
+              217.0,
+              203.0,
+              241.0,
+              237.0
+            ],
+            "mask_pixels": 650
+          }
+        ],
+        "result_ref": "e4dea72e30b04e4ca79c2077e1c9bdaa",
+        "scope": "target",
+        "observed_at": 1788697630.7271423,
+        "elapsed_s": 0.4696392361074686,
+        "ok": true,
+        "perception_source": "task_routed_image_models",
+        "transient": false,
+        "loop": "fast",
+        "fallback_reasons": [],
+        "semantic_status": "detected"
+      }
+    },
+    {
+      "case": "absent_object",
+      "result": {
+        "request_id": "61fa853706884623b73efde9bfcfcf75",
+        "command_id": "absent_object",
+        "label": "purple wrench",
+        "views": [
+          {
+            "camera": "scene_camera",
+            "label": "purple wrench",
+            "sequence": 501,
+            "status": "not_found",
+            "semantic_status": "unknown",
+            "origin": null,
+            "score": null,
+            "score_model": null,
+            "memory_id": null,
+            "loop": "slow",
+            "fallback_reason": "no_text_detection",
+            "stages": [
+              {
+                "model": "yoloe",
+                "loop": "fast",
+                "operation": "text_detect",
+                "candidates": 0,
+                "accepted": 0,
+                "best_score": 0.0,
+                "elapsed_s": 3.227121150121093
+              },
+              {
+                "model": "sam3",
+                "loop": "slow",
+                "operation": "find",
+                "reason": "no_text_detection",
+                "candidates": 0
+              }
+            ],
+            "elapsed_s": 3.3666013833135366
+          },
+          {
+            "camera": "side_camera",
+            "label": "purple wrench",
+            "sequence": 501,
+            "status": "not_found",
+            "semantic_status": "unknown",
+            "origin": null,
+            "score": null,
+            "score_model": null,
+            "memory_id": null,
+            "loop": "slow",
+            "fallback_reason": "low_confidence",
+            "stages": [
+              {
+                "model": "yoloe",
+                "loop": "fast",
+                "operation": "text_detect",
+                "candidates": 1,
+                "accepted": 0,
+                "best_score": 0.1037486344575882,
+                "elapsed_s": 0.020031897351145744
+              },
+              {
+                "model": "sam3",
+                "loop": "slow",
+                "operation": "find",
+                "reason": "low_confidence",
+                "candidates": 0
+              }
+            ],
+            "elapsed_s": 0.13214272446930408
+          }
+        ],
+        "result_ref": "61fa853706884623b73efde9bfcfcf75",
+        "scope": "target",
+        "observed_at": 1788697631.2003405,
+        "elapsed_s": 3.508362239226699,
+        "ok": false,
+        "perception_source": "task_routed_image_models",
+        "transient": false,
+        "loop": "slow",
+        "fallback_reasons": [
+          "low_confidence",
+          "no_text_detection"
+        ],
+        "semantic_status": "unknown"
+      }
+    },
+    {
+      "case": "scene_fast_inventory",
+      "result": {
+        "request_id": "6e3467b6603d437789169e501b96e6df",
+        "command_id": "scene_fast_inventory",
+        "label": "scene",
+        "views": [
+          {
+            "camera": "scene_camera",
+            "sequence": 502,
+            "status": "observed",
+            "objects": [
+              {
+                "label": "blue pad",
+                "box": [
+                  315.0,
+                  169.75,
+                  427.5,
+                  245.5
+                ],
+                "score": 0.8723474144935608,
+                "semantic_status": "detected",
+                "memory_id": "1788697634-190a6648"
+              },
+              {
+                "label": "red block",
+                "box": [
+                  260.9375,
+                  265.5,
+                  295.5,
+                  305.125
+                ],
+                "score": 0.8397339582443237,
+                "semantic_status": "detected",
+                "memory_id": "1788697348-53a765f9"
+              },
+              {
+                "label": "yellow object",
+                "box": [
+                  279.25,
+                  310.0,
+                  303.625,
+                  346.3125
+                ],
+                "score": 0.685949444770813,
+                "semantic_status": "detected",
+                "memory_id": "1788697634-9fb4180b"
+              }
+            ],
+            "regions": [],
+            "exhaustive_inventory": false,
+            "unconfirmed_queries": [],
+            "loop": "fast",
+            "stages": [
+              {
+                "model": "yoloe",
+                "loop": "fast",
+                "operation": "text_detect",
+                "candidates": 4,
+                "accepted": 3,
+                "best_score": 0.8723474144935608,
+                "elapsed_s": 0.05834423005580902
+              }
+            ],
+            "elapsed_s": 0.12453540042042732
+          },
+          {
+            "camera": "side_camera",
+            "sequence": 502,
+            "status": "observed",
+            "objects": [
+              {
+                "label": "blue pad",
+                "box": [
+                  322.5,
+                  268.75,
+                  485.5,
+                  392.0
+                ],
+                "score": 0.9086179733276367,
+                "semantic_status": "detected",
+                "memory_id": "1788697634-190a6648"
+              },
+              {
+                "label": "red block",
+                "box": [
+                  268.4375,
+                  202.125,
+                  301.5,
+                  239.125
+                ],
+                "score": 0.8031737804412842,
+                "semantic_status": "detected",
+                "memory_id": "1788697348-53a765f9"
+              },
+              {
+                "label": "yellow object",
+                "box": [
+                  216.875,
+                  203.25,
+                  240.375,
+                  236.625
+                ],
+                "score": 0.5078118443489075,
+                "semantic_status": "detected",
+                "memory_id": "1788697634-9fb4180b"
+              }
+            ],
+            "regions": [],
+            "exhaustive_inventory": false,
+            "unconfirmed_queries": [],
+            "loop": "fast",
+            "stages": [
+              {
+                "model": "yoloe",
+                "loop": "fast",
+                "operation": "text_detect",
+                "candidates": 3,
+                "accepted": 3,
+                "best_score": 0.9086179733276367,
+                "elapsed_s": 0.021186260506510735
+              }
+            ],
+            "elapsed_s": 0.08814674988389015
+          }
+        ],
+        "result_ref": "6e3467b6603d437789169e501b96e6df",
+        "scope": "scene",
+        "observed_at": 1788697634.7125542,
+        "elapsed_s": 0.22161166369915009,
+        "ok": true,
+        "perception_source": "task_routed_image_models",
+        "transient": false,
+        "loop": "fast",
+        "fallback_reasons": [],
+        "semantic_status": "scene"
+      }
+    },
+    {
+      "case": "scene_description",
+      "result": {
+        "request_id": "02f77b37939f452cb5f9905b31c8efd5",
+        "command_id": "scene_description",
+        "label": "scene",
+        "views": [
+          {
+            "camera": "scene_camera",
+            "sequence": 503,
+            "status": "described",
+            "objects": [
+              {
+                "label": "blue pad",
+                "box": [
+                  315.0,
+                  169.75,
+                  427.5,
+                  245.5
+                ],
+                "score": 0.8723474144935608,
+                "semantic_status": "detected",
+                "memory_id": "1788697634-190a6648"
+              },
+              {
+                "label": "red block",
+                "box": [
+                  260.9375,
+                  265.5,
+                  295.5,
+                  305.125
+                ],
+                "score": 0.8397339582443237,
+                "semantic_status": "detected",
+                "memory_id": "1788697348-53a765f9"
+              },
+              {
+                "label": "yellow object",
+                "box": [
+                  279.25,
+                  310.0,
+                  303.625,
+                  346.3125
+                ],
+                "score": 0.685949444770813,
+                "semantic_status": "detected",
+                "memory_id": "1788697634-9fb4180b"
+              }
+            ],
+            "regions": [
+              {
+                "description": "3D rendering of a gray table with a red, yellow, and blue square on it.",
+                "box": [
+                  0,
+                  0,
+                  639,
+                  479
+                ]
+              }
+            ],
+            "exhaustive_inventory": false,
+            "unconfirmed_queries": [],
+            "loop": "slow",
+            "stages": [
+              {
+                "model": "yoloe",
+                "loop": "fast",
+                "operation": "text_detect",
+                "candidates": 4,
+                "accepted": 3,
+                "best_score": 0.8723474144935608,
+                "elapsed_s": 0.02156592160463333
+              },
+              {
+                "model": "florence2",
+                "loop": "slow",
+                "operation": "dense_region_caption",
+                "reason": "scene_description_requested"
+              }
+            ],
+            "elapsed_s": 0.80559909529984
+          },
+          {
+            "camera": "side_camera",
+            "sequence": 503,
+            "status": "described",
+            "objects": [
+              {
+                "label": "blue pad",
+                "box": [
+                  322.5,
+                  268.75,
+                  485.5,
+                  392.0
+                ],
+                "score": 0.9086179733276367,
+                "semantic_status": "detected",
+                "memory_id": "1788697634-190a6648"
+              },
+              {
+                "label": "red block",
+                "box": [
+                  268.4375,
+                  202.125,
+                  301.5,
+                  239.125
+                ],
+                "score": 0.8031737804412842,
+                "semantic_status": "detected",
+                "memory_id": "1788697348-53a765f9"
+              },
+              {
+                "label": "yellow object",
+                "box": [
+                  216.875,
+                  203.25,
+                  240.375,
+                  236.625
+                ],
+                "score": 0.5078118443489075,
+                "semantic_status": "detected",
+                "memory_id": "1788697634-9fb4180b"
+              }
+            ],
+            "regions": [
+              {
+                "description": "3D rendering of a gray surface with three objects on it",
+                "box": [
+                  0,
+                  10,
+                  639,
+                  479
+                ]
+              },
+              {
+                "description": "toy",
+                "box": [
+                  267,
+                  201,
+                  303,
+                  240
+                ]
+              },
+              {
+                "description": "toy",
+                "box": [
+                  216,
+                  202,
+                  241,
+                  237
+                ]
+              }
+            ],
+            "exhaustive_inventory": false,
+            "unconfirmed_queries": [],
+            "loop": "slow",
+            "stages": [
+              {
+                "model": "yoloe",
+                "loop": "fast",
+                "operation": "text_detect",
+                "candidates": 3,
+                "accepted": 3,
+                "best_score": 0.9086179733276367,
+                "elapsed_s": 0.025746138766407967
+              },
+              {
+                "model": "florence2",
+                "loop": "slow",
+                "operation": "dense_region_caption",
+                "reason": "scene_description_requested"
+              }
+            ],
+            "elapsed_s": 0.8375456817448139
+          }
+        ],
+        "result_ref": "02f77b37939f452cb5f9905b31c8efd5",
+        "scope": "scene",
+        "observed_at": 1788697634.9380207,
+        "elapsed_s": 1.6525543723255396,
+        "ok": true,
+        "perception_source": "task_routed_image_models",
+        "transient": false,
+        "loop": "slow",
+        "fallback_reasons": [],
+        "semantic_status": "scene"
+      }
+    }
+  ],
+  "bus_cases": [
+    {
+      "text": "重新观察红色方块",
+      "replies": [
+        {
+          "text": "正在重新观察红色方块。",
+          "elapsed_ms": 475
+        },
+        {
+          "text": "正在开始观察红色方块。",
+          "elapsed_ms": 2676
+        },
+        {
+          "text": "已定位到红色方块，准备执行下一步。",
+          "elapsed_ms": 3647
+        }
+      ],
+      "events": [
+        {
+          "event": "instruction.parsed",
+          "task_id": "task_evt_7eaf3176-ea3a-4ea3-941f-ba2757a06bac",
+          "elapsed_ms": 2237
+        },
+        {
+          "event": "execution.started",
+          "task_id": "task_evt_7eaf3176-ea3a-4ea3-941f-ba2757a06bac",
+          "elapsed_ms": 2452
+        },
+        {
+          "event": "execution.completed",
+          "task_id": "task_evt_7eaf3176-ea3a-4ea3-941f-ba2757a06bac",
+          "elapsed_ms": 3267
+        },
+        {
+          "event": "perception.reported",
+          "task_id": "task_evt_7eaf3176-ea3a-4ea3-941f-ba2757a06bac",
+          "elapsed_ms": 3267
+        }
+      ],
+      "vision": {
+        "request_id": "1a6756eb87444f808399487364a59391",
+        "command_id": "evt_35db5721-d8eb-4279-aa3f-1cd4971e3b0a:1",
+        "label": "red block",
+        "views": [
+          {
+            "camera": "scene_camera",
+            "label": "red block",
+            "sequence": 1160,
+            "status": "observed",
+            "semantic_status": "detected",
+            "origin": "yoloe_text",
+            "score": 0.9416541457176208,
+            "score_model": "yoloe_visual",
+            "memory_id": "1788697348-53a765f9",
+            "loop": "fast",
+            "fallback_reason": null,
+            "stages": [
+              {
+                "model": "yoloe",
+                "loop": "fast",
+                "operation": "memory_recall",
+                "memory_id": "1788697348-53a765f9",
+                "candidates": 1,
+                "best_score": 0.9416541457176208
+              },
+              {
+                "model": "sam2_tiny",
+                "loop": "fast",
+                "operation": "segment",
+                "mask_score": 0.9609375
+              }
+            ],
+            "elapsed_s": 0.2479178886860609,
+            "box": [
+              261,
+              265,
+              296,
+              305
+            ],
+            "mask_pixels": 977
+          },
+          {
+            "camera": "side_camera",
+            "label": "red block",
+            "sequence": 1160,
+            "status": "observed",
+            "semantic_status": "detected",
+            "origin": "yoloe_text",
+            "score": 0.7371581792831421,
+            "score_model": "yoloe_visual",
+            "memory_id": "1788697348-53a765f9",
+            "loop": "fast",
+            "fallback_reason": null,
+            "stages": [
+              {
+                "model": "yoloe",
+                "loop": "fast",
+                "operation": "memory_recall",
+                "memory_id": "1788697348-53a765f9",
+                "candidates": 1,
+                "best_score": 0.7371581792831421
+              },
+              {
+                "model": "sam2_tiny",
+                "loop": "fast",
+                "operation": "segment",
+                "mask_score": 0.96875
+              }
+            ],
+            "elapsed_s": 0.240025257691741,
+            "box": [
+              268,
+              202,
+              302,
+              240
+            ],
+            "mask_pixels": 964
+          }
+        ],
+        "result_ref": "1a6756eb87444f808399487364a59391",
+        "scope": "target",
+        "observed_at": 1788697745.3302116,
+        "elapsed_s": 0.49524453468620777,
+        "ok": true,
+        "perception_source": "task_routed_image_models",
+        "transient": false,
+        "loop": "fast",
+        "fallback_reasons": [],
+        "semantic_status": "detected"
+      },
+      "visual_tracking": {
+        "enabled": false,
+        "target": null
+      }
+    },
+    {
+      "text": "现在场景里有什么？",
+      "replies": [
+        {
+          "text": "正在获取当前视觉观测。",
+          "elapsed_ms": 473
+        },
+        {
+          "text": "正在观察整个场景，识别中。",
+          "elapsed_ms": 3367
+        },
+        {
+          "text": "已识别场景中三个物体：蓝色垫、红色方块和黄色物体。",
+          "elapsed_ms": 4978
+        }
+      ],
+      "events": [
+        {
+          "event": "instruction.parsed",
+          "task_id": "task_evt_44deb12a-985d-4ab9-95a6-a2a2b0d67ad1",
+          "elapsed_ms": 2934
+        },
+        {
+          "event": "execution.started",
+          "task_id": "task_evt_44deb12a-985d-4ab9-95a6-a2a2b0d67ad1",
+          "elapsed_ms": 3140
+        },
+        {
+          "event": "execution.completed",
+          "task_id": "task_evt_44deb12a-985d-4ab9-95a6-a2a2b0d67ad1",
+          "elapsed_ms": 4557
+        },
+        {
+          "event": "perception.reported",
+          "task_id": "task_evt_44deb12a-985d-4ab9-95a6-a2a2b0d67ad1",
+          "elapsed_ms": 4558
+        }
+      ],
+      "vision": {
+        "request_id": "9546fcf830ba4347a26f7d14c07b8466",
+        "command_id": "evt_c4b52450-a764-4329-b965-5f0e90168239:1",
+        "label": "scene",
+        "views": [
+          {
+            "camera": "scene_camera",
+            "sequence": 1365,
+            "status": "described",
+            "objects": [
+              {
+                "label": "blue pad",
+                "box": [
+                  315,
+                  169.75,
+                  427.75,
+                  246
+                ],
+                "score": 0.8723474144935608,
+                "semantic_status": "detected",
+                "memory_id": "1788697634-190a6648"
+              },
+              {
+                "label": "red block",
+                "box": [
+                  260.875,
+                  265.5,
+                  295.625,
+                  305
+                ],
+                "score": 0.8221890926361084,
+                "semantic_status": "detected",
+                "memory_id": "1788697348-53a765f9"
+              },
+              {
+                "label": "yellow object",
+                "box": [
+                  279.25,
+                  310,
+                  303.5625,
+                  346.25
+                ],
+                "score": 0.685949444770813,
+                "semantic_status": "detected",
+                "memory_id": "1788697634-9fb4180b"
+              }
+            ],
+            "regions": [
+              {
+                "description": "3D rendering of a gray surface with three objects on it",
+                "box": [
+                  0,
+                  0,
+                  639,
+                  479
+                ]
+              }
+            ],
+            "exhaustive_inventory": false,
+            "unconfirmed_queries": [
+              {
+                "label": "robot arm",
+                "reason": "low_confidence"
+              },
+              {
+                "label": "table",
+                "reason": "low_confidence"
+              }
+            ],
+            "loop": "slow",
+            "stages": [
+              {
+                "model": "yoloe",
+                "loop": "fast",
+                "operation": "text_detect",
+                "candidates": 4,
+                "accepted": 3,
+                "best_score": 0.8723474144935608,
+                "elapsed_s": 0.06211541220545769
+              },
+              {
+                "model": "florence2",
+                "loop": "slow",
+                "operation": "dense_region_caption",
+                "reason": "scene_description_requested"
+              }
+            ],
+            "elapsed_s": 0.651563597843051
+          },
+          {
+            "camera": "side_camera",
+            "sequence": 1365,
+            "status": "described",
+            "objects": [
+              {
+                "label": "blue pad",
+                "box": [
+                  322.5,
+                  268.25,
+                  486.5,
+                  393
+                ],
+                "score": 0.9086179733276367,
+                "semantic_status": "detected",
+                "memory_id": "1788697634-190a6648"
+              },
+              {
+                "label": "red block",
+                "box": [
+                  268.375,
+                  202.125,
+                  301.5,
+                  239.25
+                ],
+                "score": 0.8397339582443237,
+                "semantic_status": "detected",
+                "memory_id": "1788697348-53a765f9"
+              },
+              {
+                "label": "table",
+                "box": [
+                  0,
+                  2,
+                  640,
+                  480
+                ],
+                "score": 0.5851011276245117,
+                "semantic_status": "detected",
+                "memory_id": "1788697753-83c6b076"
+              },
+              {
+                "label": "yellow object",
+                "box": [
+                  216.8125,
+                  203.25,
+                  240.375,
+                  236.625
+                ],
+                "score": 0.5698526501655579,
+                "semantic_status": "detected",
+                "memory_id": "1788697634-9fb4180b"
+              }
+            ],
+            "regions": [
+              {
+                "description": "3D rendering of a gray surface with three objects on it",
+                "box": [
+                  0,
+                  10,
+                  639,
+                  478
+                ]
+              },
+              {
+                "description": "toy",
+                "box": [
+                  267,
+                  201,
+                  303,
+                  240
+                ]
+              },
+              {
+                "description": "toy",
+                "box": [
+                  216,
+                  202,
+                  241,
+                  237
+                ]
+              }
+            ],
+            "exhaustive_inventory": false,
+            "unconfirmed_queries": [
+              {
+                "label": "robot arm",
+                "reason": "low_confidence"
+              }
+            ],
+            "loop": "slow",
+            "stages": [
+              {
+                "model": "yoloe",
+                "loop": "fast",
+                "operation": "text_detect",
+                "candidates": 5,
+                "accepted": 4,
+                "best_score": 0.9086179733276367,
+                "elapsed_s": 0.021617349237203598
+              },
+              {
+                "model": "florence2",
+                "loop": "slow",
+                "operation": "dense_region_caption",
+                "reason": "scene_description_requested"
+              }
+            ],
+            "elapsed_s": 0.8572328295558691
+          }
+        ],
+        "result_ref": "9546fcf830ba4347a26f7d14c07b8466",
+        "scope": "scene",
+        "observed_at": 1788697753.055684,
+        "elapsed_s": 1.5117890890687704,
+        "ok": true,
+        "perception_source": "task_routed_image_models",
+        "transient": false,
+        "loop": "slow",
+        "fallback_reasons": [],
+        "semantic_status": "scene"
+      },
+      "visual_tracking": {
+        "enabled": false,
+        "target": null
+      }
+    },
+    {
+      "text": "用SAM3识别黄色圆柱",
+      "replies": [
+        {
+          "text": "正在用SAM3识别黄色圆柱。",
+          "elapsed_ms": 459
+        },
+        {
+          "text": "已开始用SAM3识别黄色圆柱。",
+          "elapsed_ms": 2263
+        },
+        {
+          "text": "已识别到黄色圆柱，目标定位完成。",
+          "elapsed_ms": 3067
+        }
+      ],
+      "events": [
+        {
+          "event": "instruction.parsed",
+          "task_id": "task_evt_b5cd3ec8-71a5-4a37-afc7-d70c4f4fc07d",
+          "elapsed_ms": 1809
+        },
+        {
+          "event": "execution.started",
+          "task_id": "task_evt_b5cd3ec8-71a5-4a37-afc7-d70c4f4fc07d",
+          "elapsed_ms": 2021
+        },
+        {
+          "event": "execution.completed",
+          "task_id": "task_evt_b5cd3ec8-71a5-4a37-afc7-d70c4f4fc07d",
+          "elapsed_ms": 2650
+        },
+        {
+          "event": "perception.reported",
+          "task_id": "task_evt_b5cd3ec8-71a5-4a37-afc7-d70c4f4fc07d",
+          "elapsed_ms": 2650
+        }
+      ],
+      "vision": {
+        "request_id": "7324dfa27d2542bb9e85d0ae2ececf09",
+        "command_id": "evt_204eca5a-adb2-48a6-a55a-7bef2a1a6ee9:1",
+        "label": "yellow cylinder",
+        "views": [
+          {
+            "camera": "scene_camera",
+            "label": "yellow cylinder",
+            "sequence": 1572,
+            "status": "observed",
+            "semantic_status": "detected",
+            "origin": "sam3",
+            "score": 0.935546875,
+            "score_model": "sam3",
+            "memory_id": "1788697350-d4e6c241",
+            "loop": "slow",
+            "fallback_reason": "slow_localization_requested",
+            "stages": [
+              {
+                "model": "sam3",
+                "loop": "slow",
+                "operation": "find",
+                "reason": "slow_localization_requested",
+                "candidates": 1
+              }
+            ],
+            "elapsed_s": 0.17555057257413864,
+            "box": [
+              280,
+              310,
+              303,
+              346
+            ],
+            "mask_pixels": 710
+          },
+          {
+            "camera": "side_camera",
+            "label": "yellow cylinder",
+            "sequence": 1572,
+            "status": "observed",
+            "semantic_status": "detected",
+            "origin": "sam3",
+            "score": 0.9052734375,
+            "score_model": "sam3",
+            "memory_id": "1788697350-d4e6c241",
+            "loop": "slow",
+            "fallback_reason": "slow_localization_requested",
+            "stages": [
+              {
+                "model": "sam3",
+                "loop": "slow",
+                "operation": "find",
+                "reason": "slow_localization_requested",
+                "candidates": 1
+              }
+            ],
+            "elapsed_s": 0.14801831915974617,
+            "box": [
+              217,
+              203,
+              240,
+              237
+            ],
+            "mask_pixels": 639
+          }
+        ],
+        "result_ref": "7324dfa27d2542bb9e85d0ae2ececf09",
+        "scope": "target",
+        "observed_at": 1788697760.8316627,
+        "elapsed_s": 0.33100015483796597,
+        "ok": true,
+        "perception_source": "task_routed_image_models",
+        "transient": false,
+        "loop": "slow",
+        "fallback_reasons": [
+          "slow_localization_requested"
+        ],
+        "semantic_status": "detected"
+      },
+      "visual_tracking": {
+        "enabled": false,
+        "target": null
+      }
+    },
+    {
+      "text": "持续跟踪黄色圆柱",
+      "replies": [
+        {
+          "text": "正在持续跟踪黄色圆柱。",
+          "elapsed_ms": 338
+        },
+        {
+          "text": "正在持续跟踪黄色圆柱。",
+          "elapsed_ms": 1962
+        },
+        {
+          "text": "已成功识别并持续跟踪黄色圆柱，机械臂保持原位。",
+          "elapsed_ms": 2869
+        }
+      ],
+      "events": [
+        {
+          "event": "instruction.parsed",
+          "task_id": "task_evt_e1d8d925-7e5c-4a7b-abf6-493237bebc32",
+          "elapsed_ms": 1416
+        },
+        {
+          "event": "execution.started",
+          "task_id": "task_evt_e1d8d925-7e5c-4a7b-abf6-493237bebc32",
+          "elapsed_ms": 1617
+        },
+        {
+          "event": "execution.completed",
+          "task_id": "task_evt_e1d8d925-7e5c-4a7b-abf6-493237bebc32",
+          "elapsed_ms": 2419
+        },
+        {
+          "event": "perception.reported",
+          "task_id": "task_evt_e1d8d925-7e5c-4a7b-abf6-493237bebc32",
+          "elapsed_ms": 2419
+        }
+      ],
+      "vision": {
+        "request_id": "568e5fa73a8a4163abd2a1d6f5829a20",
+        "command_id": "evt_ecfc3353-f9e4-4a80-8f8a-3dd8fe5ddfa5:1",
+        "label": "yellow cylinder",
+        "views": [
+          {
+            "camera": "scene_camera",
+            "label": "yellow cylinder",
+            "sequence": 1856,
+            "status": "observed",
+            "semantic_status": "detected",
+            "origin": "sam3",
+            "score": 0.4765796363353729,
+            "score_model": "yoloe_visual",
+            "memory_id": "1788697350-d4e6c241",
+            "loop": "fast",
+            "fallback_reason": null,
+            "stages": [
+              {
+                "model": "lk",
+                "loop": "fast",
+                "flow_reason": "lk_forward_backward",
+                "flow_points": 53,
+                "flow_shift_px": [
+                  -0.001190185546875,
+                  -0.00115966796875
+                ],
+                "flow_fb_median_px": 0.0021925983019173145
+              }
+            ],
+            "elapsed_s": 0.009457189589738846,
+            "box": [
+              280,
+              310,
+              304,
+              347
+            ],
+            "mask_pixels": 734
+          }
+        ],
+        "result_ref": "568e5fa73a8a4163abd2a1d6f5829a20",
+        "scope": "target",
+        "observed_at": 1788697771.4894125,
+        "elapsed_s": 0.01293637603521347,
+        "ok": true,
+        "perception_source": "task_routed_image_models",
+        "transient": true,
+        "loop": "fast",
+        "fallback_reasons": [],
+        "semantic_status": "detected"
+      },
+      "visual_tracking": {
+        "enabled": true,
+        "target": "yellow cylinder"
+      }
+    },
+    {
+      "text": "停止",
+      "replies": [
+        {
+          "text": "已停止机械臂跟随。",
+          "elapsed_ms": 344
+        }
+      ],
+      "events": [
+        {
+          "event": "instruction.parsed",
+          "task_id": "task_evt_f3e68300-1af0-4246-b9bc-2d7ba8f3e718",
+          "elapsed_ms": 10
+        },
+        {
+          "event": "execution.completed",
+          "task_id": "task_evt_f3e68300-1af0-4246-b9bc-2d7ba8f3e718",
+          "elapsed_ms": 54
+        }
+      ],
+      "vision": {
+        "request_id": "568e5fa73a8a4163abd2a1d6f5829a20",
+        "command_id": "evt_ecfc3353-f9e4-4a80-8f8a-3dd8fe5ddfa5:1",
+        "label": "yellow cylinder",
+        "views": [
+          {
+            "camera": "scene_camera",
+            "label": "yellow cylinder",
+            "sequence": 1856,
+            "status": "observed",
+            "semantic_status": "detected",
+            "origin": "sam3",
+            "score": 0.4765796363353729,
+            "score_model": "yoloe_visual",
+            "memory_id": "1788697350-d4e6c241",
+            "loop": "fast",
+            "fallback_reason": null,
+            "stages": [
+              {
+                "model": "lk",
+                "loop": "fast",
+                "flow_reason": "lk_forward_backward",
+                "flow_points": 53,
+                "flow_shift_px": [
+                  -0.001190185546875,
+                  -0.00115966796875
+                ],
+                "flow_fb_median_px": 0.0021925983019173145
+              }
+            ],
+            "elapsed_s": 0.009457189589738846,
+            "box": [
+              280,
+              310,
+              304,
+              347
+            ],
+            "mask_pixels": 734
+          }
+        ],
+        "result_ref": "568e5fa73a8a4163abd2a1d6f5829a20",
+        "scope": "target",
+        "observed_at": 1788697771.4894125,
+        "elapsed_s": 0.01293637603521347,
+        "ok": true,
+        "perception_source": "task_routed_image_models",
+        "transient": true,
+        "loop": "fast",
+        "fallback_reasons": [],
+        "semantic_status": "detected"
+      },
+      "visual_tracking": {
+        "enabled": false,
+        "target": null
+      }
+    },
+    {
+      "text": "查找紫色扳手",
+      "replies": [
+        {
+          "text": "正在查找紫色扳手。",
+          "elapsed_ms": 468
+        },
+        {
+          "text": "正在开始寻找紫色扳手。",
+          "elapsed_ms": 2253
+        },
+        {
+          "text": "紫色扳手未找到，视觉识别失败。是否重新观察？",
+          "elapsed_ms": 3118
+        }
+      ],
+      "events": [
+        {
+          "event": "instruction.parsed",
+          "task_id": "task_evt_f997b3ef-dfa2-4cda-ac0f-e98d40eba80b",
+          "elapsed_ms": 1753
+        },
+        {
+          "event": "execution.started",
+          "task_id": "task_evt_f997b3ef-dfa2-4cda-ac0f-e98d40eba80b",
+          "elapsed_ms": 1963
+        },
+        {
+          "event": "execution.failed",
+          "task_id": "task_evt_f997b3ef-dfa2-4cda-ac0f-e98d40eba80b",
+          "elapsed_ms": 2607
+        },
+        {
+          "event": "perception.reported",
+          "task_id": "task_evt_f997b3ef-dfa2-4cda-ac0f-e98d40eba80b",
+          "elapsed_ms": 2607
+        }
+      ],
+      "vision": {
+        "request_id": "63f4bb6461a5463f87b30aebdb61fd49",
+        "command_id": "evt_4550d433-80d6-470f-b0e8-05bb84010397:1",
+        "label": "purple wrench",
+        "views": [
+          {
+            "camera": "scene_camera",
+            "label": "purple wrench",
+            "sequence": 2032,
+            "status": "not_found",
+            "semantic_status": "unknown",
+            "origin": null,
+            "score": null,
+            "score_model": null,
+            "memory_id": null,
+            "loop": "slow",
+            "fallback_reason": "low_confidence",
+            "stages": [
+              {
+                "model": "yoloe",
+                "loop": "fast",
+                "operation": "text_detect",
+                "candidates": 1,
+                "accepted": 0,
+                "best_score": 0.18010666966438293,
+                "elapsed_s": 0.0626846943050623
+              },
+              {
+                "model": "sam3",
+                "loop": "slow",
+                "operation": "find",
+                "reason": "low_confidence",
+                "candidates": 0
+              }
+            ],
+            "elapsed_s": 0.26160112768411636
+          },
+          {
+            "camera": "side_camera",
+            "label": "purple wrench",
+            "sequence": 2032,
+            "status": "not_found",
+            "semantic_status": "unknown",
+            "origin": null,
+            "score": null,
+            "score_model": null,
+            "memory_id": null,
+            "loop": "slow",
+            "fallback_reason": "no_text_detection",
+            "stages": [
+              {
+                "model": "yoloe",
+                "loop": "fast",
+                "operation": "text_detect",
+                "candidates": 0,
+                "accepted": 0,
+                "best_score": 0,
+                "elapsed_s": 0.01893768273293972
+              },
+              {
+                "model": "sam3",
+                "loop": "slow",
+                "operation": "find",
+                "reason": "no_text_detection",
+                "candidates": 0
+              }
+            ],
+            "elapsed_s": 0.13323143683373928
+          }
+        ],
+        "result_ref": "63f4bb6461a5463f87b30aebdb61fd49",
+        "scope": "target",
+        "observed_at": 1788697777.887142,
+        "elapsed_s": 0.3969578519463539,
+        "ok": false,
+        "perception_source": "task_routed_image_models",
+        "transient": false,
+        "loop": "slow",
+        "fallback_reasons": [
+          "low_confidence",
+          "no_text_detection"
+        ],
+        "semantic_status": "unknown"
+      },
+      "visual_tracking": {
+        "enabled": false,
+        "target": null
+      }
+    }
+  ],
+  "tracking_pose_delta_m": 0,
+  "tests": {
+    "python_arena_selected": 29,
+    "python_memory_server": 5,
+    "busagent_backend": 205,
+    "backend_build": "passed",
+    "frontend_build": "passed"
+  },
+  "physical_runs": [
+    {
+      "case": "red_fast_empty_pad",
+      "command_id": "evt_c3213006-287b-4071-8e63-479365ffb4ea:1",
+      "ok": true,
+      "state": "completed",
+      "elapsed_s": 19.24040460586548,
+      "route": {
+        "decision": "busagent",
+        "grasp": "official_pick_place",
+        "placement": "official_pick_place",
+        "execution": "isaaclab_arena.franka_ik",
+        "robot": "franka_panda"
+      },
+      "evaluation": {
+        "physical_success": true,
+        "lifted": true,
+        "released": true,
+        "max_lift_m": 0.15094032511115074,
+        "final_position_world_m": [
+          0.4587668776512146,
+          0.20016953349113464,
+          0.03850000724196434
+        ],
+        "destination_xy_error_m": 0.0012447217888710588,
+        "supported_region": true,
+        "support_gap_m": -1.8680600476217446e-08,
+        "gripper_opening_m": 0.07999995350837708,
+        "settle_displacement_m": 0.0,
+        "linear_speed_mps": 5.827989298268221e-05,
+        "evaluation_source": "arena_task_simulation_ground_truth"
+      },
+      "attempts": [
+        {
+          "backend": "official_pick_place",
+          "ok": true,
+          "elapsed_s": 19.239304702728987
+        }
+      ],
+      "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-203240-bf594791"
+    },
+    {
+      "case": "yellow_enhanced_pad_occupied_before_semantic_support_mask",
+      "command_id": "evt_e28af093-ab6a-4a30-b5db-fb06019c97a0:1",
+      "ok": false,
+      "message": "Physical task failed verification",
+      "state": "failed",
+      "elapsed_s": 41.97801637649536,
+      "route": {
+        "decision": "busagent",
+        "grasp": "graspgenx",
+        "placement": "anyplace",
+        "execution": "isaaclab_arena.franka_ik",
+        "robot": "franka_panda"
+      },
+      "evaluation": {
+        "physical_success": false,
+        "lifted": true,
+        "released": true,
+        "max_lift_m": 0.2723830621689558,
+        "final_position_world_m": [
+          0.5465454459190369,
+          0.19669944047927856,
+          0.03599999099969864
+        ],
+        "destination_xy_error_m": 0.0866083593106044,
+        "supported_region": false,
+        "support_gap_m": -0.008274362636316413,
+        "gripper_opening_m": 0.07999998331069946,
+        "settle_displacement_m": 0.017266122797739036,
+        "linear_speed_mps": 0.007809437345713377,
+        "evaluation_source": "arena_task_simulation_ground_truth"
+      },
+      "attempts": [
+        {
+          "backend": "models",
+          "ok": false,
+          "elapsed_s": 41.97691407054663
+        }
+      ],
+      "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-203333-5ea7c7a2"
+    },
+    {
+      "case": "yellow_enhanced_empty_pad_after_semantic_support_mask",
+      "command_id": "evt_9dd4a04a-cdf2-4fe7-9ee1-f360de60c2cc:1",
+      "ok": true,
+      "message": "Physical task verified",
+      "state": "completed",
+      "elapsed_s": 39.90244197845459,
+      "route": {
+        "decision": "busagent",
+        "grasp": "graspgenx",
+        "placement": "anyplace",
+        "execution": "isaaclab_arena.franka_ik",
+        "robot": "franka_panda"
+      },
+      "evaluation": {
+        "physical_success": true,
+        "lifted": true,
+        "released": true,
+        "max_lift_m": 0.2695233579725027,
+        "final_position_world_m": [
+          0.4704219400882721,
+          0.22149594128131866,
+          0.04100000113248825
+        ],
+        "destination_xy_error_m": 0.02388916756133273,
+        "supported_region": true,
+        "support_gap_m": -3.23349245850979e-08,
+        "gripper_opening_m": 0.07999998331069946,
+        "settle_displacement_m": 3.0719530773294423e-08,
+        "linear_speed_mps": 8.676404831930995e-05,
+        "evaluation_source": "arena_task_simulation_ground_truth"
+      },
+      "attempts": [
+        {
+          "backend": "models",
+          "ok": true,
+          "elapsed_s": 39.901342343539
+        }
+      ],
+      "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260906-203839-12254a5b"
+    }
+  ],
+  "support_mask_comparison": {
+    "source_request": "2a2fbf4b010f45fea56e6ccc30d64208",
+    "sam3_request": "cf8e2700f1e842839066780566596df8",
+    "sam2_cloud_z_98th_percentile_m": 0.06160551,
+    "sam3_cloud_z_98th_percentile_m": 0.0168516,
+    "description": "SAM2 box mask included red block on the blue pad; SAM3 concept mask excluded it. Cluttered contact planning is not thereby verified."
+  },
+  "known_limits": [
+    "Occupied destination enhanced placement failed in this regression; empty destination passed. No industrial accuracy claim.",
+    "SAM3 did not detect yellow cylinder in the recorded close wrist view; YOLOE plus SAM2 produced its usable mask.",
+    "Static replay LK timings do not represent end-to-end camera throughput.",
+    "Qwen multimodal API, hanging/insertion and arm visual servo remain unimplemented."
+  ]
+}

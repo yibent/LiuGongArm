@@ -1,6 +1,7 @@
 """Freeze sensor data on the sim thread; vision runs directly; BusAgent receives only metadata."""
 import json
 import time
+import shutil
 from pathlib import Path
 from uuid import uuid4
 import numpy as np
@@ -17,26 +18,33 @@ class PerceptionBridge:
         self.url = url
         self.scene_id = uuid4().hex
 
-    def capture(self, runtime, name, *, refine=False, reset=False, cameras=None):
+    def capture(self, runtime, name, *, refine=False, reset=False, cameras=None, vision_mode='auto',
+                slow_provider=None, scene_mode='describe', transient=False):
         request_id = uuid4().hex
         directory = self.root/request_id; directory.mkdir()
-        cameras = cameras or (['wrist_camera'] if name and runtime.held == name else ['scene_camera', 'side_camera'])
-        row = next((r for r in runtime.config['objects'] + runtime.config['destinations'] if r['name'] == name), None)
+        row = next((r for r in runtime.config['objects'] + runtime.config['destinations']
+                    if name in [r['name'], r['label'], *r.get('aliases', [])]), None)
+        held_target = name and (runtime.held == name or (row and runtime.held == row['name']))
+        cameras = cameras or (['wrist_camera'] if held_target else ['scene_camera', 'side_camera'])
         label = row['label'] if row else name
         arrays, views = {}, []
         for camera in cameras:
             data = runtime.env.scene[camera].data
             arrays[camera+'_rgb'] = numpy_data(data.output['rgb'])[0, :, :, :3].copy()
-            arrays[camera+'_depth'] = numpy_data(data.output['distance_to_image_plane'])[0].squeeze().copy()
-            arrays[camera+'_K'] = numpy_data(data.intrinsic_matrices)[0].copy()
-            arrays[camera+'_T'] = pose_matrix(numpy_data(data.pos_w)[0], numpy_data(data.quat_w_ros)[0])
+            if not transient:
+                arrays[camera+'_depth'] = numpy_data(data.output['distance_to_image_plane'])[0].squeeze().copy()
+                arrays[camera+'_K'] = numpy_data(data.intrinsic_matrices)[0].copy()
+                arrays[camera+'_T'] = pose_matrix(numpy_data(data.pos_w)[0], numpy_data(data.quat_w_ros)[0])
             views.append({'camera': camera, 'sequence': runtime.sequence})
         request = {'request_id': request_id, 'scene_id': self.scene_id, 'command_id': runtime.current or 'observe',
             'label': label or 'scene', 'scope': 'target' if name else 'scene',
             'observed_at': time.time(),
-            'queries': [r['label'] for r in runtime.config['objects'] + runtime.config['destinations']] if not name else [],
+            'queries': runtime.config.get('vision', {}).get('vocabulary', []) if not name else [],
+            'vision_mode': vision_mode, 'slow_provider': slow_provider, 'scene_mode': scene_mode,
+            'transient': transient,
             'views': views, 'refine': refine, 'reset': reset, **runtime.bus_context}
-        np.savez_compressed(directory/'frames.npz', **arrays)
+        # Same-machine SSD transport: compression cost exceeded model inference on the fast path.
+        np.savez(directory/'frames.npz', **arrays)
         (directory/'request.json').write_text(json.dumps(request))
         return request
 
@@ -52,6 +60,9 @@ class PerceptionBridge:
             result = {'request_id': request['request_id'], 'command_id': request['command_id'],
                       'scope': request['scope'], 'observed_at': request['observed_at'],
                       'label': request['label'], 'ok': False, 'views': [], 'error': str(error)}
+        finally:
+            if request.get('transient'):
+                shutil.rmtree(self.root/request['request_id'], ignore_errors=True)
         if result.get('request_id') != request['request_id']:
             raise RuntimeError('Vision returned a different observation reference')
         return result

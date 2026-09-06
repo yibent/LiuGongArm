@@ -32,6 +32,7 @@ class MemoryView:
     bbox: list[float]
     score: float = 1.0
     pose: dict = field(default_factory=dict)
+    crop_bbox: list[float] | None = None
 
 
 @dataclass
@@ -104,6 +105,8 @@ class ObjectMemoryStore:
         metadata: dict | None = None,
         memory_id: str | None = None,
         padding: float = 0.15,
+        replace_view: bool = False,
+        full_frame: bool = False,
     ) -> ObjectMemory:
         """Persist multi-view object crops and source boxes as one memory."""
         label = str(label).strip()
@@ -118,6 +121,7 @@ class ObjectMemoryStore:
         if existing is not None and self._normalise(existing.label) != self._normalise(label):
             raise ValueError(f"memory {mid!r} already belongs to {existing.label!r}")
         views: list[MemoryView] = list(existing.views) if existing is not None else []
+        replaced_images = []
         for view, frame in frames.items():
             det = detections.get(view)
             if det is None:
@@ -130,11 +134,21 @@ class ObjectMemoryStore:
             bw, bh = max(2.0, x2 - x1), max(2.0, y2 - y1)
             sx1, sy1 = int(max(0, x1 - bw * padding)), int(max(0, y1 - bh * padding))
             sx2, sy2 = int(min(w, x2 + bw * padding)), int(min(h, y2 + bh * padding))
+            if full_frame:
+                sx1, sy1, sx2, sy2 = 0, 0, w, h
             crop = frame[sy1:sy2, sx1:sx2]
             if crop.size == 0:
                 continue
-            image_path = item_dir / f"{view}-{int(time.time() * 1000)}-{uuid.uuid4().hex[:4]}.jpg"
-            ok, encoded = cv2.imencode(".jpg", crop, [int(cv2.IMWRITE_JPEG_QUALITY), 92])
+            if replace_view:
+                for previous in views:
+                    if previous.view == view:
+                        replaced_images.append(previous.image)
+                views = [previous for previous in views if previous.view != view]
+            # Small-object visual embeddings are sensitive to JPEG artifacts.
+            extension = '.png' if full_frame else '.jpg'
+            image_path = item_dir / f"{view}-{int(time.time() * 1000)}-{uuid.uuid4().hex[:4]}{extension}"
+            options = [cv2.IMWRITE_PNG_COMPRESSION, 1] if full_frame else [cv2.IMWRITE_JPEG_QUALITY, 92]
+            ok, encoded = cv2.imencode(extension, crop, options)
             if not ok:
                 continue
             encoded.tofile(str(image_path))
@@ -144,6 +158,7 @@ class ObjectMemoryStore:
                 bbox=[x1, y1, x2, y2],
                 score=float(_field(det, "score", 1.0)),
                 pose=dict(_field(det, "pose", {}) or {}),
+                crop_bbox=[x1-sx1, y1-sy1, x2-sx1, y2-sy1],
             ))
         if not views:
             raise ValueError("no valid detections to remember")
@@ -159,6 +174,8 @@ class ObjectMemoryStore:
         temp = target.with_suffix(".json.tmp")
         temp.write_text(json.dumps(asdict(memory), ensure_ascii=False, indent=2), encoding="utf-8")
         os.replace(temp, target)
+        for image in replaced_images:
+            Path(image).unlink(missing_ok=True)
         return memory
 
     def delete(self, memory_id: str) -> bool:

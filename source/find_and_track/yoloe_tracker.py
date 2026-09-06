@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections import OrderedDict
 from pathlib import Path
 
 import numpy as np
@@ -12,7 +13,7 @@ LOGGER = logging.getLogger("find_and_track.yoloe")
 
 
 class YoloeVisualTracker:
-    """Fast-path tracker: bake Florence boxes as YOLOE visual prompt embeddings, then track."""
+    """Fast text detection and reusable visual prompts from any localization provider."""
 
     def __init__(self, weights: str | Path, device: str | None = None, imgsz: int = 640, conf: float = 0.25):
         self.weights = Path(weights)
@@ -22,6 +23,9 @@ class YoloeVisualTracker:
         self.model = None
         self.has_prompt = False
         self.class_names: list[str] = []
+        self.text_embeddings = OrderedDict()
+        self.visual_embeddings = OrderedDict()
+        self.prompt_key = None
 
     @property
     def ready(self) -> bool:
@@ -43,17 +47,26 @@ class YoloeVisualTracker:
         LOGGER.info("YOLOE ready")
 
     def reset(self) -> None:
+        self.prompt_key = None
         self.has_prompt = False
         self.class_names = []
         if self.model is not None:
             self.model.predictor = None
 
-    def set_visual_prompt(self, frame_bgr: np.ndarray, detections: list[Detection], conf: float | None = None) -> None:
+    def set_visual_prompt(self, frame_bgr: np.ndarray, detections: list[Detection], conf: float | None = None, *, cache_key=None) -> None:
         if not detections:
             return
         if not self.ready:
             self.load()
         from ultralytics.models.yolo.yoloe import YOLOEVPSegPredictor
+        self.prompt_key = None
+        cached = self.visual_embeddings.get(cache_key) if cache_key else None
+        if cached is not None:
+            names, pe = cached
+            self.model.set_classes(names, pe)
+            self.model.predictor = None
+            self.class_names, self.has_prompt = names, True
+            return
 
         unique_ids = sorted({int(d.class_id) for d in detections})
         remap = {old: new for new, old in enumerate(unique_ids)}
@@ -81,6 +94,10 @@ class YoloeVisualTracker:
         )
         pe = getattr(self.model.model, "pe", None)
         if pe is not None:
+            if cache_key:
+                self.visual_embeddings[cache_key] = (names, pe.detach().clone())
+                while len(self.visual_embeddings) > 32:
+                    self.visual_embeddings.popitem(last=False)
             try:
                 self.model.set_classes(names, pe)
             except Exception:  # noqa: BLE001
@@ -108,11 +125,25 @@ class YoloeVisualTracker:
             return
         if not self.ready:
             self.load()
+        key = tuple(labels)
+        if self.prompt_key == key:
+            return
         self.model.predictor = None
-        embeddings = self.model.get_text_pe(labels)
+        embeddings = self.text_embeddings.pop(key, None)
+        if embeddings is None:
+            if all((label,) in self.text_embeddings for label in labels):
+                embeddings = torch.cat([self.text_embeddings[(label,)] for label in labels], dim=1)
+            else:
+                embeddings = self.model.model.get_text_pe(labels, cache_clip_model=True).detach()
+            for index, label in enumerate(labels):
+                self.text_embeddings[(label,)] = embeddings[:, index:index+1].contiguous()
+        self.text_embeddings[key] = embeddings
+        while len(self.text_embeddings) > 64:
+            self.text_embeddings.popitem(last=False)
         self.model.set_classes(labels, embeddings)
         self.class_names = labels
         self.has_prompt = True
+        self.prompt_key = key
 
     def track(self, frame_bgr: np.ndarray, conf: float | None = None, persist: bool = True) -> list[Detection]:
         if not self.has_prompt or not self.ready:

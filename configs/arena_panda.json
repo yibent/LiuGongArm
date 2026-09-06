@@ -10,7 +10,12 @@
     "wrist": {"position": [0.055, 0, 0.02], "lookat": [0, 0, 0.1034]}
   },
   "fast": {"phase_steps": [60, 50, 8, 25, 50, 80, 50, 25, 40, 1]},
-  "vision": {"service_url": "http://127.0.0.1:5570/observe", "track_every_steps": 24},
+  "vision": {
+    "service_url": "http://127.0.0.1:5570/observe", "track_every_steps": 8,
+    "vocabulary": ["red block", "yellow object", "blue pad", "robot arm", "table"],
+    "fast_conf": 0.45, "refresh_updates": 8, "max_frame_gap": 90,
+    "slow_localizer": "sam3", "sam3_conf": 0.4, "planned_disabled": ["qwen_multimodal"]
+  },
   "controller": {"position_tolerance_m": 0.006, "rotation_tolerance_deg": 5, "max_steps": 360},
   "graspgenx": {"host": "127.0.0.1", "port": 5556, "timeout_ms": 120000, "num_grasps": 64},
   "anyplace": {"url": "http://127.0.0.1:5590", "timeout_s": 120, "candidates": 20, "iterations": 50},
