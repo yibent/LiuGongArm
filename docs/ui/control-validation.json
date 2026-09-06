@@ -1,0 +1,131 @@
+{
+  "date": "2026-09-06",
+  "deployment": "8999 workbench + 7861 workspace controls",
+  "runtime_sha256": "5247ce17803656e8a88f854576faa2924555ab034478b80ada8821d9caadffd5",
+  "runtime_source_changed": false,
+  "logo_sha256": "22bca853a3c33b6fac4e1fdfbaf36954043886520fdd2a0253009c72625bd932",
+  "physical_checks": [
+    {
+      "check": "object absolute translation and rotation",
+      "id": "entity_01",
+      "requested": [
+        0.46499999761581423,
+        -0.17000000178813934,
+        0.0
+      ],
+      "measured": [
+        0.46439871191978455,
+        -0.1699955016374588,
+        -6.51925802230835e-09
+      ]
+    },
+    {
+      "check": "object relative jog",
+      "measured": [
+        0.4738267958164215,
+        -0.16999386250972748,
+        4.6566128730773926e-09
+      ]
+    },
+    {
+      "check": "object joystick",
+      "moved_m": 0.012119938248526562
+    },
+    {
+      "check": "object-only reset preserves robot pose"
+    },
+    {
+      "check": "Arena IK robot jog",
+      "before": [
+        0.30689042806625366,
+        9.734382899750926e-08,
+        0.4868816137313843
+      ],
+      "after": [
+        0.30693167448043823,
+        8.112625948797358e-08,
+        0.4995018243789673
+      ]
+    },
+    {
+      "check": "absolute TCP pose through Arena IK",
+      "target": [
+        0.32193167448043825,
+        8.112625948797358e-08,
+        0.4995018243789673
+      ],
+      "measured": [
+        0.3196088373661041,
+        1.4269066639371886e-07,
+        0.49937188625335693
+      ]
+    },
+    {
+      "check": "robot joystick release stops motion",
+      "moved_m": 0.009352591939087548,
+      "drift_after_release_m": 0.00017357914648577646
+    },
+    {
+      "check": "lost-heartbeat lease stops robot",
+      "moved_m": 0.0063009276343284105
+    },
+    {
+      "check": "gripper close and open"
+    },
+    {
+      "check": "controller settings apply and restore"
+    },
+    {
+      "check": "robot-only reset preserves object position"
+    },
+    {
+      "check": "scene preset sorting"
+    },
+    {
+      "check": "scene preset precision"
+    },
+    {
+      "check": "scene preset initial"
+    }
+  ],
+  "public_browser_checks": [
+    {
+      "check": "deployed logo and 3 real cameras"
+    },
+    {
+      "check": "real object D-pad",
+      "id": "entity_03",
+      "moved_m": 0.004525899945982923
+    },
+    {
+      "check": "real Panda D-pad through Arena IK",
+      "moved_m": 0.003819758630633336
+    },
+    {
+      "check": "real Panda rotation control",
+      "measured_rotation_deg": 3.787045434719488
+    },
+    {
+      "check": "real browser joystick release",
+      "moved_m": 0.007516344799510033,
+      "drift_after_release_m": 0.00040091196403296267
+    },
+    {
+      "check": "gripper fingers physically close and open",
+      "open_width_m": 0.07998333287435185
+    }
+  ],
+  "browser_errors": [],
+  "restored_scene": "initial",
+  "restored_robot_position": [
+    0.30689042806625366,
+    9.734382899750926e-08,
+    0.4868816137313843
+  ],
+  "live_bodies": 11,
+  "limitations": [
+    "Joint positions are displayed; manual arm controls operate TCP position and orientation through Arena IK.",
+    "Changing object dimensions/materials remains read-only.",
+    "Cloud BusAgent fine-grained node lifecycle tracing is not deployed in this update."
+  ]
+}

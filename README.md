@@ -1,4 +1,6 @@
-# LiuGong · Arena Panda
+# 刘工智能 · Arena Panda
+
+<img src="assets/brand/liugong-logo.png" alt="刘工智能 Logo" width="112">
 
 当前开发入口：[Isaac Sim 6 + Arena + Panda 抓放适配](docs/ARENA_PANDA_ADAPTATION.md)。
 BusAgent 下发目标与目的地，GraspGenX / AnyPlace 提供抓放姿态，Arena 负责 Panda IK、场景、相机与物理评测。

@@ -94,7 +94,7 @@ with sync_playwright() as p:
     check_split('.object-browser', '.object-controls', False)
     expect(page.get_by_label('位置 X', exact=True)).to_have_value('0.55')
     page.get_by_role('tab', name='机械臂配置').click()
-    check_split('.robot-summary', '.robot-controls', False)
+    check_split('.robot-controls', '.robot-summary', False)
     resize(.7)
     check_split('.robot-summary', '.robot-controls', True)
     check_preview()

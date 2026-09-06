@@ -15,6 +15,7 @@ with sync_playwright() as p:
  page=browser.new_page(viewport={'width':1440,'height':960})
  page.on('pageerror',lambda e:errors.append(str(e)))
  page.route('**/api/workspace',lambda r:r.fulfill(json=state))
+ page.route('**/api/status',lambda r:r.fulfill(json={'command_id':None}))
  def command(route):
   body=route.request.post_data_json;commands.append(body)
   if body['skill']=='workspace' and body['params']['action']=='scene':state['scene_id']=body['params']['scene_id']
@@ -28,7 +29,7 @@ with sync_playwright() as p:
  expect(page.get_by_role('button',name='仿真',exact=True)).to_be_disabled()
  page.get_by_role('button',name='桌面整理').click();page.get_by_role('button',name='进入仿真').click()
  page.get_by_label('Isaac Sim 实时预览').wait_for()
- assert commands[0]['params']['scene_id']=='sorting'
+ assert next(c for c in commands if c.get('params',{}).get('action')=='scene')['params']['scene_id']=='sorting'
  page.wait_for_function("document.querySelector('canvas')?.width > 300")
  assert page.locator('canvas').count()==3
  original=page.locator('canvas').first.evaluate('e=>e.width')

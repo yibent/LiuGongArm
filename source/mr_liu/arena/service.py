@@ -75,7 +75,9 @@ class CommandQueue:
 
 def serve(runtime, app, port):
     from mr_liu.arena.workspace import Workspace
-    workspace = Workspace(runtime)
+    from mr_liu.arena.teleop import TeleopInput
+    teleop = TeleopInput()
+    workspace = Workspace(runtime, teleop)
     commands = CommandQueue(runtime.output / "commands.json")
 
     class Handler(BaseHTTPRequestHandler):
@@ -114,6 +116,9 @@ def serve(runtime, app, port):
                 size = int(self.headers.get("Content-Length", "0"))
                 if not 0 < size < 65536: raise ValueError("Invalid request size")
                 body = json.loads(self.rfile.read(size))
+                if self.path == "/api/teleop":
+                    updated = teleop.update(body.get("command_id"), body)
+                    return self.respond(200 if updated else 409, {"ok": updated, "message": "Updated" if updated else "手动移动已结束"})
                 if self.path != "/api/command": return self.respond(404, {"error": "not found"})
                 skill = body.get("skill")
                 if skill in {"hold", "stop"}:
@@ -126,6 +131,16 @@ def serve(runtime, app, port):
                                               "message": "Arena Panda state", "status": runtime.snapshot,
                                               **(runtime.capabilities() if skill == "capabilities" else {})})
                 if skill != "workspace" and skill not in runtime.capabilities()["skills"]: raise ValueError("Unsupported skill")
+                if skill == "workspace" and body.get("params", {}).get("action") == "teleop":
+                    existing = commands.result(body.get("command_id"))
+                    if existing is not None:
+                        return self.respond(200, commands.submit(body))
+                    teleop.start(body.get("command_id"), body["params"])
+                    try:
+                        return self.respond(202, commands.submit(body))
+                    except Exception:
+                        teleop.finish(body.get("command_id"))
+                        raise
                 return self.respond(202, commands.submit(body))
             except (ValueError, TypeError, KeyError) as exc:
                 return self.respond(422, {"ok": False, "state": "failed", "message": str(exc)})
@@ -140,9 +155,12 @@ def serve(runtime, app, port):
             except Empty:
                 if runtime.stop_requested.is_set(): runtime.goal = runtime.tcp_pose()
                 runtime.tick(check_stop=False)
+                if time.monotonic() - workspace.last_refresh > .25:
+                    workspace.refresh()
                 time.sleep(.002)
                 continue
             if not commands.claim(command["command_id"]):
+                teleop.finish(command["command_id"])
                 continue
             result = workspace.execute(command) if command["skill"] == "workspace" else runtime.execute(command)
             commands.update(command["command_id"], result)
