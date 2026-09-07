@@ -20,6 +20,7 @@ from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 from mr_liu.perception.arena_vision import ImagePipeline
 from mr_liu.perception.sam3_localizer import Sam3Localizer
+from mr_liu.perception.local_verification import verify_region
 from mr_liu.arena.visual_refs import annotate_references, load_reference, load_snapshot
 from mr_liu.arena.observed_scene import collection_geometry, masked_points
 from mr_liu.arena.placement_geometry import inspect_grid_views, principal_axis
@@ -165,6 +166,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+            if self.path == '/verify':
+                return self.respond(200, verify_region(store, finder, body))
             if self.path == '/forget':
                 return self.respond(200, {'ok': True, 'deleted': pipeline.forget(body['label'])})
             if self.path != '/observe': return self.respond(404, {'error': 'not_found'})

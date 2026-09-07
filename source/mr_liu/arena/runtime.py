@@ -351,6 +351,9 @@ class ArenaRuntime:
         label = row.get('label', name)
         if row.get('visual_ref') and 'visual_ref' not in vision_options:
             vision_options['visual_ref'] = row['visual_ref']
+        loop = getattr(self, 'execution_policy', {}).get('loop')
+        if loop == 'fast_only': vision_options['vision_mode'] = 'fast'
+        elif loop == 'slow': vision_options['vision_mode'] = 'slow'
         self.observing = True
         try:
             # Retire a tracking request before requesting a geometric observation.
@@ -378,7 +381,7 @@ class ArenaRuntime:
                             raise InstanceConflict('观测切换到了另一实例，需要重新识别。')
                         result['physical_witness'] = {'instance_id': witness, 'votes': votes}
                     except InstanceConflict as error:
-                        if recovery or vision_options.get('vision_mode') == 'slow':
+                        if recovery or vision_options.get('vision_mode') in {'slow', 'fast'}:
                             raise
                         self.event('visual_relocalization', reason=str(error),
                                    previous_observation_ref=result['request_id'], provider='sam3')
@@ -787,8 +790,11 @@ class ArenaRuntime:
         """
         self.observing = True
         try:
-            inspect_cell = bool(request and request.cell_ref and result.get('ok'))
-            options = {'cameras':['scene_camera','side_camera'],'scene_mode':'frame'}
+            # Explicit Mastra supervision runs on the frozen post-action frame asynchronously.
+            inspect_cell = bool(request and request.cell_ref and result.get('ok') and not getattr(self, 'execution_policy', {}))
+            cameras = ['scene_camera', 'side_camera']
+            if getattr(self, 'execution_policy', {}).get('supervision', {}).get('camera') == 'wrist': cameras.append('wrist_camera')
+            options = {'cameras':cameras,'scene_mode':'frame'}
             if inspect_cell:
                 cell = self.perception.resolve_reference(request.cell_ref)
                 options = {'visual_ref':cell['container_ref'],'inspect':'grid'}
@@ -821,6 +827,7 @@ class ArenaRuntime:
     def execute(self, command):
         self.current = command["command_id"]; self.events = []; started = time.time()
         self.tracking = None
+        self.execution_policy = command.get('params', {}).get('execution_policy', {})
         self.visual_result = None
         self.prepared_clouds.clear()
         self.bus_context = {key:command[key] for key in ('task_id','task_version','correlation_id','causation_id') if key in command}
@@ -962,6 +969,6 @@ class ArenaRuntime:
         self.last_result = {key: value for key, value in result.items() if key != "events"}
         (directory / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2))
         for name, data in self.frames.items(): (directory / f"{name}.jpg").write_bytes(data)
-        self.phase = "idle"; self.current = None; self.target_name = None
+        self.phase = "idle"; self.current = None; self.target_name = None; self.execution_policy = {}
         self.refresh_snapshot()
         return result

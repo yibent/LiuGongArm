@@ -122,6 +122,16 @@ class PerceptionBridge:
         return identity
 
     def resolve_reference(self, ref):
+        if isinstance(ref, str) and ref.startswith('grid:'):
+            # Stable cell identities are produced by RGB-D geometry, not by
+            # the fixture configuration. Resolve to their latest frame ref.
+            with self.world.lock:
+                cell = next((cell for saved in self.world.geometry_memory.values()
+                             for cell in saved['geometry'].get('cells', [])
+                             if cell.get('cell_id') == ref), None)
+                if cell is None:
+                    raise ValueError('格位视觉引用已失效，请重新观察料箱格网。')
+                ref = cell['ref']
         return load_reference(self.root, ref, self.scene_id)[0]
 
     def cloud(self, result):

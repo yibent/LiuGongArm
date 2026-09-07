@@ -3,6 +3,7 @@
 Requires an idle controller and no runnable goals. Resets the test fixture before
 submission, resumes only the newly submitted goal, and restores the queue pause
 on exit. Initial/final workspace snapshots are for independent offline evaluation.
+Use --no-reset to test continuation from an existing held object.
 """
 import argparse
 import json
@@ -57,8 +58,8 @@ def main():
         raise RuntimeError("Existing runnable goals must be isolated first")
     live = api(args.arena, "/api/status")
     save("status-before", live)
-    if live.get("held_object") or live.get("phase") not in {"idle", "completed", "failed", "hold"}:
-        raise RuntimeError("Controller is not idle and empty")
+    if (live.get("held_object") and not args.no_reset) or live.get("phase") not in {"idle", "completed", "failed", "hold"}:
+        raise RuntimeError("Controller must be idle; held-object continuation requires --no-reset")
     save("workspace-before-reset", api(args.arena, "/api/workspace"))
     frames("before-reset")
     if not args.no_reset:

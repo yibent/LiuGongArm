@@ -1,0 +1,278 @@
+{
+  "date": "2026-09-08",
+  "framework": "Mastra",
+  "industrial_accepted": false,
+  "backend_tests_passed": 347,
+  "python_tests_passed": 36,
+  "queue_concurrency": {
+    "actual_queue_store": true,
+    "mutations": 80,
+    "revision": 80,
+    "outbox": 80
+  },
+  "runs": [
+    {
+      "run": "20260908-mastra-async",
+      "state": "blocked",
+      "elapsed_s": 45.94816770590842,
+      "model_calls": 1,
+      "provider_failures": [
+        {
+          "model": "gemini-3.7-flash",
+          "elapsed_ms": 8002,
+          "reason": "The operation was aborted due to timeout"
+        }
+      ],
+      "steps": [
+        {
+          "skill": "grasp",
+          "state": "completed",
+          "execution": {
+            "loop": "fast_only",
+            "max_attempts": 2,
+            "supervision": {
+              "kind": "physical",
+              "wait": false
+            }
+          },
+          "elapsed_s": 12.53930115699768,
+          "physical_success": true,
+          "failure_code": null
+        },
+        {
+          "skill": "place_held",
+          "state": "failed",
+          "execution": {
+            "loop": "fast_only",
+            "max_attempts": 2,
+            "supervision": {
+              "kind": "physical",
+              "wait": false
+            }
+          },
+          "elapsed_s": 1.4244351387023926,
+          "physical_success": null,
+          "failure_code": "TARGET_NOT_FOUND"
+        }
+      ],
+      "checks": [
+        {
+          "state": "passed",
+          "started_at": "2026-09-07T19:09:17.549Z",
+          "finished_at": "2026-09-07T19:09:17.782Z"
+        }
+      ],
+      "reason": "Mastra处理器停止：{\"reason\":\"TokenLimiterProcessor: No messages fit within the remaining token budget. Cannot send LLM a request with no messages.\",\"retry\":false,\"metadata\":{\"systemTokens\":2783.6,\"limit\":8785,\"remainingBudget\":5977.4,\"messageCount\":3},\"processorId\":\"robot-planner-input-processor\"}"
+    },
+    {
+      "run": "20260908-mastra-held-recovery",
+      "state": "completed",
+      "elapsed_s": 51.043284729123116,
+      "model_calls": 2,
+      "provider_failures": [
+        {
+          "model": "gemini-3.7-flash",
+          "elapsed_ms": 8030,
+          "reason": "The operation was aborted due to timeout"
+        }
+      ],
+      "steps": [
+        {
+          "skill": "place_held",
+          "state": "completed",
+          "execution": {
+            "loop": "fast_then_slow",
+            "max_attempts": 2,
+            "supervision": {
+              "kind": "physical",
+              "wait": false
+            }
+          },
+          "elapsed_s": 18.11817240715027,
+          "physical_success": true,
+          "failure_code": null
+        }
+      ],
+      "checks": [
+        {
+          "state": "passed",
+          "started_at": "2026-09-07T19:15:03.115Z",
+          "finished_at": "2026-09-07T19:15:03.240Z"
+        }
+      ],
+      "reason": null
+    },
+    {
+      "run": "20260908-mastra-industrial",
+      "state": "blocked",
+      "elapsed_s": 163.42032090201974,
+      "model_calls": 24,
+      "provider_failures": [
+        {
+          "model": "gemini-3.7-flash",
+          "elapsed_ms": 8003,
+          "reason": "The operation was aborted due to timeout"
+        }
+      ],
+      "steps": [
+        {
+          "skill": "grasp",
+          "state": "superseded",
+          "execution": {
+            "loop": "fast_then_slow",
+            "max_attempts": 2,
+            "supervision": {
+              "kind": "physical"
+            }
+          },
+          "elapsed_s": 0.544748067855835,
+          "physical_success": null,
+          "failure_code": "MODEL_UNAVAILABLE"
+        },
+        {
+          "skill": "grasp",
+          "state": "failed",
+          "execution": {
+            "loop": "fast_then_slow",
+            "max_attempts": 2,
+            "supervision": {
+              "kind": "physical"
+            }
+          },
+          "elapsed_s": 0.5844287872314453,
+          "physical_success": null,
+          "failure_code": "MODEL_UNAVAILABLE"
+        },
+        {
+          "skill": "place_held",
+          "state": "pending",
+          "execution": {
+            "loop": "slow",
+            "max_attempts": 2,
+            "supervision": {
+              "kind": "physical"
+            }
+          },
+          "elapsed_s": null,
+          "physical_success": null,
+          "failure_code": null
+        }
+      ],
+      "checks": [],
+      "reason": "系统缺少底层机械臂物理执行技能（如 grasp / move / place / pick 等操作接口未注册到运行时），视觉与几何规划已就绪（已定位料箱分格与横倒零件端向），但无法下发机械臂运动指令，需要接入操作技能支持。"
+    },
+    {
+      "run": "20260908-mastra-industrial-2b",
+      "state": "blocked",
+      "elapsed_s": 41.679085575044155,
+      "model_calls": 5,
+      "provider_failures": [
+        {
+          "model": "gemini-3.7-flash",
+          "elapsed_ms": 8003,
+          "reason": "The operation was aborted due to timeout"
+        }
+      ],
+      "steps": [],
+      "checks": [],
+      "reason": "Mastra尚未提交可执行决定，已保存任务和观察记录。"
+    },
+    {
+      "run": "20260908-mastra-industrial-3",
+      "state": "blocked",
+      "elapsed_s": 78.39087974838912,
+      "model_calls": 10,
+      "provider_failures": [
+        {
+          "model": "gemini-3.7-flash",
+          "elapsed_ms": 8002,
+          "reason": "The operation was aborted due to timeout"
+        }
+      ],
+      "steps": [],
+      "checks": [],
+      "reason": "Mastra处理器停止：{\"reason\":\"TokenLimiterProcessor: No messages fit within the remaining token budget. Cannot send LLM a request with no messages.\",\"retry\":false,\"metadata\":{\"systemTokens\":2543.6,\"limit\":8936,\"remainingBudget\":6368.4,\"messageCount\":1},\"processorId\":\"robot-planner-input-processor\"}"
+    },
+    {
+      "run": "20260908-mastra-industrial-4",
+      "state": "blocked",
+      "elapsed_s": 46.32024567387998,
+      "model_calls": 1,
+      "provider_failures": [
+        {
+          "model": "gemini-3.7-flash",
+          "elapsed_ms": 8003,
+          "reason": "The operation was aborted due to timeout"
+        },
+        {
+          "model": "gemini-3.8-flash",
+          "elapsed_ms": 30038,
+          "reason": "The operation was aborted due to timeout"
+        }
+      ],
+      "steps": [],
+      "checks": [],
+      "reason": "模型 gemini-3.8-flash 的接口暂时处于故障冷却期，请稍后重试。"
+    },
+    {
+      "run": "20260908-mastra-simple",
+      "state": "blocked",
+      "elapsed_s": 42.02654988691211,
+      "model_calls": 0,
+      "provider_failures": [],
+      "steps": [],
+      "checks": [],
+      "reason": "模型服务响应超时，本次请求未完成。"
+    },
+    {
+      "run": "20260908-mastra-simple-2",
+      "state": "completed",
+      "elapsed_s": 76.27140057645738,
+      "model_calls": 4,
+      "provider_failures": [
+        {
+          "model": "gemini-3.7-flash",
+          "elapsed_ms": 8001,
+          "reason": "The operation was aborted due to timeout"
+        }
+      ],
+      "steps": [
+        {
+          "skill": "grasp",
+          "state": "completed",
+          "execution": {
+            "loop": "fast_only",
+            "max_attempts": 2,
+            "supervision": {
+              "kind": "none"
+            }
+          },
+          "elapsed_s": 13.863516330718994,
+          "physical_success": true,
+          "failure_code": null
+        },
+        {
+          "skill": "place_held",
+          "state": "completed",
+          "execution": {
+            "loop": "fast_only",
+            "max_attempts": 2,
+            "supervision": {
+              "kind": "none"
+            }
+          },
+          "elapsed_s": 17.65050458908081,
+          "physical_success": true,
+          "failure_code": null
+        }
+      ],
+      "checks": [],
+      "reason": null
+    }
+  ],
+  "limitations": [
+    "No full industrial packing and loaded-bin stacking acceptance success.",
+    "Florence visibility alone cannot establish stable placement or correct end orientation.",
+    "Gemini gateways intermittently time out; successful simple tasks still take tens of seconds."
+  ]
+}
