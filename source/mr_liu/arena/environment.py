@@ -11,6 +11,7 @@ import numpy as np
 from mr_liu.arena.arrays import numpy_data
 from mr_liu.arena.evaluation import support_metrics
 from mr_liu.arena.placement_geometry import cell_fit
+from mr_liu.arena.orientation import endpoint_check
 from scipy.spatial.transform import Rotation
 
 import isaaclab.sim as sim
@@ -83,6 +84,13 @@ class PandaTask(NoTask):
                                    and np.linalg.norm(velocity) < .03 and support['support_linear_speed_mps'] < .03
                                    if destination is not None else position[2] - initial_z > .04))
         postconditions = {}
+        if destination and destination.get('orientation_evaluation'):
+            intent = destination['orientation_evaluation']
+            check = endpoint_check(intent['axis_object'], numpy_data(body.data.root_quat_w)[0],
+                                   intent['endpoint'], intent['direction'])
+            postconditions['requested_orientation'] = {**check, 'axis_ref':intent['axis_ref'],
+                'source':'observed_axis_with_simulation_pose_witness'}
+            success = bool(success and check['satisfied'])
         if destination and destination.get('grid_cell'):
             # Independent simulation witness: transform the pregrasp measured
             # shape with the actual rigid pose, and evaluate the observed cell.

@@ -44,6 +44,12 @@ def run_cascade(request, fast, enhanced, recover, event, *, attempts=None):
     except RuntimeError as error:
         if request.mode == "basic":
             raise
+        if getattr(error,'evaluation',{}).get('released'):
+            # A released, misplaced part needs a new semantic observation.
+            # Preserve its physical failure for supervision; don't immediately
+            # replay its pregrasp visual reference and hide it behind not-found.
+            event('placement_review_required',evaluation=error.evaluation)
+            return error.evaluation, request.route(), attempts
         event("model_fallback", reason=str(error))
         # Recovery chooses re-observation/regrasp versus placement-only based on
         # the physical task state. Never release a successfully held part here.

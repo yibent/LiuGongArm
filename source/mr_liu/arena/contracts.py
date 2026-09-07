@@ -40,7 +40,6 @@ class ManipulationRequest:
                 raise ValueError('orientation requires observed endpoint 0/1 and direction up/down')
             if not self.orientation.get('axis_ref'):
                 raise ValueError('orientation requires a current observed axis_ref')
-            raise NotImplementedError('Observed endpoint orientation requires a reorientation skill; geometry inspection alone cannot execute it')
 
     @property
     def enhanced(self):

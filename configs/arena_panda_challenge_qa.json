@@ -4,32 +4,32 @@
   "isaaclab_revision": "e57379c634b42db5a0fe9f754341be6e2a7c7c43",
   "base_revision": "0576d673fa396d1373d9bcd298d45a93bc582904",
   "camera": {
-    "width": 800,
-    "height": 600,
+    "width": 1280,
+    "height": 960,
     "render_interval": 8,
     "update_period_s": 0.06666666666666667,
     "scene": {
       "position": [
-        1.02,
-        -0.64,
-        0.92
+        0.7,
+        -0.4,
+        0.76
       ],
       "lookat": [
-        0.5,
-        0.025,
-        0.04
+        0.52,
+        0,
+        0.02
       ]
     },
     "side": {
       "position": [
-        0.96,
-        0.66,
-        0.8
+        0.8,
+        0.55,
+        0.65
       ],
       "lookat": [
-        0.5,
-        0.025,
-        0.04
+        0.52,
+        0,
+        0.02
       ]
     },
     "wrist": {
@@ -279,7 +279,7 @@
       "position": [
         0.465,
         0.156,
-        0.024
+        0.07
       ],
       "orientation": [
         0.0,

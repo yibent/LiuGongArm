@@ -88,3 +88,11 @@ def test_cell_evaluation_rejects_wrong_cell_overhang_and_resting_on_dividers():
     assert not cell_fit(shape+centre+[0,0,.028],cell,grid['basis_xy'])['fits']
     shape[:,:2]*=3
     assert not cell_fit(shape+centre,cell,grid['basis_xy'])['fits']
+
+
+def test_grid_peaks_reject_weak_occluder_but_keep_strong_irregular_wall_unknown():
+    from mr_liu.arena.placement_geometry import regular_dividers
+    positions=np.array([0.,.048,.061,.096])
+    np.testing.assert_allclose(regular_dividers(positions,[1000,1100,300,900]),[0,.048,.096])
+    assert regular_dividers(positions,[1000,1100,1050,900]) is None
+    assert regular_dividers([0,.032,.09],[900,1000,1000]) is None

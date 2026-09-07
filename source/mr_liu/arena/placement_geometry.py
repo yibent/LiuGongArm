@@ -83,6 +83,25 @@ def principal_axis(points, view=None):
     return result
 
 
+def regular_dividers(positions, strength):
+    """Reject weak handle/occluder peaks using the observed line spacing.
+
+    Every returned divider must have a measured peak. Never fill a missing
+    divider or discard a strong irregular wall to manufacture a regular grid.
+    """
+    positions=np.asarray(positions);strength=np.asarray(strength)
+    for count in range(len(positions),1,-1):
+        expected=np.linspace(positions[0],positions[-1],count)
+        spacing=(positions[-1]-positions[0])/(count-1)
+        if spacing<.012:continue
+        nearest=np.abs(expected[:,None]-positions[None,:]).argmin(1)
+        if len(set(nearest)) != count or np.max(np.abs(expected-positions[nearest])) > max(.0025,spacing*.12):continue
+        unused=np.ones(len(positions),bool);unused[nearest]=False
+        if unused.any() and np.max(strength[unused]) > .55*np.median(strength[nearest]):continue
+        return positions[nearest]
+    return None
+
+
 def inspect_grid(parent, scene=None, *, camera_position=None, camera_right=None, resolution=.002):
     """Infer a rectangular grid from observed floor and parallel divider peaks.
 
@@ -126,8 +145,8 @@ def inspect_grid(parent, scene=None, *, camera_position=None, camera_right=None,
         centres = (edges[peaks]+edges[peaks+1])/2
         if len(centres) < 2:
             return {'status':'unknown','reason':'incomplete_grid_boundaries','cells':[]}
-        spacing=np.diff(centres)
-        if spacing.min()<.012 or spacing.max()>spacing.min()*1.35:
+        centres = regular_dividers(centres,hist[peaks])
+        if centres is None:
             return {'status':'unknown','reason':'irregular_or_occluded_dividers','cells':[]}
         lines.append(centres)
     # Column order points right in the selected camera; rows start near it.

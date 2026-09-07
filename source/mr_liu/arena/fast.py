@@ -11,6 +11,7 @@ from isaacsim.robot.manipulators.controllers.pick_place_controller import PickPl
 
 from mr_liu.arena.cascade import FastPathFailure
 from mr_liu.grasp.transforms import invert_transform, transform_points
+from mr_liu.arena.orientation import endpoint_vector
 
 
 class ArenaCartesian:
@@ -55,14 +56,33 @@ def fast_pick_place(runtime, request):
     row, destination = runtime.prepare_task(request)
     points = runtime.cloud(row["name"])
     observation_ref = runtime.visual_result['request_id']
+    binding = runtime.bind_orientation(request, row, points)
+    if binding and endpoint_vector(binding['axis_world'],binding['endpoint'],binding['direction'])[2] < -.7:
+        raise FastPathFailure('端点翻转需要侧向抓法，使用 GraspGenX 选择可翻转的抓取姿态。')
     geometry = None
     low, high = np.quantile(points, [.02, .98], axis=0)
     pick = (low + high) / 2
+    grasp_orientation = np.array([0., 1., 0., 0.])
+    if binding and abs(binding['axis_world'][2]) < .5:
+        # Pinch the upper half of a horizontal part; keep the closing
+        # direction perpendicular to its observed long axis.
+        axis = np.asarray(binding['axis_world'])
+        # Pinch toward the end that will be uppermost. After standing the
+        # part up, the fingers and wrist remain above the container walls.
+        upper = binding['endpoint'] if binding['direction']=='up' else 1-binding['endpoint']
+        pick += axis*(np.quantile(points@axis,.78 if upper else .22)-pick@axis)
+        pick[2] = high[2]-.35*(high[2]-low[2])
+        yaw = np.arctan2(binding['axis_world'][1],binding['axis_world'][0])
+        # An oblique pinch leaves the palm above the rim after the part stands
+        # up. Jaws still close across the observed shaft, not along its length.
+        tilt = np.deg2rad(30 if upper == 0 else -30)
+        grasp_orientation = np.roll((Rotation.from_euler('z',yaw)*Rotation.from_euler('x',np.pi)
+                                     *Rotation.from_euler('y',tilt)).as_quat(),1)
     if request.cell_ref and high[2]-low[2] > max(high[:2]-low[:2]):
         # Pinch above short dividers instead of putting the fingers between them.
         pick[2] = low[2]+.8*(high[2]-low[2])
     place = pick.copy()
-    if destination:
+    if destination and not request.orientation:
         support = runtime.placement_support(request, destination, points, runtime.tcp_pose()[:3, 3])
         place[:2] = support[:2]
         place[2] = support[2] + pick[2]-low[2] + .003
@@ -92,16 +112,18 @@ def fast_pick_place(runtime, request):
                 if not runtime.holding_status()['verified']:
                     raise FastPathFailure('夹持状态已改变，抬升后物体未跟随夹爪。')
                 runtime.held_context['max_lift_m'] = runtime.max_lift
-                runtime.event("lift_verified", lift_m=runtime.max_lift)
+                runtime.event("lift_verified", lift_m=runtime.max_lift, holding_measurement=runtime.holding_status())
                 if destination is None:
                     return runtime.task.evaluate(runtime.env, row["name"], runtime.initial_z, None,
                         released=False, max_lift=runtime.max_lift, stability=0.)
+                if request.orientation:
+                    return runtime.oriented_place_held(request, row, destination)
             if phase == 7: verify_release_pose(runtime,place,place_orientation)
             runtime.event(PHASES[phase], backend="official_pick_place")
             if phase == 3: runtime.held = row["name"]
             if phase == 8: runtime.clear_hold()
             previous = phase
-        controller.forward(pick, place, np.zeros(9), end_effector_orientation=place_orientation if phase >= 5 else np.array([0., 1., 0., 0.]))
+        controller.forward(pick, place, np.zeros(9), end_effector_orientation=place_orientation if phase >= 5 else grasp_orientation)
         runtime.tick()
     before = runtime.object_pose(row["name"])[:3, 3]
     for _ in range(45): runtime.tick()
@@ -116,6 +138,8 @@ def fast_place_held(runtime, request, row, destination):
 Warm the controller's first phases with detached adapters, without stepping
 the robot. Then use its original transport/release/retreat interpolation.
 """
+    if request.orientation:
+        return runtime.oriented_place_held(request, row, destination)
     child = runtime.held_cloud()
     tcp = runtime.tcp_pose()
     support = runtime.placement_support(request, destination, child, tcp[:3, 3])

@@ -110,6 +110,10 @@ def observe(body):
         if request['inspect'] == 'axis':
             result['geometry'] = {'kind':'axis','camera':camera, **principal_axis(points,
                 {'K':frames[camera+'_K'],'T':frames[camera+'_T'],'size':[width,height]})}
+            result['geometry']['axis_ref'] = next(row['ref'] for row in result['references'] if row['camera'] == camera)
+            result['geometry']['views'] = {key: principal_axis(points, {
+                'K':frames[key+'_K'],'T':frames[key+'_T'],
+                'size':list(frames[key+'_rgb'].shape[1::-1])})['endpoints_normalized'] for key in masks}
         elif request['inspect'] == 'grid':
             clouds=[]
             low,high=np.quantile(points,[.01,.99],axis=0)

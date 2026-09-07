@@ -35,6 +35,9 @@ def main():
     p.box((.19,.17,.07),(0,0,.035));p.save()
     config=json.loads((ROOT/'configs/arena_panda_industrial.json').read_text())
     config['entities']=[]
+    config['camera'].update(width=1280,height=960)
+    config['camera']['scene'].update(position=[.70,-.40,.76],lookat=[.52,0,.02])
+    config['camera']['side'].update(position=[.80,.55,.65],lookat=[.52,0,.02])
     truth={'description':'Reduced Q8 fixture: three regions 2/5/3, six-cell movable bin, fallen bin part, one stack base.',
            'normal_pose':'closed flat end up, local +Z (open bore) down',
            'regions':{},'parts':[],'cell_centres':[], 'scale_note':'10 incoming parts and 6 cells, not a pixel-exact reconstruction or full-scale benchmark.'}
@@ -52,9 +55,10 @@ def main():
                 'position':[x,y,z],'orientation':quaternion(angle),'dynamic':True,'mass':.08})
             truth['regions'][name]['part_ids'].append(identifier)
             truth['parts'].append({'id':identifier,'region':name,'state':'normal' if angle==180 else 'inverted' if angle==0 else 'fallen'})
-    # A fallen sleeve occupies/crosses the near pair of cells.
+    # Drop the fallen sleeve above the dividers, then let physics settle it.
+    # Spawning at floor height interpenetrates the divider across its length.
     config['entities'].append({'name':'qa_body_11','usd_path':'assets/scenes/challenge_qa/asset_01.usda',
-        'position':[.465,.156,.024],'orientation':quaternion(90),'dynamic':True,'mass':.08})
+        'position':[.465,.156,.070],'orientation':quaternion(90),'dynamic':True,'mass':.08})
     truth['parts'].append({'id':'qa_body_11','region':'bin','state':'fallen'})
     for identifier,asset,pos,dynamic,mass in [
         ('qa_body_12',2,[.49,.18,0.],True,.3),

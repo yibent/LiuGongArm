@@ -33,9 +33,11 @@ class ArenaContractTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             placement_to_tcp(np.zeros((4, 4)), np.eye(4), np.eye(4))
 
-    def test_unimplemented_orientation_cannot_be_silently_ignored(self):
-        with self.assertRaisesRegex(NotImplementedError, 'reorientation skill'):
-            ManipulationRequest('part', 'tray', orientation={'axis_ref':'observed-axis','endpoint':1})
+    def test_orientation_requires_an_observed_endpoint(self):
+        value = ManipulationRequest('part', 'tray', orientation={'axis_ref':'observed-axis','endpoint':1})
+        self.assertEqual(value.orientation['endpoint'],1)
+        with self.assertRaises(ValueError):
+            ManipulationRequest('part', 'tray', orientation={'endpoint':1})
 
 
 if __name__ == "__main__":

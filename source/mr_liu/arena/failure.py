@@ -9,6 +9,11 @@ class LocalizationFailure(RuntimeError):
 
 def failure_feedback(error, phase, holding, evaluation=None):
     message = str(error)
+    orientation = (evaluation or {}).get('postconditions',{}).get('requested_orientation',{})
+    if orientation and not orientation.get('satisfied'):
+        return {'code':'WRONG_ORIENTATION','phase':phase,'holding_verified':bool(holding.get('verified')),
+            'suggested_recovery':['inspect_actual_endpoints','regrasp_with_orientation_constraint'],
+            'message':message,'measured_postcondition':orientation}
     check = (evaluation or {}).get('postconditions',{}).get('requested_cell',{})
     if check and not check.get('satisfied'):
         code = 'WRONG_CELL' if check.get('minimum_wall_margin_m',0)<-.002 else 'NOT_SEATED'

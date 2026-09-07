@@ -51,3 +51,19 @@ def test_holding_continuity_accepts_transport_but_detects_open_jaws_or_dropped_o
     assert not holding_measurement(reference, reference, .08)['verified']
     dropped = reference.copy(); dropped[2, 3] -= .12
     assert not holding_measurement(reference, dropped, .044)['verified']
+
+
+def test_empty_closed_jaws_cannot_claim_a_nearby_dropped_part():
+    reference = np.eye(4)
+    dropped = reference.copy(); dropped[2, 3] = .022
+    assert not holding_measurement(reference, dropped, .000078, .025)['verified']
+    assert not holding_measurement(reference, reference, .009, .025)['verified']
+    assert holding_measurement(reference, reference, .023, .025)['verified']
+
+
+def test_hold_monitor_also_watches_large_reorientations():
+    from mr_liu.arena.holding import HoldMonitor
+    monitor = HoldMonitor()
+    assert not monitor.update(False, 'reorient_transport', True)
+    assert not monitor.update(False, 'reorient_transport', True)
+    assert monitor.update(False, 'reorient_transport', True)

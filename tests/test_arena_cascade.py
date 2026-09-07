@@ -82,3 +82,11 @@ def test_localization_failure_returns_to_selection_without_switching_grasp_model
         run_cascade(ManipulationRequest('part', 'tray'), Mock(side_effect=LocalizationFailure('ambiguous')),
                     enhanced, recover, Mock())
     recover.assert_not_called(); enhanced.assert_not_called()
+
+
+def test_released_bad_placement_preserves_metrics_instead_of_replaying_old_grasp():
+    evaluation={'physical_success':False,'released':True,'postconditions':{'requested_orientation':{'satisfied':False}}}
+    model,recover=Mock(),Mock()
+    result,_,attempts=run_cascade(ManipulationRequest('part','bin'),lambda _:evaluation,model,recover,Mock())
+    assert result is evaluation and len(attempts)==1
+    model.assert_not_called();recover.assert_not_called()

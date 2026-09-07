@@ -27,7 +27,7 @@ def test_grasp_records_closure_reference_before_lift_can_fail():
     remember=Mock()
     r=SimpleNamespace(prepare_task=lambda req:({'name':'observed-body'},None),cloud=lambda name:np.array([[0,0,0],[.02,.02,.06]]),
         visual_result={'request_id':'before'},config={'fast':{'phase_steps':[1]*10}},event=Mock(),tick=Mock(),
-        tcp_pose=lambda:np.eye(4),max_lift=0.,remember_hold=remember)
+        tcp_pose=lambda:np.eye(4),max_lift=0.,remember_hold=remember,bind_orientation=lambda *args:None)
     with pytest.raises(FastPathFailure,match='did not lift'):
         namespace['fast_pick_place'](r,ManipulationRequest('part',mode='basic'))
     remember.assert_called_once()

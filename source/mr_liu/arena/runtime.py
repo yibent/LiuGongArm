@@ -21,6 +21,7 @@ from mr_liu.arena.visual_refs import load_reference
 from mr_liu.arena.failure import failure_feedback, LocalizationFailure
 from mr_liu.arena.failure import PlacementSpaceUnavailable
 from mr_liu.arena.placement_geometry import cell_fit
+from mr_liu.arena.orientation import endpoint_vector, placement_rotations, transformed_payload, placement_pose
 from mr_liu.arena.instances import InstanceConflict
 from mr_liu.vision.worker import VisionWorker
 from mr_liu.arena.cascade import run_cascade
@@ -46,6 +47,7 @@ class ArenaRuntime:
         self.phase = "initializing"; self.current = None; self.held = None
         self.held_context = None
         self.held_geometry = None
+        self.orientation_binding = None
         self.hold_monitor = HoldMonitor()
         self.observed_entities = {}
         self.prepared_clouds = {}
@@ -87,6 +89,10 @@ class ArenaRuntime:
         votes = observation['physical_witness']['votes']
         row = {**self.body_entities[name], 'label': observation['label'],
                'visual_ref': next((r['ref'] for r in observation.get('references', []) if r['kind'] == 'object'), None)}
+        # Freeze the evaluator's body-frame shape at observation time. A grasp
+        # can move/rotate the part before closure; a predicted held cloud must
+        # not be relabelled as measured geometry in that later physical frame.
+        row['evaluation_points_object'] = transform_points(invert_transform(self.object_pose(name)),points).tolist()
         self.observed_entities[name] = row
         self.prepared_clouds[name] = (points, observation)
         self.event('instance_observed', label=row['label'], instance_id=name,
@@ -140,8 +146,7 @@ class ArenaRuntime:
                 grid_basis_xy=grid['basis_xy'], yaw_delta_rad=0.)
             # This retained measured shape is used only by the simulator's
             # independent physical evaluator after release, never for planning.
-            destination['evaluation_points_object'] = transform_points(
-                invert_transform(self.object_pose(self.target_name)), child).tolist()
+            destination['evaluation_points_object'] = self.observed_entities[self.target_name]['evaluation_points_object']
             self.event('grid_cell_selected', observation_ref=self.visual_result['request_id'],
                 position_world_m=centre.tolist(), row=cell['row'], column=cell['column'],
                 footprint_radius_m=float(np.linalg.norm(cell['interior_size_m'])/2), source=grid['source'])
@@ -168,7 +173,15 @@ class ArenaRuntime:
     def remember_hold(self, row, geometry=None):
         self.held = row['name']
         self.held_geometry = geometry
+        if geometry is not None:
+            geometry['tcp_at_grasp'] = self.tcp_pose().copy()
+            if self.orientation_binding:
+                geometry['orientation'] = {**self.orientation_binding,
+                    'axis_tcp': (self.tcp_pose()[:3,:3].T @ self.orientation_binding['axis_world']).tolist()}
+        robot = self.env.scene['robot']
+        fingers, _ = robot.find_joints('panda_finger_joint.*')
         self.held_context = {'instance_id': self.held, 'label': row['label'],
+            'opening_at_grasp_m': float(numpy_data(robot.data.joint_pos)[0, fingers].sum()),
             'grasp_command_id': self.current, 'initial_z': self.initial_z,
             'max_lift_m': self.max_lift,
             'tcp_to_object_at_grasp': (invert_transform(self.tcp_pose()) @ self.object_pose(self.held)).tolist()}
@@ -180,7 +193,8 @@ class ArenaRuntime:
         fingers, _ = robot.find_joints('panda_finger_joint.*')
         measured = holding_measurement(self.held_context['tcp_to_object_at_grasp'],
             invert_transform(self.tcp_pose()) @ self.object_pose(self.held),
-            float(numpy_data(robot.data.joint_pos)[0, fingers].sum()))
+            float(numpy_data(robot.data.joint_pos)[0, fingers].sum()),
+            self.held_context.get('opening_at_grasp_m'))
         return {**self.held_context, **measured}
 
     def clear_hold(self):
@@ -209,7 +223,8 @@ class ArenaRuntime:
                 "placement": {"backend": "official_pick_place_or_anyplace", "relations": ["on"], "place_held": True,
                     "selection": ["auto", "center", "free_space"], "preferences": ["nearest", "left", "right", "near", "far", "center", "compact"],
                     "visual_references": True, "region_reference": True,
-                    "cell_reference": True, "endpoint_reorientation": False},
+                    "cell_reference": True, "endpoint_reorientation": True,
+                    "orientation_input": {"axis_ref":"inspect_object axis_ref", "endpoint":[0,1], "direction":["up","down"]}},
                 "routing": "fast_first_then_models_once; complex_tasks_use_models_directly",
                 "vla_loaded": False, "perception_source": "task_routed_rgbd",
                 "vision": {"architecture": "task_routed_fast_slow", "visual_tracking": True,
@@ -223,8 +238,8 @@ class ArenaRuntime:
                 "frame": "world", "quaternion": "xyzw", "units": "metres",
                 "configured_label_required": False,
                 "target_source": "image_model_mask_and_rgbd",
-                "objects": list(self.observed_entities.values()),
-                "destinations": list(self.observed_entities.values())}
+                "objects": [{k:v for k,v in row.items() if k not in {'evaluation_points_object','orientation_evaluation'}} for row in self.observed_entities.values()],
+                "destinations": [{k:v for k,v in row.items() if k not in {'evaluation_points_object','orientation_evaluation'}} for row in self.observed_entities.values()]}
 
     def refresh_snapshot(self):
         robot = self.env.scene["robot"]
@@ -276,6 +291,7 @@ class ArenaRuntime:
             self.refresh_snapshot()
             if self.hold_monitor.update(bool(self.snapshot['holding'].get('verified')), self.phase, self.gripper < 0):
                 self.goal = self.tcp_pose()
+                self.event('holding_lost', during=self.phase, measurement=self.snapshot['holding'])
                 raise RuntimeError('夹持状态已改变，检测到持物滑落；停止运输并重新观察。')
         # HTTP requests only enqueue work. Sensor arrays are copied on the sim
         # thread even while a long physical action or model inference is running.
@@ -385,6 +401,7 @@ class ArenaRuntime:
         rotation = Rotation.from_matrix(target[:3, :3] @ start[:3, :3].T).magnitude()
         waypoints = max(1, int(np.ceil(max(travel / .003, rotation / .035))))
         interpolation = Slerp([0, 1], Rotation.from_matrix(np.stack([start[:3, :3], target[:3, :3]])))
+        progress = []
         for index in range(steps or self.config["controller"]["max_steps"]):
             actual = self.tcp_pose()
             if until_contact is not None and until_contact():
@@ -393,11 +410,21 @@ class ArenaRuntime:
                 return
             delta = target[:3, 3] - actual[:3, 3]
             angle = Rotation.from_matrix(target[:3, :3] @ actual[:3, :3].T).magnitude()
+            progress.append(float(np.linalg.norm(delta)+.1*angle))
             if (np.linalg.norm(delta) < self.config["controller"]["position_tolerance_m"]
                     and angle < np.deg2rad(self.config["controller"]["rotation_tolerance_deg"])):
                 self.goal = target.copy()
                 for _ in range(10): self.tick()
+                if self.held_context:
+                    self.event('motion_arrived', during=label, holding_measurement=self.holding_status())
                 return
+            if index > waypoints+35 and len(progress) >= 30:
+                robot = self.env.scene['robot']
+                joints = numpy_data(robot.data.joint_pos)[0,:7]
+                limits = numpy_data(robot.data.joint_pos_limits)[0,:7]
+                saturated = np.any(np.minimum(joints-limits[:,0],limits[:,1]-joints)<.005)
+                if saturated and min(progress[-30:]) > min(progress[:-30])-.001:
+                    break  # Switch candidate when a real joint limit stalls IK.
             # Time-parameterized Cartesian waypoints tracked by Arena IK. Advancing
             # from measured pose every tick would repeatedly reset the ramp and
             # stall behind the actuator's small tracking lag.
@@ -457,7 +484,94 @@ class ArenaRuntime:
         self.target_name = row["name"]
         self.selected_target = row["label"]
         self.initial_z = float(self.object_pose(row["name"])[2, 3]); self.max_lift = 0.
+        self.orientation_binding = None
         return row, destination
+
+    def bind_orientation(self, request, row, points):
+        if not request.orientation: return None
+        ref, directory = load_reference(self.perception.root, request.orientation['axis_ref'], self.perception.scene_id)
+        observed = json.loads((directory/'result.json').read_text())
+        geometry = observed.get('geometry', {})
+        if geometry.get('kind') != 'axis' or geometry.get('axis_confidence', 0) < 1.5:
+            raise LocalizationFailure('该引用没有可靠的长轴观测，需要 inspect_object(kind=axis)。')
+        # Bind a visual reference to the same physical instance, never use its
+        # configured shape/orientation to decide which semantic end is up.
+        witness, _ = self.perception.witness(observed, self.body_entities)
+        if witness != row['name']:
+            raise LocalizationFailure('朝向引用属于另一个物体，需要重新观察当前目标。')
+        old_points, _ = self.perception.cloud(observed)
+        old_centre = np.quantile(old_points,[.02,.98],axis=0).mean(0)
+        centre = np.quantile(points,[.02,.98],axis=0).mean(0)
+        if np.linalg.norm(old_centre-centre) > .03:
+            raise LocalizationFailure('端点观察后物体已移动，需要重新检查端点。')
+        axis = np.asarray(geometry['axis_world'])
+        self.orientation_binding = {**request.orientation, 'direction':request.orientation.get('direction','up'),
+            'axis_world':axis.tolist(), 'axis_object':(self.object_pose(row['name'])[:3,:3].T @ axis).tolist()}
+        return self.orientation_binding
+
+    def oriented_place_held(self, request, row, destination):
+        """Execute the observed endpoint constraint using Arena's full-pose IK."""
+        child = self.held_cloud(); tcp = self.tcp_pose()
+        self.prepared_clouds.pop(destination['name'], None)
+        parent = self.cloud(destination['name'], **({'inspect':'grid'} if request.cell_ref else {}))
+        self.prepared_clouds[destination['name']] = (parent,self.visual_result)
+        binding = self.held_geometry.get('orientation')
+        if not binding or binding['axis_ref'] != request.orientation['axis_ref']:
+            # A user may inspect, grasp, then request orientation in a later
+            # command. Relate that pregrasp observation to the retained shape.
+            at_grasp = self.held_geometry['tcp_at_grasp']
+            prior = transform_points(at_grasp, self.held_geometry['points_tcp'])
+            _, origin = load_reference(self.perception.root,request.orientation['axis_ref'],self.perception.scene_id)
+            axis_result = json.loads((origin/'result.json').read_text())
+            observed_points,_ = self.perception.cloud(axis_result)
+            centre = np.quantile(observed_points,[.02,.98],axis=0).mean(0)
+            current_distance = np.linalg.norm(centre-np.quantile(child,[.02,.98],axis=0).mean(0))
+            prior_distance = np.linalg.norm(centre-np.quantile(prior,[.02,.98],axis=0).mean(0))
+            basis, shape = (tcp,child) if current_distance <= prior_distance else (at_grasp,prior)
+            binding = self.bind_orientation(request, row, shape)
+            binding = {**binding, 'axis_tcp':(basis[:3,:3].T @ binding['axis_world']).tolist()}
+            binding['axis_object'] = (self.object_pose(row['name'])[:3,:3].T @ tcp[:3,:3] @ binding['axis_tcp']).tolist()
+            self.held_geometry['orientation'] = binding
+        directed = endpoint_vector(tcp[:3,:3] @ np.asarray(binding['axis_tcp']),
+                                   request.orientation['endpoint'], request.orientation.get('direction','up'))
+        candidates = []
+        for delta in placement_rotations(directed, tcp[:3,:3]):
+            rotated = transformed_payload(child, tcp, delta)
+            # Free-space/cell search evaluates the intended shape, not the
+            # horizontal pregrasp footprint of a part that will stand upright.
+            if not candidates:
+                support = self.placement_support(request, destination, rotated, tcp[:3,3])
+            pose, placed = placement_pose(child, tcp, delta, support)
+            if request.cell_ref and not cell_fit(placed,destination['grid_cell'],destination['grid_basis_xy'])['fits']:
+                continue
+            # The real Panda hand extends 103.4 mm behind the controlled TCP.
+            # Reject poses putting its palm under the observed support plane.
+            if (pose[:3,3]-.1034*pose[:3,2])[2] < support[2]+.012: continue
+            candidates.append(pose)
+        destination['orientation_evaluation'] = {**binding, **request.orientation}
+        if request.cell_ref:
+            destination['evaluation_points_object'] = row['evaluation_points_object']
+        if not candidates:
+            raise RuntimeError('当前抓法无法以所需端点朝向释放，需要从侧面重新抓取。')
+        candidates.sort(key=lambda pose: Rotation.from_matrix(pose[:3,:3]@tcp[:3,:3].T).magnitude())
+        def approach(pose):
+            value = pose.copy();value[2,3] = max(tcp[2,3],pose[2,3]+.16)
+            return value
+        goal = self.try_precontact_candidates(candidates, approach, phase='reorient_transport', holding=True)
+        self.event('orientation_selected', axis_ref=binding['axis_ref'], endpoint=request.orientation['endpoint'],
+                   direction=request.orientation.get('direction','up'), pose_world=goal.tolist())
+        # Side-wall contact is not proof of seating in a cell. Wait for the
+        # measured full TCP pose before opening, as on the ordinary fast path.
+        self.move(goal,label='place_approach')
+        self.event('release',holding_measurement=self.holding_status());self.gripper=1.
+        for _ in range(50): self.tick()
+        self.clear_hold()
+        retreat=self.tcp_pose();retreat[2,3]+=.14
+        self.move(retreat,label='retreat')
+        before=self.object_pose(row['name'])[:3,3]
+        for _ in range(60):self.tick()
+        return self.task.evaluate(self.env,row['name'],self.initial_z,destination,released=True,
+            max_lift=self.max_lift,stability=float(np.linalg.norm(self.object_pose(row['name'])[:3,3]-before)))
 
     def try_precontact_candidates(self, candidates, make_approach, *, phase, holding=False):
         last_error = None
@@ -480,6 +594,7 @@ class ArenaRuntime:
         row, destination = self.prepare_task(request)
         points = self.cloud(row["name"])
         observation_ref = self.visual_result['request_id']
+        binding = self.bind_orientation(request, row, points)
         self.event("planning", route=request.route(), object_points=len(points))
         candidates = self._grasp_candidates(points)
         if not candidates:
@@ -488,7 +603,14 @@ class ArenaRuntime:
         # Prefer a short motion among model proposals, without projecting poses
         # onto a manually permitted direction or hard-coded workspace box.
         def motion_cost(pose):
-            return (np.linalg.norm(pose[:3, 3] - current[:3, 3])
+            orientation_cost = 0.
+            if binding:
+                axis = endpoint_vector(binding['axis_world'], binding['endpoint'], binding['direction'])
+                delta = placement_rotations(axis, pose[:3,:3])[0]
+                # Prefer a grasp whose palm can remain above the support after
+                # reorientation; don't start a top-down grasp for a full flip.
+                orientation_cost = 8.*max(0., (delta @ pose[:3,2])[2]-.15)
+            return (orientation_cost + np.linalg.norm(pose[:3, 3] - current[:3, 3])
                     + Rotation.from_matrix(pose[:3, :3] @ current[:3, :3].T).magnitude())
         ranked = sorted(candidates, key=lambda item: motion_cost(item[0]) - .15*(item[1] or 0.))
         def pregrasp(item):
@@ -517,6 +639,8 @@ class ArenaRuntime:
         return self._place_held(request, row, destination)
 
     def _place_held(self, request, row, destination):
+        if request.orientation:
+            return self.oriented_place_held(request, row, destination)
         # Geometry below comes from RGB-D. Simulator object pose is used only by
         # evaluation; the held reference is estimated from measured cloud bounds.
         child = self.held_cloud()
