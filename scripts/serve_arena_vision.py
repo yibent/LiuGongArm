@@ -22,7 +22,7 @@ from mr_liu.perception.arena_vision import ImagePipeline
 from mr_liu.perception.sam3_localizer import Sam3Localizer
 from mr_liu.arena.visual_refs import annotate_references, load_reference, load_snapshot
 from mr_liu.arena.observed_scene import collection_geometry, masked_points
-from mr_liu.arena.placement_geometry import inspect_grid_views, principal_axis, retained_grid
+from mr_liu.arena.placement_geometry import inspect_grid_views, principal_axis
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--port', type=int, default=5570)
@@ -126,17 +126,9 @@ def observe(body):
                 clouds.append(cloud)
             result['geometry'] = {'kind':'grid', **inspect_grid_views({key:{'points':masked_points(frames,key,mask),
                 'T':frames[key+'_T']} for key,mask in masks.items()},np.concatenate(clouds))}
-            if request.get('visual_ref'):
-                _,origin=load_reference(store,request['visual_ref'],request['scene_id'])
-                previous=json.loads((origin/'result.json').read_text()).get('geometry',{})
-                if previous.get('status')=='observed' and previous.get('kind')=='grid':
-                    with np.load(origin/'frames.npz',allow_pickle=False) as old_frames, np.load(origin/'masks.npz',allow_pickle=False) as old_masks:
-                        old_points=np.concatenate([masked_points(old_frames,key,mask) for key,mask in old_masks.items()])
-                    for key,mask in masks.items():
-                        kept=retained_grid(previous,old_points,masked_points(frames,key,mask),np.concatenate(clouds))
-                        if kept is not None:
-                            result['geometry']={**kept,'prior_observation_ref':origin.name,'confirmation_camera':key}
-                            break
+            # Only describe the current observation here. ObservedScene owns
+            # cross-observation grid identity and checks it against fresh depth.
+            # Restoring geometry here also restored an absent previous camera.
             camera = result['geometry']['camera']
         # Geometry is stored once per observation, not repeated in every ref.
         if request['inspect'] == 'grid' and result.get('geometry', {}).get('status') == 'observed':
