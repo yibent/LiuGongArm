@@ -2,7 +2,7 @@
   "date": "2026-09-08",
   "framework": "Mastra",
   "industrial_accepted": false,
-  "backend_tests_passed": 347,
+  "backend_tests_passed": 352,
   "python_tests_passed": 36,
   "queue_concurrency": {
     "actual_queue_store": true,
@@ -267,6 +267,179 @@
         }
       ],
       "checks": [],
+      "reason": null
+    },
+    {
+      "run": "20260908-mastra-simple-batch",
+      "instruction": "拿起一个金属圆柱，放到桌面的空处，然后机械臂回位。",
+      "state": "blocked",
+      "elapsed_s": 40.598060585558414,
+      "model_calls": 0,
+      "provider_failures": [
+        {
+          "model": "gemini-3.7-flash",
+          "elapsed_ms": 8032,
+          "reason": "The operation was aborted due to timeout"
+        },
+        {
+          "model": "gemini-3.8-flash",
+          "elapsed_ms": 30001,
+          "reason": "The operation was aborted due to timeout"
+        }
+      ],
+      "steps": [],
+      "checks": [],
+      "reason": "模型服务响应超时，本次请求未完成。"
+    },
+    {
+      "run": "20260908-mastra-simple-batch-2",
+      "instruction": "拿起一个金属圆柱，放到桌面的空处，然后机械臂回位。",
+      "state": "blocked",
+      "elapsed_s": 138.77355325594544,
+      "model_calls": 4,
+      "model_calls_cumulative": 4,
+      "decisions": [
+        {
+          "mode": "simple",
+          "plan_scope": "complete",
+          "final_review": false,
+          "queue_update": "append"
+        },
+        {
+          "mode": "simple",
+          "plan_scope": "complete",
+          "final_review": false,
+          "queue_update": "append"
+        }
+      ],
+      "provider_failures": [
+        {
+          "model": "gemini-3.7-flash",
+          "elapsed_ms": 8002,
+          "reason": "The operation was aborted due to timeout"
+        }
+      ],
+      "steps": [
+        {
+          "skill": "pick_place",
+          "state": "superseded",
+          "execution": {
+            "loop": "fast_then_slow",
+            "max_attempts": 2,
+            "supervision": {
+              "kind": "none"
+            }
+          },
+          "elapsed_s": 61.04687714576721,
+          "physical_success": null,
+          "failure_code": "NO_FREE_SPACE"
+        },
+        {
+          "skill": "home",
+          "state": "completed",
+          "execution": {
+            "loop": "fast_only",
+            "max_attempts": 1,
+            "supervision": {
+              "kind": "none"
+            }
+          },
+          "elapsed_s": 8.71410584449768,
+          "physical_success": null,
+          "failure_code": null
+        },
+        {
+          "skill": "pick_place",
+          "state": "failed",
+          "execution": {
+            "loop": "fast_then_slow",
+            "max_attempts": 2,
+            "supervision": {
+              "kind": "physical"
+            }
+          },
+          "elapsed_s": 0.07319831848144531,
+          "physical_success": null,
+          "failure_code": "EXECUTION_FAILED"
+        },
+        {
+          "skill": "home",
+          "state": "pending",
+          "execution": {
+            "loop": "fast_only",
+            "max_attempts": 1,
+            "supervision": {
+              "kind": "none"
+            }
+          },
+          "elapsed_s": null,
+          "physical_success": null,
+          "failure_code": null
+        }
+      ],
+      "checks": [],
+      "reason": "Mastra处理器停止：{\"reason\":\"TokenLimiterProcessor: No messages fit within the remaining token budget. Cannot send LLM a request with no messages.\",\"retry\":false,\"metadata\":{\"systemTokens\":3216.6000000000004,\"limit\":8486,\"remainingBudget\":5245.4,\"messageCount\":6},\"processorId\":\"robot-planner-input-processor\"}"
+    },
+    {
+      "run": "20260908-mastra-simple-batch-recovery",
+      "instruction": "拿起一个金属圆柱，放到桌面的空处，然后机械臂回位。",
+      "state": "completed",
+      "elapsed_s": 38.104361863806844,
+      "model_calls": 2,
+      "model_calls_cumulative": 6,
+      "decisions": [
+        {
+          "mode": "simple",
+          "plan_scope": "complete",
+          "final_review": false,
+          "queue_update": "replace_pending"
+        }
+      ],
+      "provider_failures": [],
+      "steps": [
+        {
+          "skill": "place_held",
+          "state": "completed",
+          "execution": {
+            "loop": "fast_then_slow",
+            "max_attempts": 2,
+            "supervision": {
+              "kind": "physical"
+            }
+          },
+          "elapsed_s": 20.93436598777771,
+          "physical_success": true,
+          "failure_code": null
+        },
+        {
+          "skill": "home",
+          "state": "completed",
+          "execution": {
+            "loop": "fast_only",
+            "max_attempts": 1,
+            "supervision": {
+              "kind": "none"
+            }
+          },
+          "elapsed_s": 0.4739341735839844,
+          "physical_success": null,
+          "failure_code": null
+        }
+      ],
+      "checks": [
+        {
+          "id": "check:iq_6e8afdb4-bda0-4ce3-8a78-18cd7bb26b24:1",
+          "step_id": "6e8afdb4-bda0-4ce3-8a78-18cd7bb26b24",
+          "command_id": "iq_6e8afdb4-bda0-4ce3-8a78-18cd7bb26b24:1",
+          "revision": 2,
+          "state": "passed",
+          "started_at": "2026-09-07T19:40:38.786Z",
+          "result": {
+            "physical_verdict": "passed"
+          },
+          "finished_at": "2026-09-07T19:40:39.061Z"
+        }
+      ],
       "reason": null
     }
   ],
