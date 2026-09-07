@@ -1,0 +1,708 @@
+{
+  "date": "2026-09-07",
+  "environment": {
+    "host": "183.147.142.40",
+    "ssh_port": 31046,
+    "project": "/root/gpufree-data/arena-panda",
+    "robot": "franka_panda",
+    "simulator": "Isaac Sim / Arena",
+    "planner": "qwen3.7-plus",
+    "supervisor": "qwen3.7-plus"
+  },
+  "checks": {
+    "backend_unit_tests": {
+      "files": 42,
+      "passed": 255,
+      "failed": 0
+    },
+    "backend_build": "passed",
+    "backend_intelligence_eslint": "passed",
+    "frontend_typecheck": "passed",
+    "frontend_build": "passed",
+    "python_targeted_tests": {
+      "passed": 50,
+      "failed": 0
+    },
+    "git_diff_check": "passed"
+  },
+  "real_simulation": {
+    "independent_held_placement": {
+      "goal_id": "goal_evt_0458b9b3-a7aa-4750-9195-60497b6805da",
+      "instruction": "请把现在手中拿着的青色圆环放到桌面的任意空闲位置。",
+      "state": "completed",
+      "model_calls": 1,
+      "elapsed_s": 22.613,
+      "steps": [
+        {
+          "skill": "place_held",
+          "state": "completed",
+          "params": {
+            "destination": {
+              "label": "table",
+              "selection": "free_space"
+            },
+            "mode": "auto"
+          },
+          "controller_elapsed_s": 16.408512353897095,
+          "physical_success": true,
+          "released": true,
+          "support_contact": true
+        }
+      ]
+    },
+    "unattended_two_object_sequence": {
+      "goal_id": "goal_evt_12df6eee-326a-4aa5-aeae-9d2eac696ed2",
+      "instruction": "把蓝色托盘里的青色圆环放到黄色托盘空位，再把橙色齿轮放到蓝色托盘。最后检查这两步是否完成。",
+      "state": "completed",
+      "model_calls": 3,
+      "elapsed_s": 67.139,
+      "steps": [
+        {
+          "skill": "pick_place",
+          "state": "completed",
+          "params": {
+            "target": "cyan ring in blue tray",
+            "destination": {
+              "label": "yellow tray",
+              "selection": "center"
+            },
+            "mode": "auto"
+          },
+          "controller_elapsed_s": 23.37235164642334,
+          "physical_success": true,
+          "released": true,
+          "support_contact": true
+        },
+        {
+          "skill": "pick_place",
+          "state": "completed",
+          "params": {
+            "target": "orange gear",
+            "destination": {
+              "label": "blue tray",
+              "selection": "center"
+            },
+            "mode": "auto"
+          },
+          "controller_elapsed_s": 22.902824878692627,
+          "physical_success": true,
+          "released": true,
+          "support_contact": true
+        },
+        {
+          "skill": "perceive",
+          "state": "completed",
+          "params": {
+            "scope": "scene",
+            "scene_mode": "describe"
+          },
+          "controller_elapsed_s": 3.6894419193267822,
+          "physical_success": null,
+          "released": null,
+          "support_contact": null
+        }
+      ],
+      "manual_intervention": false,
+      "final_observation": "local perception; no cloud image needed",
+      "final_scene": "busagent-intelligence-final-scene.jpg"
+    },
+    "development_recovery_observation": {
+      "goal_id": "goal_evt_b4e416f7-14ff-4fa1-9d2c-808710341df2",
+      "state": "completed",
+      "clean_acceptance": false,
+      "note": "开发期间修改代码并人工恢复过目标；其中观察到模型在持物运输失败后选择 place_held，在后续定位失败后选择 SAM3。不能作为全程无人干预的成功率样本。"
+    }
+  },
+  "live_model_with_test_controller": {
+    "warning": "本组使用真实 BusAgent、MySQL、Qwen，但 Arena 为明确的测试替身，不能证明物理抓放能力。",
+    "simple_grasp_then_place": {
+      "goal_id": "goal_evt_0fb51322-5cf4-4db6-81da-01a094a40e29",
+      "instruction": "把绿色方块拿起来，然后在桌面随便找个地方放下",
+      "state": "completed",
+      "model_calls": 1,
+      "elapsed_s": 7.655,
+      "steps": [
+        {
+          "skill": "grasp",
+          "state": "completed",
+          "params": {
+            "target": "green cube",
+            "mode": "auto"
+          },
+          "controller_elapsed_s": null,
+          "physical_success": null,
+          "released": null,
+          "support_contact": null
+        },
+        {
+          "skill": "place_held",
+          "state": "completed",
+          "params": {
+            "destination": {
+              "label": "table",
+              "selection": "free_space"
+            },
+            "mode": "auto"
+          },
+          "controller_elapsed_s": null,
+          "physical_success": null,
+          "released": null,
+          "support_contact": null
+        }
+      ]
+    },
+    "injected_fast_vision_failure": {
+      "goal_id": "goal_evt_1bf1c261-aa3d-4570-a839-ea6e06ff1568",
+      "instruction": "用快环持续跟踪绿色方块，如果识别不可靠请自主换合适的视觉模型，确认定位后告诉我结果。不要移动机械臂。",
+      "state": "completed",
+      "model_calls": 5,
+      "elapsed_s": 25.034,
+      "steps": [
+        {
+          "skill": "perceive",
+          "state": "superseded",
+          "params": {
+            "scope": "target",
+            "category": "green square block",
+            "vision_mode": "fast",
+            "cameras": [
+              "scene_camera"
+            ]
+          },
+          "controller_elapsed_s": null,
+          "physical_success": null,
+          "released": null,
+          "support_contact": null
+        },
+        {
+          "skill": "perceive",
+          "state": "completed",
+          "params": {
+            "scope": "target",
+            "category": "green square block",
+            "vision_mode": "slow",
+            "slow_provider": "sam3",
+            "cameras": [
+              "scene_camera"
+            ]
+          },
+          "controller_elapsed_s": null,
+          "physical_success": null,
+          "released": null,
+          "support_contact": null
+        }
+      ]
+    },
+    "backend_restart_reconciliation": {
+      "goal_id": "goal_evt_8b148a79-d44b-4761-9292-b859a8fc2a1a",
+      "state": "completed",
+      "model_calls": 1,
+      "steps": [
+        {
+          "skill": "pick_place",
+          "state": "completed",
+          "command_id": "iq_d09610c3-a965-436a-9f6a-849eec3f8451:1",
+          "submission_count": 1
+        }
+      ],
+      "recovered_first_command": "iq_d09610c3-a965-436a-9f6a-849eec3f8451:1",
+      "elapsed_s": 53.03
+    }
+  },
+  "browser": {
+    "queue_and_model_settings": "passed",
+    "text_task_delivery": "passed",
+    "javascript_page_errors": [],
+    "status_query_elapsed_ms": 980,
+    "on_demand_image": {
+      "goal_id": "goal_evt_ff693281-9d01-448c-9109-396f8c2fce58",
+      "state": "completed",
+      "model_calls": 3,
+      "camera": "scene",
+      "image_event_verified_in_mysql": true,
+      "purpose": "检查橙色齿轮在黄色托盘中的位置（中间或边缘）",
+      "physical_commands": 0,
+      "images_automatically_attached_by_default": false
+    }
+  },
+  "deployment": {
+    "services": [
+      "database",
+      "vision",
+      "graspgenx",
+      "anyplace",
+      "arena",
+      "busagent"
+    ],
+    "rollback_archive": "output/deployments/intelligence-20260907-before.tar.gz",
+    "private_credentials": "excluded from source and test records",
+    "upgrade2_rollback_archive": "output/deployments/intelligence-upgrade2-before.tar.gz"
+  },
+  "not_validated": [
+    "GLM 5.3 Flash 实际 API 与多模态调用：尚未提供其 API Key；参数适配经过单元测试。",
+    "麦克风语音识别未进行真人端到端验收。",
+    "精确格位、端面朝向纠正、满箱判断、装满料箱搬运与堆叠、悬挂和插入未完成逐项物理验收。",
+    "新物体与工业场景泛化成功率、长时任务成功率没有统计评估。"
+  ],
+  "timing_note": "所有耗时是本次单次实测，不代表常态 SLA。",
+  "upgrade2": {
+    "date": "2026-09-07",
+    "visual_ref_grasp_then_independent_left_placement": {
+      "grasp": {
+        "command_id": "upgrade2-b08afcc499924399a84c0b398d50513f",
+        "skill": "grasp",
+        "elapsed_s": 9.58763074874878,
+        "ok": true,
+        "evaluation": {
+          "physical_success": true,
+          "lifted": true,
+          "released": false,
+          "max_lift_m": 0.1079033724963665,
+          "final_position_world_m": [
+            0.6915980577468872,
+            0.09658303111791611,
+            0.1079033613204956
+          ],
+          "destination_xy_error_m": null,
+          "supported_region": false,
+          "support_linear_speed_mps": 0.0,
+          "support_gap_m": null,
+          "gripper_opening_m": 0.046041980385780334,
+          "settle_displacement_m": 0.0,
+          "linear_speed_mps": 0.16109538078308105,
+          "evaluation_source": "arena_task_simulation_ground_truth"
+        },
+        "attempts": [
+          {
+            "backend": "official_pick_place",
+            "ok": true,
+            "elapsed_s": 9.583706866949797
+          }
+        ]
+      },
+      "place": {
+        "command_id": "upgrade2-8c6fde331286431891b56aba4d127ad9",
+        "skill": "place_held",
+        "elapsed_s": 14.38016414642334,
+        "ok": true,
+        "evaluation": {
+          "physical_success": true,
+          "lifted": true,
+          "released": true,
+          "max_lift_m": 0.1367681436240673,
+          "final_position_world_m": [
+            0.5283918380737305,
+            0.24206486344337463,
+            0.007999993860721588
+          ],
+          "destination_xy_error_m": 0.0564749538898468,
+          "destination_position_world_m": [
+            0.5799999833106995,
+            0.26499998569488525,
+            0.0
+          ],
+          "support_contact": true,
+          "support_force_world_n": [
+            1.7201417676915298e-06,
+            -5.240424982844161e-08,
+            1.5693273544311523
+          ],
+          "supported_region": true,
+          "support_linear_speed_mps": 0.0,
+          "selected_position_world_m": [
+            0.530790238181988,
+            0.24195386397068414,
+            0.008494014414402673
+          ],
+          "selected_position_xy_error_m": 0.0024009672972007206,
+          "support_gap_m": null,
+          "gripper_opening_m": 0.07999997586011887,
+          "settle_displacement_m": 6.674406255472048e-08,
+          "linear_speed_mps": 1.5773150153108872e-05,
+          "evaluation_source": "arena_task_simulation_ground_truth"
+        },
+        "attempts": [
+          {
+            "backend": "official_pick_place",
+            "ok": true,
+            "elapsed_s": 13.287864362820983
+          }
+        ]
+      },
+      "holding_after": {
+        "verified": false,
+        "instance_id": null
+      }
+    },
+    "unattended_queue_with_motion_lookahead": {
+      "elapsed_s": 58.72176790237427,
+      "manual_intervention": false,
+      "goals": [
+        {
+          "goal_id": "goal_evt_c15cd50f-b417-466e-90aa-2f781ab8c842",
+          "source": "把橙色齿轮放到黄色托盘里，找一个空位。",
+          "state": "completed",
+          "model_calls": 1,
+          "planning_ahead": null,
+          "steps": [
+            {
+              "skill": "pick_place",
+              "state": "completed",
+              "params": {
+                "target": "orange gear",
+                "destination": {
+                  "label": "yellow tray",
+                  "selection": "auto"
+                },
+                "mode": "auto"
+              },
+              "started_at": "2026-09-07T05:41:05.183Z",
+              "finished_at": "2026-09-07T05:41:29.043Z",
+              "physical": {
+                "command_id": "iq_679e9ad8-62f5-43bf-b0d7-44e0287d7e25:1",
+                "skill": "pick_place",
+                "elapsed_s": 23.13081192970276,
+                "ok": true,
+                "evaluation": {
+                  "physical_success": true,
+                  "lifted": true,
+                  "released": true,
+                  "max_lift_m": 0.14198289904743433,
+                  "destination_xy_error_m": 0.046025846153497696,
+                  "destination_position_world_m": [
+                    0.5799999833106995,
+                    0.26499998569488525,
+                    0
+                  ],
+                  "support_contact": true,
+                  "support_force_world_n": [
+                    4.1539395169820637e-05,
+                    4.137280484428629e-06,
+                    2.354266405105591
+                  ],
+                  "supported_region": true,
+                  "support_linear_speed_mps": 0,
+                  "selected_position_world_m": [
+                    0.5422591577324534,
+                    0.24195386397068416,
+                    0.008500822232455407
+                  ],
+                  "selected_position_xy_error_m": 0.002491162825338947,
+                  "support_gap_m": null,
+                  "gripper_opening_m": 0.07999947667121887,
+                  "settle_displacement_m": 1.4930236657970956e-08,
+                  "linear_speed_mps": 1.4820804608461913e-05,
+                  "evaluation_source": "arena_task_simulation_ground_truth"
+                },
+                "attempts": [
+                  {
+                    "backend": "official_pick_place",
+                    "ok": true,
+                    "elapsed_s": 23.129683857783675
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "goal_id": "goal_evt_8f23511e-fa7e-4e68-ab96-340136ee07b5",
+          "source": "把银色六角螺母放到蓝色托盘里。",
+          "state": "completed",
+          "model_calls": 1,
+          "planning_ahead": "used",
+          "steps": [
+            {
+              "skill": "pick_place",
+              "state": "completed",
+              "params": {
+                "target": "silver hex nut",
+                "destination": {
+                  "label": "blue tray",
+                  "selection": "auto"
+                },
+                "mode": "auto"
+              },
+              "started_at": "2026-09-07T05:41:30.210Z",
+              "finished_at": "2026-09-07T05:41:56.945Z",
+              "physical": {
+                "command_id": "iq_a50362dc-9760-49ab-9fed-c51120006a2c:1",
+                "skill": "pick_place",
+                "elapsed_s": 26.03929114341736,
+                "ok": true,
+                "evaluation": {
+                  "physical_success": true,
+                  "lifted": true,
+                  "released": true,
+                  "max_lift_m": 0.14434837363660336,
+                  "destination_xy_error_m": 0.03990548476576805,
+                  "destination_position_world_m": [
+                    0.35499998927116394,
+                    0.2150000035762787,
+                    0
+                  ],
+                  "support_contact": true,
+                  "support_force_world_n": [
+                    -1.0093974651681492e-06,
+                    9.72871475823922e-07,
+                    1.5695927143096924
+                  ],
+                  "supported_region": true,
+                  "support_linear_speed_mps": 0,
+                  "selected_position_world_m": [
+                    0.3954598134406957,
+                    0.23395141213098294,
+                    0.008583441851512053
+                  ],
+                  "selected_position_xy_error_m": 0.004795292634608041,
+                  "support_gap_m": null,
+                  "gripper_opening_m": 0.0799999013543129,
+                  "settle_displacement_m": 6.146728992462158e-08,
+                  "linear_speed_mps": 6.958367066545179e-06,
+                  "evaluation_source": "arena_task_simulation_ground_truth"
+                },
+                "attempts": [
+                  {
+                    "backend": "official_pick_place",
+                    "ok": true,
+                    "elapsed_s": 26.038188548758626
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "model_calls_during_motion": [
+        {
+          "at": "2026-09-07T05:41:06.158Z",
+          "goal_id": "goal_evt_8f23511e-fa7e-4e68-ab96-340136ee07b5",
+          "planning_ahead": true,
+          "kind": "lookahead_started",
+          "during_command": "iq_679e9ad8-62f5-43bf-b0d7-44e0287d7e25:1"
+        },
+        {
+          "at": "2026-09-07T05:41:11.672Z",
+          "goal_id": "goal_evt_8f23511e-fa7e-4e68-ab96-340136ee07b5",
+          "planning_ahead": true,
+          "kind": "model",
+          "role": "planner",
+          "model": "qwen3.7-plus",
+          "usage": {
+            "prompt_tokens": 3835,
+            "total_tokens": 4109,
+            "completion_tokens": 274,
+            "prompt_tokens_details": {
+              "cached_tokens": 512,
+              "text_tokens": 3835
+            }
+          },
+          "elapsed_ms": 5888
+        },
+        {
+          "at": "2026-09-07T05:41:11.674Z",
+          "goal_id": "goal_evt_8f23511e-fa7e-4e68-ab96-340136ee07b5",
+          "planning_ahead": true,
+          "kind": "lookahead_ready",
+          "reason": "independent_explicit_actions"
+        },
+        {
+          "at": "2026-09-07T05:41:30.188Z",
+          "goal_id": "goal_evt_8f23511e-fa7e-4e68-ab96-340136ee07b5",
+          "kind": "lookahead_used",
+          "verified_after_command": "iq_679e9ad8-62f5-43bf-b0d7-44e0287d7e25:1"
+        }
+      ]
+    },
+    "crowded_tray_on_final_controller": {
+      "scenario": "Yellow tray already contains orange gear; place cyan ring in a remaining gap.",
+      "result": {
+        "command_id": "upgrade2-34b6a9d8db064a6d9503096e638cc49d",
+        "skill": "pick_place",
+        "elapsed_s": 27.13365077972412,
+        "ok": true,
+        "evaluation": {
+          "physical_success": true,
+          "lifted": true,
+          "released": true,
+          "max_lift_m": 0.1391042061150074,
+          "final_position_world_m": [
+            0.6135114431381226,
+            0.24375616014003754,
+            0.007999997586011887
+          ],
+          "destination_xy_error_m": 0.03967767953872681,
+          "destination_position_world_m": [
+            0.5799999833106995,
+            0.26499998569488525,
+            0.0
+          ],
+          "support_contact": true,
+          "support_force_world_n": [
+            2.7620487230706203e-07,
+            -1.2166319720563479e-06,
+            1.5695545673370361
+          ],
+          "supported_region": true,
+          "support_linear_speed_mps": 0.0,
+          "selected_position_world_m": [
+            0.6142591577324533,
+            0.24195386397068416,
+            0.008493333781246282
+          ],
+          "selected_position_xy_error_m": 0.0019512428338474583,
+          "support_gap_m": null,
+          "gripper_opening_m": 0.07999953627586365,
+          "settle_displacement_m": 1.501712528671799e-08,
+          "linear_speed_mps": 1.743886423355434e-05,
+          "evaluation_source": "arena_task_simulation_ground_truth"
+        },
+        "attempts": [
+          {
+            "backend": "official_pick_place",
+            "ok": true,
+            "elapsed_s": 27.13242046907544
+          }
+        ]
+      },
+      "selected_free_space": {
+        "phase": "free_space_selected",
+        "sequence": 2496,
+        "time": 1788759771.4657423,
+        "observation_ref": "c4bda20f857e4e0e820b8a2919fb82a4",
+        "position_world_m": [
+          0.6142591577324533,
+          0.24195386397068416,
+          0.008493333781246282
+        ],
+        "yaw_delta_rad": 0.0,
+        "score": 0.21896477426344507,
+        "clearance_m": 0.036000000000000004,
+        "footprint_radius_m": 0.05830951894845301,
+        "footprint_size_m": [
+          0.061275129481596066,
+          0.1
+        ],
+        "support_points": 10767,
+        "obstacle_points": 7624,
+        "source": "observed_rgbd_footprint",
+        "preference": "nearest",
+        "candidate_count": 25,
+        "alternatives": [
+          {
+            "position_world_m": [
+              0.6142591577324533,
+              0.27195386397068416,
+              0.008493333781246282
+            ],
+            "yaw_delta_rad": 0.0,
+            "score": 0.2220956064999637,
+            "clearance_m": 0.04326661530556787,
+            "footprint_radius_m": 0.05830951894845301,
+            "footprint_size_m": [
+              0.061275129481596066,
+              0.1
+            ],
+            "support_points": 10767,
+            "obstacle_points": 7624,
+            "source": "observed_rgbd_footprint",
+            "preference": "nearest",
+            "candidate_count": 25
+          },
+          {
+            "position_world_m": [
+              0.6022591577324533,
+              0.2779538639706841,
+              0.008493333781246282
+            ],
+            "yaw_delta_rad": 0.7853981633974483,
+            "score": 0.23108471788318877,
+            "clearance_m": 0.034985711369071804,
+            "footprint_radius_m": 0.05830951894845301,
+            "footprint_size_m": [
+              0.1131370849898476,
+              0.1131370849898476
+            ],
+            "support_points": 10767,
+            "obstacle_points": 7624,
+            "source": "observed_rgbd_footprint",
+            "preference": "nearest",
+            "candidate_count": 25
+          }
+        ]
+      }
+    },
+    "context_compaction_sample": {
+      "before_characters": 37500,
+      "after_characters": 3599
+    },
+    "speech": {
+      "browser_tts": {
+        "audio_bytes": 85026,
+        "audio_chunks": 7,
+        "errors": []
+      },
+      "asr_and_bus_reply": {
+        "transcripts": [
+          "现在在做什么？"
+        ],
+        "errors": [],
+        "reply": "当前没有正在执行的任务。"
+      },
+      "input": "Qwen-synthesized Chinese phrase resampled to 16 kHz PCM; not a human microphone acoustics test."
+    },
+    "browser_settings": {
+      "saved": true,
+      "fallbacks": {
+        "planner": [
+          "qwen-max"
+        ],
+        "supervisor": [
+          "qwen-max"
+        ]
+      },
+      "performance": {
+        "lookahead": true,
+        "requestTimeoutMs": 20000,
+        "planningBudgetMs": 60000,
+        "toolRounds": 6
+      },
+      "no_api_keys_returned": true,
+      "errors": []
+    },
+    "qwen_max_live_connection": {
+      "ok": true,
+      "vision_tested": false,
+      "model": "qwen3.8-max",
+      "elapsed_ms": 514,
+      "usage": {
+        "prompt_tokens": 17,
+        "total_tokens": 19,
+        "completion_tokens": 2,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "text_tokens": 17
+        }
+      },
+      "message": "OK."
+    },
+    "fallback_test_scope": "Model-provider error/cancel/image-capability routing, cached precontact IK alternatives, persistent holding loss and no-space-no-grasp behavior validated by tests. Not hardware torque feedback.",
+    "development_failures": [
+      {
+        "goal_id": "goal_evt_abc33619-9eb1-42c6-b1ad-6a9607463af5",
+        "failure": "Incomplete region_ref invented by model; recovered automatically. Now rejected in model tool feedback before physical dispatch."
+      },
+      {
+        "goal_id": "goal_evt_3b9e053a-2ec8-4a85-9bd2-a04d10275ebb",
+        "state": "blocked",
+        "failure": "Initial placement had no observed free space; old cascade unnecessarily escalated to grasp model and then failed IK/localization. Fixed no-space propagation and unnecessary support requirement for gripper. Not counted as successful acceptance."
+      }
+    ],
+    "limits": [
+      "Lookahead applies to an independent queued goal during final simple release action; complex checks requiring fresh results still wait for observation.",
+      "Free placement uses observed horizontal supports and projected footprint clearance, not full robot swept-volume collision planning.",
+      "This does not establish grasp/place success rates, precise insertion/hanging or complete industrial box-filling capability."
+    ],
+    "final_scene": "busagent-intelligence-upgrade2-scene.jpg"
+  }
+}

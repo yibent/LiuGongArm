@@ -1,0 +1,1151 @@
+{
+  "tested_at": "2026-09-07",
+  "timezone": "Asia/Shanghai",
+  "source": {
+    "name": "挑战杯--青年揭榜--工业环境下物体感知识别与指令交互型智能体研发--答疑文件.pdf",
+    "sha256": "0a381757e35ee402e954ccb34ca0a5453de4119aabeed1165afd66666fc05731",
+    "pages": 4,
+    "task": "XH-202607 Q8"
+  },
+  "scope": "Real cloud Isaac Sim/Arena, actual BusAgent events and live model APIs; reduced representative fixture, not a full-scale reproduction or statistical benchmark.",
+  "fixture": {
+    "config": "configs/arena_panda_challenge_qa.json",
+    "incoming_region_counts": [
+      2,
+      5,
+      3
+    ],
+    "additional_fallen_part_in_bin": 1,
+    "bin_rows": 2,
+    "bin_columns": 3,
+    "movable_bins": 2,
+    "robot": "franka_panda",
+    "frame_size": [
+      800,
+      600
+    ],
+    "truth_given_to_planner": false
+  },
+  "git": {
+    "arena": {
+      "head": "0a136a898d5c053430955adc5847c5a906a83a57",
+      "branch": "codex/arena-panda-grasp-place",
+      "dirty": true
+    },
+    "busagent": {
+      "head": "349d5f6237e0016eb7f3143d2b37b12463ea99b0",
+      "branch": "codex/arena-panda-grasp-place",
+      "dirty": true
+    }
+  },
+  "cases": [
+    {
+      "name": "packing",
+      "goal_id": "goal_evt_002f3b2e-52d2-44a0-a9c7-5cc3017d2e20",
+      "instruction": "帮我把零件最多的区域装箱，每件都要闭口实心端朝上放入料箱格中。如果放倒了，要自己发现并纠正。",
+      "state": "blocked",
+      "message": "The operation was aborted due to timeout",
+      "created_at": "2026-09-07T05:56:51.015Z",
+      "updated_at": "2026-09-07T05:58:31.170Z",
+      "goal_lifetime_s": 100.155,
+      "completed_model_calls": 8,
+      "max_reported_prompt_tokens": 29776,
+      "provider_failures": [
+        {
+          "goal_id": "goal_evt_002f3b2e-52d2-44a0-a9c7-5cc3017d2e20",
+          "loop": "fast",
+          "kind": "provider_failure",
+          "model": "qwen3.7-plus",
+          "profile": "qwen-plus",
+          "elapsed_ms": 20002,
+          "reason": "The operation was aborted due to timeout"
+        },
+        {
+          "goal_id": "goal_evt_002f3b2e-52d2-44a0-a9c7-5cc3017d2e20",
+          "loop": "fast",
+          "kind": "provider_failure",
+          "model": "qwen3.8-max",
+          "profile": "qwen-max",
+          "elapsed_ms": 20001,
+          "reason": "The operation was aborted due to timeout"
+        }
+      ],
+      "image_reads": [
+        {
+          "goal_id": "goal_evt_002f3b2e-52d2-44a0-a9c7-5cc3017d2e20",
+          "loop": "fast",
+          "kind": "image",
+          "role": "planner",
+          "ref": "115764e6-bc52-47ce-9760-2ba6e851cc6a",
+          "purpose": "观察场景中有哪些零件、区域和料箱，识别零件最多的区域",
+          "camera": "scene",
+          "received_at": "2026-09-07T05:56:55.651Z",
+          "frame_sequence": "1896",
+          "observed_at": "1788760615.4772623"
+        },
+        {
+          "goal_id": "goal_evt_002f3b2e-52d2-44a0-a9c7-5cc3017d2e20",
+          "loop": "fast",
+          "kind": "image",
+          "role": "supervisor",
+          "ref": "493ac630-f333-4d23-8e6d-840a710c4c6f",
+          "purpose": "确认场景中是否存在零件、料箱及其分布，因为之前的describe未检测到具体物体",
+          "camera": "scene",
+          "received_at": "2026-09-07T05:57:21.917Z",
+          "frame_sequence": "2430",
+          "observed_at": "1788760641.6306002"
+        },
+        {
+          "goal_id": "goal_evt_002f3b2e-52d2-44a0-a9c7-5cc3017d2e20",
+          "loop": "fast",
+          "kind": "image",
+          "role": "supervisor",
+          "ref": "9f428bc2-4edf-4948-bf18-32b97d0e4147",
+          "purpose": "确认场景中是否有黑色圆柱形零件、料箱及区域分布",
+          "camera": "scene",
+          "received_at": "2026-09-07T05:57:36.656Z",
+          "frame_sequence": "2736",
+          "observed_at": "1788760656.5182502"
+        },
+        {
+          "goal_id": "goal_evt_002f3b2e-52d2-44a0-a9c7-5cc3017d2e20",
+          "loop": "fast",
+          "kind": "image",
+          "role": "supervisor",
+          "ref": "cc35c710-6a06-4387-aaa5-8f2c8b9b973b",
+          "purpose": "Identify clusters of black cylindrical parts to determine which area has the most parts.",
+          "camera": "scene",
+          "received_at": "2026-09-07T05:57:51.089Z",
+          "frame_sequence": "3030",
+          "observed_at": "1788760670.820117"
+        }
+      ],
+      "steps": [
+        {
+          "skill": "perceive",
+          "state": "completed",
+          "command_id": "iq_8dc7ea51-56ed-46c6-a3bf-95b8214db480:1",
+          "params": {
+            "scope": "scene",
+            "scene_mode": "describe"
+          },
+          "message": "Fresh scene observation; detected_objects are model detections from this image. Regions may overlap and inventory may be incomplete. Empty results do not prove the scene is empty: {\"detected_objects\": [\"table\"], \"region_descriptions\": [\"A 3D rendering of a robotic arm with a blue and black object on a gray surface.\", \"3D rendering of robotic arm with blue and black components on gray surface\"]}",
+          "failure": null,
+          "attempts": null,
+          "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260907-135709-c2bb2b2c",
+          "physical_evaluation": null
+        },
+        {
+          "skill": "perceive",
+          "state": "completed",
+          "command_id": "iq_a6d6a0cc-d147-47a1-80b5-bfca0f0c5ace:1",
+          "params": {
+            "scope": "scene",
+            "scene_mode": "inventory"
+          },
+          "message": "Fresh scene observation; detected_objects are model detections from this image. Regions may overlap and inventory may be incomplete. Empty results do not prove the scene is empty: {\"detected_objects\": [\"table\"], \"region_descriptions\": []}",
+          "failure": null,
+          "attempts": null,
+          "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260907-135732-8756195f",
+          "physical_evaluation": null
+        },
+        {
+          "skill": "perceive",
+          "state": "failed",
+          "command_id": "iq_b7d5e9c1-cb45-4791-85be-39d329c5e355:1",
+          "params": {
+            "scope": "target",
+            "category": "black cylindrical parts",
+            "vision_mode": "slow",
+            "slow_provider": "sam3"
+          },
+          "message": "目标不唯一，请指定其中一个：black cylindrical parts",
+          "failure": {
+            "code": "TARGET_AMBIGUOUS",
+            "phase": "visual_observation",
+            "holding_verified": false,
+            "suggested_recovery": [
+              "select_visual_reference"
+            ],
+            "message": "目标不唯一，请指定其中一个：black cylindrical parts"
+          },
+          "attempts": null,
+          "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260907-135745-ee5c45aa",
+          "physical_evaluation": null
+        }
+      ],
+      "post_state_diagnostic": {
+        "source": "simulation ground truth, audit only, never given to planner",
+        "initial_incoming_counts": {
+          "A": 2,
+          "B": 5,
+          "C": 3
+        },
+        "required_region": "B",
+        "capacity": 6,
+        "valid_upright_cells": 0,
+        "bin_full": false,
+        "parts": [
+          {
+            "id": "qa_body_01",
+            "initial_region": "A",
+            "closed_end_up": true,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_02",
+            "initial_region": "A",
+            "closed_end_up": true,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_03",
+            "initial_region": "B",
+            "closed_end_up": true,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_04",
+            "initial_region": "B",
+            "closed_end_up": false,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_05",
+            "initial_region": "B",
+            "closed_end_up": true,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_06",
+            "initial_region": "B",
+            "closed_end_up": true,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_07",
+            "initial_region": "B",
+            "closed_end_up": false,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_08",
+            "initial_region": "C",
+            "closed_end_up": true,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_09",
+            "initial_region": "C",
+            "closed_end_up": true,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_10",
+            "initial_region": "C",
+            "closed_end_up": false,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_11",
+            "initial_region": "bin",
+            "closed_end_up": false,
+            "in_incoming_bin": true,
+            "cell_by_center": "1,2"
+          }
+        ],
+        "note": "Cell-center and axis checks are audit diagnostics, not a complete contact/clearance evaluator."
+      },
+      "evidence": "output/challenge-qa/20260907/packing.json",
+      "physical_evaluation_reported": false,
+      "execution_reached": "localization_only"
+    },
+    {
+      "name": "slot",
+      "goal_id": "goal_evt_471b4f2c-8c63-44ad-b76d-a0da59f1425b",
+      "instruction": "把一个金属圆柱零件放入来料区蓝色料箱的第二排第三个格子，闭口实心端朝上。",
+      "state": "blocked",
+      "message": "The operation was aborted due to timeout",
+      "created_at": "2026-09-07T06:00:23.788Z",
+      "updated_at": "2026-09-07T06:01:47.493Z",
+      "goal_lifetime_s": 83.705,
+      "completed_model_calls": 3,
+      "max_reported_prompt_tokens": 20530,
+      "provider_failures": [
+        {
+          "goal_id": "goal_evt_471b4f2c-8c63-44ad-b76d-a0da59f1425b",
+          "loop": "fast",
+          "kind": "provider_failure",
+          "model": "qwen3.7-plus",
+          "profile": "qwen-plus",
+          "elapsed_ms": 20002,
+          "reason": "The operation was aborted due to timeout"
+        },
+        {
+          "goal_id": "goal_evt_471b4f2c-8c63-44ad-b76d-a0da59f1425b",
+          "loop": "fast",
+          "kind": "provider_failure",
+          "model": "qwen3.8-max",
+          "profile": "qwen-max",
+          "elapsed_ms": 20001,
+          "reason": "The operation was aborted due to timeout"
+        }
+      ],
+      "image_reads": [
+        {
+          "goal_id": "goal_evt_471b4f2c-8c63-44ad-b76d-a0da59f1425b",
+          "loop": "fast",
+          "kind": "image",
+          "role": "supervisor",
+          "ref": "65847a2d-dbad-43c0-9e15-fa1a012a8455",
+          "purpose": "Identify the correct blue bin with grid slots among multiple candidates and verify its location in the incoming material area.",
+          "camera": "scene",
+          "received_at": "2026-09-07T06:01:07.402Z",
+          "frame_sequence": "7128",
+          "observed_at": "1788760867.1979527"
+        }
+      ],
+      "steps": [
+        {
+          "skill": "perceive",
+          "state": "failed",
+          "command_id": "iq_91bc71af-56a1-4a98-941a-c0722003ed84:1",
+          "params": {
+            "scope": "target",
+            "category": "blue bin with grid slots",
+            "vision_mode": "auto"
+          },
+          "message": "目标不唯一，请指定其中一个：blue bin with grid slots",
+          "failure": {
+            "code": "TARGET_AMBIGUOUS",
+            "phase": "visual_observation",
+            "holding_verified": false,
+            "suggested_recovery": [
+              "select_visual_reference"
+            ],
+            "message": "目标不唯一，请指定其中一个：blue bin with grid slots"
+          },
+          "attempts": null,
+          "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260907-140100-aed39e25",
+          "physical_evaluation": null
+        },
+        {
+          "skill": "perceive",
+          "state": "pending",
+          "command_id": "iq_9b7ac353-7e40-40e9-8832-5d2ab93ad649:1",
+          "params": {
+            "scope": "target",
+            "category": "metal cylindrical part",
+            "vision_mode": "auto"
+          },
+          "message": null,
+          "failure": null,
+          "attempts": null,
+          "evidence_dir": null,
+          "physical_evaluation": null
+        }
+      ],
+      "post_state_diagnostic": {
+        "source": "simulation ground truth, audit only, never given to planner",
+        "initial_incoming_counts": {
+          "A": 2,
+          "B": 5,
+          "C": 3
+        },
+        "required_region": "B",
+        "capacity": 6,
+        "valid_upright_cells": 0,
+        "bin_full": false,
+        "parts": [
+          {
+            "id": "qa_body_01",
+            "initial_region": "A",
+            "closed_end_up": true,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_02",
+            "initial_region": "A",
+            "closed_end_up": true,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_03",
+            "initial_region": "B",
+            "closed_end_up": true,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_04",
+            "initial_region": "B",
+            "closed_end_up": false,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_05",
+            "initial_region": "B",
+            "closed_end_up": true,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_06",
+            "initial_region": "B",
+            "closed_end_up": true,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_07",
+            "initial_region": "B",
+            "closed_end_up": false,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_08",
+            "initial_region": "C",
+            "closed_end_up": true,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_09",
+            "initial_region": "C",
+            "closed_end_up": true,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_10",
+            "initial_region": "C",
+            "closed_end_up": false,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_11",
+            "initial_region": "bin",
+            "closed_end_up": false,
+            "in_incoming_bin": true,
+            "cell_by_center": "1,2"
+          }
+        ],
+        "note": "Cell-center and axis checks are audit diagnostics, not a complete contact/clearance evaluator."
+      },
+      "evidence": "output/challenge-qa/20260907/slot.json",
+      "physical_evaluation_reported": false,
+      "execution_reached": "localization_only"
+    },
+    {
+      "name": "carry",
+      "goal_id": "goal_evt_c63325a4-1bdd-4315-8bbc-9f80cc273dd1",
+      "instruction": "帮我搬运一下来料区的料箱盒。如果没有装满，先继续装到满，再搬到旁边高台上的另一只料箱上叠放整齐。",
+      "state": "blocked",
+      "message": "连续恢复未取得进展，需要调整策略或提供补充信息。",
+      "created_at": "2026-09-07T06:03:55.184Z",
+      "updated_at": "2026-09-07T06:06:27.622Z",
+      "goal_lifetime_s": 152.438,
+      "completed_model_calls": 11,
+      "max_reported_prompt_tokens": 37801,
+      "provider_failures": [
+        {
+          "goal_id": "goal_evt_c63325a4-1bdd-4315-8bbc-9f80cc273dd1",
+          "loop": "fast",
+          "kind": "provider_failure",
+          "model": "qwen3.7-plus",
+          "profile": "qwen-plus",
+          "elapsed_ms": 20001,
+          "reason": "The operation was aborted due to timeout"
+        }
+      ],
+      "image_reads": [
+        {
+          "goal_id": "goal_evt_c63325a4-1bdd-4315-8bbc-9f80cc273dd1",
+          "loop": "fast",
+          "kind": "image",
+          "role": "supervisor",
+          "ref": "438e3e3c-8ec2-4854-bd51-81a4378f3d35",
+          "purpose": "识别来料区料箱、高台及高台上的目标料箱，判断源料箱是否装满",
+          "camera": "scene",
+          "received_at": "2026-09-07T06:04:21.767Z",
+          "frame_sequence": "11166",
+          "observed_at": "1788761061.6513402"
+        },
+        {
+          "goal_id": "goal_evt_c63325a4-1bdd-4315-8bbc-9f80cc273dd1",
+          "loop": "fast",
+          "kind": "image",
+          "role": "supervisor",
+          "ref": "27988635-7d0b-4f65-8f1a-0a19ca39e840",
+          "purpose": "确认蓝色料箱、高台及零件的具体位置和布局，以便后续精确定位",
+          "camera": "scene",
+          "received_at": "2026-09-07T06:05:35.223Z",
+          "frame_sequence": "12660",
+          "observed_at": "1788761134.9566648"
+        }
+      ],
+      "steps": [
+        {
+          "skill": "perceive",
+          "state": "completed",
+          "command_id": "iq_04ff0210-8cc0-4ee4-b9b6-7b3a633e6a70:1",
+          "params": {
+            "scope": "scene",
+            "scene_mode": "describe"
+          },
+          "message": "Fresh scene observation; detected_objects are model detections from this image. Regions may overlap and inventory may be incomplete. Empty results do not prove the scene is empty: {\"detected_objects\": [\"table\"], \"region_descriptions\": [\"A 3D rendering of a robotic arm with a blue and black device on a gray surface.\", \"3D rendering of robotic arm with blue and black components on gray surface\"]}",
+          "failure": null,
+          "attempts": null,
+          "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260907-140416-4dba5ed9",
+          "physical_evaluation": null
+        },
+        {
+          "skill": "pick_place",
+          "state": "superseded",
+          "command_id": "iq_2b151991-d9f3-47b3-9ea4-fb975cd660a1:1",
+          "params": {
+            "target": "black cylindrical part on table",
+            "destination": {
+              "label": "blue bin on table",
+              "selection": "auto"
+            },
+            "mode": "auto"
+          },
+          "message": "目标不唯一，请指定其中一个：black cylindrical part on table",
+          "failure": {
+            "code": "TARGET_AMBIGUOUS",
+            "phase": "attempt_finished",
+            "holding_verified": false,
+            "suggested_recovery": [
+              "select_visual_reference"
+            ],
+            "message": "目标不唯一，请指定其中一个：black cylindrical part on table"
+          },
+          "attempts": [
+            {
+              "backend": "official_pick_place",
+              "ok": false,
+              "error": "目标不唯一，请指定其中一个：black cylindrical part on table",
+              "elapsed_s": 0.8092525880783796
+            },
+            {
+              "backend": "models",
+              "ok": false,
+              "error": "目标不唯一，请指定其中一个：black cylindrical part on table",
+              "elapsed_s": 0.8120127078145742
+            }
+          ],
+          "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260907-140434-9785884e",
+          "physical_evaluation": null
+        },
+        {
+          "skill": "pick_place",
+          "state": "superseded",
+          "command_id": "iq_5896a163-51d4-452b-9a6e-825114942964:1",
+          "params": {
+            "target": {
+              "ref": "obs:7f842d87d7694a13a38094e9780eaf3c:scene_camera:0",
+              "label": "black cylindrical part on table"
+            },
+            "destination": {
+              "label": "blue bin with grid slots",
+              "selection": "auto"
+            },
+            "mode": "auto"
+          },
+          "message": "目标不唯一，请指定其中一个：blue bin with grid slots",
+          "failure": {
+            "code": "TARGET_AMBIGUOUS",
+            "phase": "attempt_finished",
+            "holding_verified": false,
+            "suggested_recovery": [
+              "select_visual_reference"
+            ],
+            "message": "目标不唯一，请指定其中一个：blue bin with grid slots"
+          },
+          "attempts": [
+            {
+              "backend": "official_pick_place",
+              "ok": false,
+              "error": "目标不唯一，请指定其中一个：blue bin with grid slots",
+              "elapsed_s": 1.3204084802418947
+            },
+            {
+              "backend": "models",
+              "ok": false,
+              "error": "目标不唯一，请指定其中一个：blue bin with grid slots",
+              "elapsed_s": 1.2382028698921204
+            }
+          ],
+          "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260907-140504-37a3df49",
+          "physical_evaluation": null
+        },
+        {
+          "skill": "perceive",
+          "state": "completed",
+          "command_id": "iq_1ebc7e86-95cb-4ae5-b971-eb7b51394bf5:1",
+          "params": {
+            "scope": "scene",
+            "scene_mode": "describe"
+          },
+          "message": "Fresh scene observation; detected_objects are model detections from this image. Regions may overlap and inventory may be incomplete. Empty results do not prove the scene is empty: {\"detected_objects\": [\"metal cylinder\", \"table\"], \"region_descriptions\": [\"A 3D rendering of a robotic arm with a blue and black device on a gray surface.\", \"3D rendering of robotic arm with blue and black components on gray surface\"]}",
+          "failure": null,
+          "attempts": null,
+          "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260907-140525-12128579",
+          "physical_evaluation": null
+        },
+        {
+          "skill": "perceive",
+          "state": "superseded",
+          "command_id": "iq_8b719cf2-4cd6-4194-9bac-08d114b1a0db:1",
+          "params": {
+            "scope": "target",
+            "category": "black cylindrical part",
+            "vision_mode": "fast"
+          },
+          "message": "本次画面未找到目标：black cylindrical part",
+          "failure": {
+            "code": "TARGET_NOT_FOUND",
+            "phase": "visual_observation",
+            "holding_verified": false,
+            "suggested_recovery": [
+              "change_view_or_detector"
+            ],
+            "message": "本次画面未找到目标：black cylindrical part"
+          },
+          "attempts": null,
+          "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260907-140555-d7546de1",
+          "physical_evaluation": null
+        },
+        {
+          "skill": "perceive",
+          "state": "superseded",
+          "command_id": "iq_2002e4b3-a26d-4428-9564-d19d23cb1b71:1",
+          "params": {
+            "scope": "target",
+            "category": "blue bin with grid slots",
+            "vision_mode": "fast"
+          },
+          "message": null,
+          "failure": null,
+          "attempts": null,
+          "evidence_dir": null,
+          "physical_evaluation": null
+        },
+        {
+          "skill": "perceive",
+          "state": "completed",
+          "command_id": "iq_04cc839a-d352-496a-ae3f-8d930ed7e487:1",
+          "params": {
+            "scope": "scene",
+            "scene_mode": "describe"
+          },
+          "message": "Fresh scene observation; detected_objects are model detections from this image. Regions may overlap and inventory may be incomplete. Empty results do not prove the scene is empty: {\"detected_objects\": [\"table\"], \"region_descriptions\": [\"A 3D rendering of a robotic arm with a blue and black device on a gray surface.\", \"3D rendering of robotic arm with blue and black components on gray surface\"]}",
+          "failure": null,
+          "attempts": null,
+          "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260907-140609-80e3e9f8",
+          "physical_evaluation": null
+        },
+        {
+          "skill": "perceive",
+          "state": "failed",
+          "command_id": "iq_8ad2585e-9083-4e47-97fa-c059e1988690:1",
+          "params": {
+            "scope": "target",
+            "category": "blue bin",
+            "vision_mode": "slow",
+            "slow_provider": "sam3"
+          },
+          "message": "目标不唯一，请指定其中一个：blue bin",
+          "failure": {
+            "code": "TARGET_AMBIGUOUS",
+            "phase": "visual_observation",
+            "holding_verified": false,
+            "suggested_recovery": [
+              "select_visual_reference"
+            ],
+            "message": "目标不唯一，请指定其中一个：blue bin"
+          },
+          "attempts": null,
+          "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260907-140626-f610e743",
+          "physical_evaluation": null
+        },
+        {
+          "skill": "perceive",
+          "state": "pending",
+          "command_id": "iq_114a5cb1-d34c-4d7c-820f-a6fad1b6c32e:1",
+          "params": {
+            "scope": "target",
+            "category": "black cylindrical part",
+            "vision_mode": "slow",
+            "slow_provider": "sam3"
+          },
+          "message": null,
+          "failure": null,
+          "attempts": null,
+          "evidence_dir": null,
+          "physical_evaluation": null
+        }
+      ],
+      "post_state_diagnostic": {
+        "source": "simulation ground truth, audit only, never given to planner",
+        "initial_incoming_counts": {
+          "A": 2,
+          "B": 5,
+          "C": 3
+        },
+        "required_region": "B",
+        "capacity": 6,
+        "valid_upright_cells": 0,
+        "bin_full": false,
+        "parts": [
+          {
+            "id": "qa_body_01",
+            "initial_region": "A",
+            "closed_end_up": true,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_02",
+            "initial_region": "A",
+            "closed_end_up": true,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_03",
+            "initial_region": "B",
+            "closed_end_up": true,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_04",
+            "initial_region": "B",
+            "closed_end_up": false,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_05",
+            "initial_region": "B",
+            "closed_end_up": true,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_06",
+            "initial_region": "B",
+            "closed_end_up": true,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_07",
+            "initial_region": "B",
+            "closed_end_up": false,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_08",
+            "initial_region": "C",
+            "closed_end_up": true,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_09",
+            "initial_region": "C",
+            "closed_end_up": true,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_10",
+            "initial_region": "C",
+            "closed_end_up": false,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_11",
+            "initial_region": "bin",
+            "closed_end_up": false,
+            "in_incoming_bin": true,
+            "cell_by_center": "1,2"
+          }
+        ],
+        "note": "Cell-center and axis checks are audit diagnostics, not a complete contact/clearance evaluator."
+      },
+      "evidence": "output/challenge-qa/20260907/carry.json",
+      "physical_evaluation_reported": false,
+      "execution_reached": "localization_only"
+    },
+    {
+      "name": "repair",
+      "goal_id": "goal_evt_c6dc85a4-d520-450e-a35e-f57946fe091d",
+      "instruction": "请把来料区蓝色料箱里横倒的金属圆柱零件扶正，让闭口实心端朝上放回一个格子。",
+      "state": "blocked",
+      "message": "The operation was aborted due to timeout",
+      "created_at": "2026-09-07T06:10:36.819Z",
+      "updated_at": "2026-09-07T06:12:30.708Z",
+      "goal_lifetime_s": 113.889,
+      "completed_model_calls": 8,
+      "max_reported_prompt_tokens": 39688,
+      "provider_failures": [
+        {
+          "goal_id": "goal_evt_c6dc85a4-d520-450e-a35e-f57946fe091d",
+          "loop": "fast",
+          "kind": "provider_failure",
+          "model": "qwen3.7-plus",
+          "profile": "qwen-plus",
+          "elapsed_ms": 20003,
+          "reason": "The operation was aborted due to timeout"
+        },
+        {
+          "goal_id": "goal_evt_c6dc85a4-d520-450e-a35e-f57946fe091d",
+          "loop": "fast",
+          "kind": "provider_failure",
+          "model": "qwen3.8-max",
+          "profile": "qwen-max",
+          "elapsed_ms": 20001,
+          "reason": "The operation was aborted due to timeout"
+        }
+      ],
+      "image_reads": [
+        {
+          "goal_id": "goal_evt_c6dc85a4-d520-450e-a35e-f57946fe091d",
+          "loop": "fast",
+          "kind": "image",
+          "role": "planner",
+          "ref": "28a33c44-0f8e-45f9-81cb-c25ec9f0c224",
+          "purpose": "检查蓝色料箱内部金属圆柱零件的横倒状态和位置",
+          "camera": "scene",
+          "received_at": "2026-09-07T06:10:39.926Z",
+          "frame_sequence": "18960",
+          "observed_at": "1788761439.8162003"
+        },
+        {
+          "goal_id": "goal_evt_c6dc85a4-d520-450e-a35e-f57946fe091d",
+          "loop": "fast",
+          "kind": "image",
+          "role": "planner",
+          "ref": "a864dabd-a840-430e-84fc-ac98bbdfba70",
+          "purpose": "近距离观察蓝色料箱内横倒金属圆柱的位置和料箱格位布局",
+          "camera": "wrist",
+          "received_at": "2026-09-07T06:10:43.882Z",
+          "frame_sequence": "19044",
+          "observed_at": "1788761443.8523896"
+        },
+        {
+          "goal_id": "goal_evt_c6dc85a4-d520-450e-a35e-f57946fe091d",
+          "loop": "fast",
+          "kind": "image",
+          "role": "supervisor",
+          "ref": "ad0f1650-d114-462b-8a11-a253afe23b28",
+          "purpose": "检查蓝色料箱内部及横倒金属圆柱零件的位置和姿态",
+          "camera": "scene",
+          "received_at": "2026-09-07T06:10:57.582Z",
+          "frame_sequence": "19314",
+          "observed_at": "1788761457.3434691"
+        },
+        {
+          "goal_id": "goal_evt_c6dc85a4-d520-450e-a35e-f57946fe091d",
+          "loop": "fast",
+          "kind": "image",
+          "role": "supervisor",
+          "ref": "f8acbaaa-b26b-45f1-b202-83af40318874",
+          "purpose": "Confirm the location of the blue bin and identify which metal cylinder is lying horizontally inside it.",
+          "camera": "scene",
+          "received_at": "2026-09-07T06:11:21.854Z",
+          "frame_sequence": "19812",
+          "observed_at": "1788761481.8251023"
+        },
+        {
+          "goal_id": "goal_evt_c6dc85a4-d520-450e-a35e-f57946fe091d",
+          "loop": "fast",
+          "kind": "image",
+          "role": "supervisor",
+          "ref": "0e1499a2-1d06-4c51-ad22-14dbcefd82c6",
+          "purpose": "Identify which metal cylinder is lying horizontally in the blue bin to select the correct visual reference for grasping.",
+          "camera": "side",
+          "received_at": "2026-09-07T06:11:50.596Z",
+          "frame_sequence": "20394",
+          "observed_at": "1788761510.5522304"
+        }
+      ],
+      "steps": [
+        {
+          "skill": "pick_place",
+          "state": "superseded",
+          "command_id": "iq_62608c7a-c497-4482-86e5-a3888562f433:1",
+          "params": {
+            "target": "metal cylinder lying horizontally in blue bin",
+            "destination": {
+              "label": "blue bin grid slot",
+              "selection": "auto"
+            },
+            "mode": "auto"
+          },
+          "message": "本次画面未找到目标：metal cylinder lying horizontally in blue bin",
+          "failure": {
+            "code": "TARGET_NOT_FOUND",
+            "phase": "attempt_finished",
+            "holding_verified": false,
+            "suggested_recovery": [
+              "change_view_or_detector"
+            ],
+            "message": "本次画面未找到目标：metal cylinder lying horizontally in blue bin"
+          },
+          "attempts": [
+            {
+              "backend": "official_pick_place",
+              "ok": false,
+              "error": "本次画面未找到目标：metal cylinder lying horizontally in blue bin",
+              "elapsed_s": 0.8498055003583431
+            },
+            {
+              "backend": "models",
+              "ok": false,
+              "error": "本次画面未找到目标：metal cylinder lying horizontally in blue bin",
+              "elapsed_s": 0.7344623003154993
+            }
+          ],
+          "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260907-141050-d9378550",
+          "physical_evaluation": null
+        },
+        {
+          "skill": "perceive",
+          "state": "superseded",
+          "command_id": "iq_9e5dc14f-40f4-4941-ba41-d328820aaf6c:1",
+          "params": {
+            "scope": "target",
+            "category": "metal cylinder",
+            "vision_mode": "slow",
+            "slow_provider": "sam3"
+          },
+          "message": "目标不唯一，请指定其中一个：metal cylinder",
+          "failure": {
+            "code": "TARGET_AMBIGUOUS",
+            "phase": "visual_observation",
+            "holding_verified": false,
+            "suggested_recovery": [
+              "select_visual_reference"
+            ],
+            "message": "目标不唯一，请指定其中一个：metal cylinder"
+          },
+          "attempts": null,
+          "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260907-141110-8f08f4dd",
+          "physical_evaluation": null
+        },
+        {
+          "skill": "pick_place",
+          "state": "failed",
+          "command_id": "iq_567dd554-e78c-47cb-b11a-fa7971f73e6a:1",
+          "params": {
+            "target": "metal cylinder lying horizontally inside the small blue bin",
+            "destination": {
+              "label": "blue bin grid slot",
+              "selection": "auto"
+            },
+            "mode": "auto"
+          },
+          "message": "目标不唯一，请指定其中一个：metal cylinder lying horizontally inside the small blue bin",
+          "failure": {
+            "code": "TARGET_AMBIGUOUS",
+            "phase": "attempt_finished",
+            "holding_verified": false,
+            "suggested_recovery": [
+              "select_visual_reference"
+            ],
+            "message": "目标不唯一，请指定其中一个：metal cylinder lying horizontally inside the small blue bin"
+          },
+          "attempts": [
+            {
+              "backend": "official_pick_place",
+              "ok": false,
+              "error": "目标不唯一，请指定其中一个：metal cylinder lying horizontally inside the small blue bin",
+              "elapsed_s": 0.7876863908022642
+            },
+            {
+              "backend": "models",
+              "ok": false,
+              "error": "目标不唯一，请指定其中一个：metal cylinder lying horizontally inside the small blue bin",
+              "elapsed_s": 0.9176754709333181
+            }
+          ],
+          "evidence_dir": "/root/gpufree-data/arena-panda/output/arena/20260907-141133-d8fc1094",
+          "physical_evaluation": null
+        }
+      ],
+      "post_state_diagnostic": {
+        "source": "simulation ground truth, audit only, never given to planner",
+        "initial_incoming_counts": {
+          "A": 2,
+          "B": 5,
+          "C": 3
+        },
+        "required_region": "B",
+        "capacity": 6,
+        "valid_upright_cells": 0,
+        "bin_full": false,
+        "parts": [
+          {
+            "id": "qa_body_01",
+            "initial_region": "A",
+            "closed_end_up": true,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_02",
+            "initial_region": "A",
+            "closed_end_up": true,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_03",
+            "initial_region": "B",
+            "closed_end_up": true,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_04",
+            "initial_region": "B",
+            "closed_end_up": false,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_05",
+            "initial_region": "B",
+            "closed_end_up": true,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_06",
+            "initial_region": "B",
+            "closed_end_up": true,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_07",
+            "initial_region": "B",
+            "closed_end_up": false,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_08",
+            "initial_region": "C",
+            "closed_end_up": true,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_09",
+            "initial_region": "C",
+            "closed_end_up": true,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_10",
+            "initial_region": "C",
+            "closed_end_up": false,
+            "in_incoming_bin": false,
+            "cell_by_center": null
+          },
+          {
+            "id": "qa_body_11",
+            "initial_region": "bin",
+            "closed_end_up": false,
+            "in_incoming_bin": true,
+            "cell_by_center": "1,2"
+          }
+        ],
+        "note": "Cell-center and axis checks are audit diagnostics, not a complete contact/clearance evaluator."
+      },
+      "evidence": "output/challenge-qa/20260907/repair.json",
+      "physical_evaluation_reported": false,
+      "execution_reached": "localization_only"
+    }
+  ],
+  "interpretation": {
+    "end_to_end_passed": false,
+    "placement_or_repair_success_verified": false,
+    "no_claim_of_graspgenx_or_anyplace_physical_failure": true
+  },
+  "baseline": {
+    "elapsed_s": 2.766693592071533,
+    "detected_objects": [
+      "table"
+    ],
+    "reference_count": 1,
+    "interpretation": "Inventory did not list industrial parts; this single observation is not a recall/mAP benchmark."
+  },
+  "source_sha256": {
+    "source/mr_liu/arena/contracts.py": "433701e699c21a720aab993eb54f1643ac734eb81d122ced0d76423704a56151",
+    "source/mr_liu/arena/runtime.py": "7442ff57a90227a661e50576450e3a84a1a9f266741824095cf420bccd9983f3",
+    "source/mr_liu/arena/environment.py": "a8edc322dec1d92d41e2e2224e7466b995a0f194c9e249acb5d9020aa2256cd3",
+    "source/mr_liu/perception/arena_vision.py": "e108272875bffbc4bbdbd61fa884cf3d47cff7ec94ef60c72b5ef80db6c08b87",
+    "BusAgent/backend/src/apps/desktop-robot/intelligence/planning.ts": "f8a155ccb60384666cf6ac606b363cb41b90473690d941c89d02877c2d282e60",
+    "BusAgent/backend/src/apps/desktop-robot/intelligence/planning-context.ts": "bad1daf9f2f9a34d0aca9d850fa777a8dbf4fb18742733ff52a636106cbb1e39",
+    "BusAgent/backend/src/apps/desktop-robot/intelligence/task-engine.ts": "b52ab385496038bfef872c7b40432a9e55a845a2f53f9e4e9d230522347aba42",
+    "configs/arena_panda_challenge_qa.json": "85a8d9f3884c348f5bd1d8b9b8364e5b101ef8e3bb36644e96e76e8f39554710",
+    "assets/scenes/challenge_qa/asset_01.usda": "9b5562a5f5166e1f33ddd4be5a8bb61d8e42556a2b1087a64bc438464d160346",
+    "assets/scenes/challenge_qa/asset_02.usda": "ec217f83710ee5443c89029db52cc93e7747ca3705caafac6eb2a547b23daf2c",
+    "assets/scenes/challenge_qa/asset_03.usda": "a3db2228df095a77b4d6794e4676b13961be475b23603746d7af500669c928be"
+  },
+  "final_runtime": {
+    "ready": true,
+    "phase": "idle",
+    "holding": {
+      "verified": false,
+      "instance_id": null
+    },
+    "queue_paused": false,
+    "audit_goals": [
+      {
+        "id": "goal_evt_002f3b2e-52d2-44a0-a9c7-5cc3017d2e20",
+        "state": "blocked"
+      },
+      {
+        "id": "goal_evt_471b4f2c-8c63-44ad-b76d-a0da59f1425b",
+        "state": "blocked"
+      },
+      {
+        "id": "goal_evt_c63325a4-1bdd-4315-8bbc-9f80cc273dd1",
+        "state": "blocked"
+      },
+      {
+        "id": "goal_evt_c6dc85a4-d520-450e-a35e-f57946fe091d",
+        "state": "blocked"
+      }
+    ],
+    "scene_left_loaded": "configs/arena_panda_challenge_qa.json"
+  },
+  "cloud_source_hashes_match": true,
+  "cloud_source_hash_mismatches": []
+}

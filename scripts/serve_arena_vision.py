@@ -20,6 +20,7 @@ from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 from mr_liu.perception.arena_vision import ImagePipeline
 from mr_liu.perception.sam3_localizer import Sam3Localizer
+from mr_liu.arena.visual_refs import annotate_references, load_reference
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--port', type=int, default=5570)
@@ -28,7 +29,7 @@ store = ROOT/'output/perception'
 store.mkdir(parents=True, exist_ok=True)
 finder = FlorenceFinder()
 yolo = YoloeVisualTracker(os.environ['BUSAGENT_YOLOE_WEIGHTS'])
-finder.load(); yolo.load()
+yolo.load()  # Florence loads lazily only when selected.
 config = json.loads((ROOT/'configs/arena_panda.json').read_text())['vision']
 # Fail visibly at startup if the independent fast detector cannot load.
 yolo.set_text_prompt(config['vocabulary'])
@@ -59,7 +60,13 @@ def observe(body):
                     mode=request.get('scene_mode', 'describe'))
                 views.append(result)
                 continue
-            mask, result = pipeline.observe(frames[camera+'_rgb'], scene_id=request['scene_id'],
+            if request.get('visual_ref'):
+                reference, origin = load_reference(store, request['visual_ref'], request['scene_id'])
+                with np.load(origin/'frames.npz', allow_pickle=False) as previous:
+                    mask, result = pipeline.from_reference(frames[camera+'_rgb'], previous[camera+'_rgb'], reference,
+                        camera=camera, sequence=view['sequence'], scene_id=request['scene_id'])
+            else:
+                mask, result = pipeline.observe(frames[camera+'_rgb'], scene_id=request['scene_id'],
                 camera=camera, label=request['label'], sequence=view['sequence'],
                 refine=request.get('refine', False), reset=request.get('reset', False),
                 mode=request.get('vision_mode', 'auto'), slow_provider=request.get('slow_provider'))
@@ -75,6 +82,7 @@ def observe(body):
         fallback_reasons=sorted({v['fallback_reason'] for v in views if v.get('fallback_reason')}),
         semantic_status='detected' if any(v.get('semantic_status') == 'detected' for v in views)
             else 'candidate' if masks else 'scene' if request.get('scope') == 'scene' else 'unknown')
+    annotate_references(result, frames)
     (directory/'result.json').write_text(json.dumps(result, ensure_ascii=False, indent=2))
     print(json.dumps(result, ensure_ascii=False), flush=True)
     return result

@@ -1,0 +1,40 @@
+{
+  "date": "2026-09-07",
+  "container_reboot_performed": false,
+  "cold_start_all_services": true,
+  "boot_hook": "/.gpufree/supervisord/conf.d/liugong-stack.conf",
+  "boot_include": "/.gpufree/supervisord/conf.d/*.conf",
+  "process_manager": "Supervisor 4.2.5",
+  "scene": {
+    "config": "/root/gpufree-data/arena-panda/configs/arena_panda_industrial.json"
+  },
+  "workspace_objects": 11,
+  "http": {
+    "5570": 200,
+    "5590": 200,
+    "7861": 200,
+    "8991": 200,
+    "8993": 200,
+    "8999": 200
+  },
+  "websocket": "HTTP/1.1 101 Switching Protocols",
+  "automatic_recovery": {
+    "service": "busagent",
+    "signal": "SIGKILL",
+    "before_pid": 415527,
+    "after_pid": 419378,
+    "elapsed_s": 2.1,
+    "arena_pid_unchanged": true
+  },
+  "notes": [
+    "SIGTERM alone did not terminate the idle BusAgent during a 45s probe; abnormal-exit recovery was tested with SIGKILL. Supervisor stop operations also have a stopwaitsecs kill deadline."
+  ],
+  "services": [
+    "anyplace                         RUNNING   pid 415523, uptime 0:04:09",
+    "arena                            RUNNING   pid 415526, uptime 0:04:09",
+    "busagent                         STARTING  ",
+    "database                         RUNNING   pid 415522, uptime 0:04:09",
+    "graspgenx                        RUNNING   pid 415524, uptime 0:04:09",
+    "vision                           RUNNING   pid 415525, uptime 0:04:09"
+  ]
+}

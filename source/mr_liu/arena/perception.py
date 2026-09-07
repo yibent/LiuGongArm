@@ -12,6 +12,7 @@ import urllib.error
 from mr_liu.arena.arrays import numpy_data, pose_matrix
 from mr_liu.grasp.transforms import transform_points
 from mr_liu.arena.instances import instance_votes, consistent_witness
+from mr_liu.arena.visual_refs import load_reference
 
 
 class PerceptionBridge:
@@ -19,13 +20,17 @@ class PerceptionBridge:
         self.root = Path(root); self.root.mkdir(parents=True, exist_ok=True)
         self.url = url
         self.scene_id = uuid4().hex
+        self.references = {}
 
     def capture(self, runtime, name, *, refine=False, reset=False, cameras=None, vision_mode='auto',
-                slow_provider=None, scene_mode='describe', transient=False):
+                slow_provider=None, scene_mode='describe', transient=False, visual_ref=None):
         request_id = uuid4().hex
         directory = self.root/request_id; directory.mkdir()
         row = getattr(runtime, 'observed_entities', {}).get(name)
         held_target = name and (runtime.held == name or (row and runtime.held == row['name']))
+        if visual_ref:
+            selected, _ = load_reference(self.root, visual_ref, self.scene_id)
+            cameras = [selected['camera']]
         cameras = cameras or (['wrist_camera'] if held_target else ['scene_camera', 'side_camera'])
         label = row['label'] if row else name
         arrays, views, instances, instance_labels = {}, [], {}, {}
@@ -46,7 +51,7 @@ class PerceptionBridge:
             'observed_at': time.time(),
             'queries': runtime.config.get('vision', {}).get('vocabulary', []) if not name else [],
             'vision_mode': vision_mode, 'slow_provider': slow_provider, 'scene_mode': scene_mode,
-            'transient': transient,
+            'transient': transient, 'visual_ref': visual_ref,
             'views': views, 'refine': refine, 'reset': reset, **runtime.bus_context}
         # Same-machine SSD transport: compression cost exceeded model inference on the fast path.
         np.savez(directory/'frames.npz', **arrays)
@@ -75,7 +80,12 @@ class PerceptionBridge:
                 shutil.rmtree(self.root/request['request_id'], ignore_errors=True)
         if result.get('request_id') != request['request_id']:
             raise RuntimeError('Vision returned a different observation reference')
+        self.references.update({r['ref']: r for r in result.get('references', [])})
+        while len(self.references) > 256: self.references.pop(next(iter(self.references)))
         return result
+
+    def resolve_reference(self, ref):
+        return load_reference(self.root, ref, self.scene_id)[0]
 
     def cloud(self, result):
         directory = self.root/result['request_id']

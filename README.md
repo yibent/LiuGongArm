@@ -13,6 +13,7 @@ git submodule update --init BusAgent
 ```
 
 服务器启动：`python3 ops/arena_stack.py start`。端口为 8991（新版工作台）、8993（观察台）、8999（工作台兼容入口）。
+云实例已配置 [开机自启与服务自动恢复](docs/arena/AUTOSTART.md)，沿用上次选择的工业场景配置。
 支持分两次说“拿起齿轮”与“放到蓝色托盘”，也可说“在桌子上随便找个地方放下”；持物续放保留原抓取，桌面空位由当前 RGB-D 选择。
 视觉已接入 [按任务选择的快慢环](docs/FAST_SLOW_LOOPS.md)：YOLOE／SAM2／光流优先，困难概念由 SAM3 定位，Florence 提供场景描述。视觉参考持久保存，图像不进入上层语言模型；Qwen 多模态 API 仍为计划。
 验证结果和当前未完成的能力见上述适配文档及 [视觉链路](docs/ARENA_VISION_PIPELINE.md)。
@@ -306,3 +307,5 @@ scripts\run_vision.bat --webui --host 127.0.0.1 --port 7860
 
 相机 rig 默认启用：`/World/Cameras/TableTopRGB` 位于桌面正上方并输出 RGB 与米制深度（保留旧 prim 路径兼容已有消费者）；
 `/World/SO101/gripper/WristRGBD` 挂载在夹爪节点下，随机械臂运动并输出 RGB 与米制深度。
+
+BusAgent 自主规划、任务队列与模型设置：[使用说明](docs/arena/BUSAGENT_INTELLIGENCE.md)。

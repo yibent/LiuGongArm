@@ -127,6 +127,35 @@ class ImagePipeline:
                 'loop': 'slow' if mode == 'describe' else 'fast', 'stages': stages,
                 'elapsed_s': time.perf_counter()-started}
 
+    def from_reference(self, rgb, reference_rgb, reference, *, camera, sequence, scene_id):
+        """Reacquire in the current image, never execute an old bounding box."""
+        stages = []
+        label = reference['label']
+        box = np.asarray(reference['box'])
+        seed = self._segment(reference_rgb, box, stages)
+        flow = OpticalFlowTracker()
+        flow.initialize(reference_rgb, seed)
+        mask = flow.update(rgb)
+        stages.append({'model': 'lk', 'operation': 'reference_reacquire', **flow.diagnostic})
+        if mask is not None and mask.any():
+            mask = self._segment(rgb, mask_box(mask), stages)
+        else:
+            self.yoloe.set_visual_prompt(np.ascontiguousarray(reference_rgb[:, :, ::-1]),
+                [Detection(box, label)], cache_key=reference['ref'])
+            found = unique_detections(self.yoloe.detect(np.ascontiguousarray(rgb[:, :, ::-1]), conf=self.fast_conf))
+            stages.append({'model': 'yoloe_visual', 'operation': 'reference_reacquire', 'candidates': len(found)})
+            if len(found) != 1:
+                return None, {'camera': camera, 'sequence': sequence, 'label': label,
+                    'status': 'ambiguous' if found else 'reference_lost', 'loop': 'fast',
+                    'candidates': [{'label': label, 'box': d.xyxy.tolist(), 'score': float(d.score)} for d in found],
+                    'stages': stages, 'semantic_status': 'unknown'}
+            mask = self._segment(rgb, found[0].xyxy, stages)
+        detail = {'camera': camera, 'sequence': sequence, 'label': label, 'loop': 'fast',
+            'status': 'observed' if mask.any() else 'empty_mask', 'semantic_status': reference.get('semantic_status', 'candidate'),
+            'origin': 'selected_visual_reference', 'selected_ref': reference['ref'], 'stages': stages,
+            'box': mask_box(mask).tolist() if mask.any() else None}
+        return (mask if mask.any() else None), detail
+
     def observe(self, rgb, *, scene_id, camera, label, sequence, refine=False, reset=False,
                 mode='auto', slow_provider=None):
         started = time.perf_counter()
@@ -135,6 +164,7 @@ class ImagePipeline:
         if reset:
             state = None
         stages, mask, fallback_reason = [], None, None
+        proposals = []
         bgr = np.ascontiguousarray(rgb[:, :, ::-1])
         semantic_status, origin, memory_id, score, score_model = 'unknown', None, None, None, None
         loop = 'fast'
@@ -143,7 +173,7 @@ class ImagePipeline:
             return {'camera': camera, 'label': label, 'sequence': sequence, 'status': status,
                     'semantic_status': semantic_status, 'origin': origin, 'score': score, 'score_model': score_model,
                     'memory_id': memory_id, 'loop': loop, 'fallback_reason': fallback_reason,
-                    'stages': stages, 'elapsed_s': time.perf_counter()-started}
+                    'stages': stages, 'candidates': proposals, 'elapsed_s': time.perf_counter()-started}
 
         # Repeated or widely separated frames cannot validate a live track.
         if state and mode != 'slow' and 0 < sequence-state['sequence'] <= self.max_frame_gap:
@@ -172,6 +202,7 @@ class ImagePipeline:
                 else:
                     found, reason = self._text(bgr, [label], stages)
                     if len(found) > 1:
+                        proposals = [{'label': label, 'box': d.xyxy.tolist(), 'score': float(d.score)} for d in found]
                         # Multiple fast proposals are model uncertainty, not
                         # proof of multiple matching objects in the scene.
                         reason = 'multiple_fast_candidates'
@@ -206,6 +237,7 @@ class ImagePipeline:
                 stages.append({'model': provider, 'loop': 'slow', 'operation': 'find',
                                'reason': fallback_reason, 'candidates': len(found)})
                 if len(found) != 1:
+                    proposals = [{'label': label, 'box': d.xyxy.tolist(), 'score': float(d.score)} for d in found]
                     return None, result('not_found' if not found else 'ambiguous')
             score = float(detection.score) if semantic_status == 'detected' else None
             if mask is None:

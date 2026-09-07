@@ -1,6 +1,7 @@
 """One fast attempt, then one model attempt; cancellation never escalates."""
 from dataclasses import replace
 import time
+from mr_liu.arena.failure import PlacementSpaceUnavailable
 
 
 class FastPathFailure(RuntimeError):
@@ -35,9 +36,11 @@ def run_cascade(request, fast, enhanced, recover, event, *, attempts=None):
         if value["physical_success"]:
             return value, request.route(), attempts
         raise FastPathFailure("Fast task failed physical evaluation")
-    except InterruptedError:
+    except (InterruptedError, PlacementSpaceUnavailable):
         raise
     except RuntimeError as error:
+        if request.mode == "basic":
+            raise
         event("model_fallback", reason=str(error))
         # Recovery chooses re-observation/regrasp versus placement-only based on
         # the physical task state. Never release a successfully held part here.

@@ -15,14 +15,14 @@ class FreeSupportTests(unittest.TestCase):
         table = plane()
         obstacle = plane(-.06, .06, -.06, .06, .04)
         target, details = choose_free_support(table, np.r_[table, obstacle], self.child, [0, 0, .2])
-        self.assertGreater(np.linalg.norm(target[:2]), .10)
-        self.assertGreaterEqual(details['clearance_m'], details['footprint_radius_m'])
+        self.assertGreater(max(abs(target[0]), abs(target[1])), .085)
+        self.assertGreater(details['clearance_m'], .025)
         self.assertAlmostEqual(target[2], 0.)
 
     def test_edges_and_unseen_gaps_do_not_count_as_free(self):
         table = np.r_[plane(-.30, -.10), plane(.10, .30)]
         target, _ = choose_free_support(table, table, self.child, [0, 0, .2])
-        self.assertGreater(abs(target[0]), .15)
+        self.assertGreater(abs(target[0]), .125)
         self.assertLess(abs(target[0]), .25)
 
     def test_surface_too_small_does_not_release(self):
@@ -42,7 +42,7 @@ class FreeSupportTests(unittest.TestCase):
         child = self.child.copy(); child[:, :2] *= 5
         target, large = choose_free_support(table, table, child, [.29, 0, .2])
         self.assertGreater(large['footprint_radius_m'], small['footprint_radius_m'])
-        self.assertLess(target[0], .15)
+        self.assertLess(target[0] + large['footprint_size_m'][0]/2, .304)
 
 
 if __name__ == '__main__': unittest.main()

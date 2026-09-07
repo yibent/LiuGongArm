@@ -83,10 +83,11 @@ def serve(runtime, app, port):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args): pass
 
-        def respond(self, code, data, content_type="application/json"):
+        def respond(self, code, data, content_type="application/json", headers=None):
             blob = json.dumps(data, ensure_ascii=False, allow_nan=False).encode() if content_type == "application/json" else data
             self.send_response(code); self.send_header("Content-Type", content_type)
             self.send_header("Cache-Control", "no-store"); self.send_header("Content-Length", str(len(blob)))
+            for key, value in (headers or {}).items(): self.send_header(key, str(value))
             self.end_headers()
             try: self.wfile.write(blob)
             except (BrokenPipeError, ConnectionResetError): pass
@@ -107,6 +108,9 @@ def serve(runtime, app, port):
                 return self.respond(200 if result else 404, result or {"ok": False, "error": "unknown command"})
             if path.startswith("/api/frame/"):
                 key = path.rsplit("/", 1)[1].removesuffix(".jpg")
+                packet = getattr(runtime, 'frame_packets', {}).get(key)
+                if packet:
+                    return self.respond(200, packet[0], 'image/jpeg', {'X-Frame-Sequence': packet[1], 'X-Frame-Time': packet[2]})
                 frame = runtime.frames.get(key)
                 return self.respond(200, frame, "image/jpeg") if frame else self.respond(503, {"error": "frame unavailable"})
             return self.respond(404, {"error": "not found"})

@@ -61,3 +61,15 @@ def test_failed_escalation_preserves_attempt_history():
     assert [row['backend'] for row in attempts] == ['official_pick_place', 'models']
     assert all(not row['ok'] and row['elapsed_s'] >= 0 for row in attempts)
     assert attempts[1]['error'] == 'model unavailable'
+
+
+def test_no_observed_place_does_not_start_an_unnecessary_model_grasp():
+    from mr_liu.arena.failure import PlacementSpaceUnavailable
+    recover, enhanced = Mock(), Mock()
+    attempts = []
+    with pytest.raises(PlacementSpaceUnavailable):
+        run_cascade(ManipulationRequest('part', 'crowded tray'),
+            Mock(side_effect=PlacementSpaceUnavailable('没有空位')),
+            enhanced, recover, Mock(), attempts=attempts)
+    recover.assert_not_called(); enhanced.assert_not_called()
+    assert len(attempts) == 1 and attempts[0]['error'] == '没有空位'

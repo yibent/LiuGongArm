@@ -20,6 +20,19 @@ SERVICES = {
 }
 
 
+def scene_environment(env, config=None):
+    profile_file = STATE / 'arena-scene.json'
+    previous = json.loads(profile_file.read_text()) if profile_file.exists() else {}
+    profile = config or env.get('ARENA_PANDA_CONFIG') or previous.get('config')
+    if profile:
+        path = Path(profile)
+        path = path if path.is_absolute() else ROOT / path
+        env = {**env, 'ARENA_PANDA_CONFIG': str(path)}
+        STATE.mkdir(parents=True, exist_ok=True)
+        profile_file.write_text(json.dumps({'config': str(path)}))
+    return env
+
+
 def alive(pid):
     try:
         os.kill(pid, 0)
@@ -39,6 +52,16 @@ def main():
     names = args.services or list(SERVICES)
     if any(name not in SERVICES for name in names):
         parser.error("Services: " + ", ".join(SERVICES))
+    # Use the installed manager so manual stops stay stopped and starts cannot
+    # spawn duplicate GPU services alongside Supervisor.
+    if (ROOT/'output/supervisor/control.sock').exists():
+        if args.config:
+            if args.action != 'start' or 'arena' not in names:
+                parser.error('--config applies to starting Arena')
+            scene_environment(dict(os.environ), args.config)
+        result = subprocess.run(['/usr/bin/supervisorctl', '-c', str(ROOT/'ops/arena-supervisord.conf'),
+                                 args.action, *names])
+        raise SystemExit(result.returncode)
     for name in names:
         command, cwd = SERVICES[name]
         file = STATE / f"{name}.json"
@@ -51,14 +74,7 @@ def main():
         if args.action == "start" and not running:
             env = {**os.environ, "BUSAGENT_PORT": "3100", "BUSAGENT_ROBOT": "franka_panda"}
             if name == 'arena':
-                profile_file = STATE / 'arena-scene.json'
-                previous_profile = json.loads(profile_file.read_text()) if profile_file.exists() else {}
-                profile = args.config or env.get('ARENA_PANDA_CONFIG') or previous_profile.get('config')
-                if profile:
-                    path = Path(profile)
-                    path = path if path.is_absolute() else ROOT / path
-                    env['ARENA_PANDA_CONFIG'] = str(path)
-                    profile_file.write_text(json.dumps({'config': str(path)}))
+                env = scene_environment(env, args.config)
             with (STATE / f"{name}.log").open("ab") as log:
                 process = subprocess.Popen(command, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
                                            stdout=log, stderr=subprocess.STDOUT, start_new_session=True)

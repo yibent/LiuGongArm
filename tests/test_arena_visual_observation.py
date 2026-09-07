@@ -232,3 +232,20 @@ def test_sam3_absence_does_not_force_florence_to_invent_a_box():
     mask, detail = pipe.observe(np.zeros((32,32,3), np.uint8), scene_id='s', camera='scene', label='absent', sequence=1)
     assert mask is None and detail['status'] == 'not_found'
     finder.find.assert_not_called(); sam2.predict.assert_not_called()
+
+
+def test_visual_reference_is_reacquired_and_lost_reference_never_reuses_old_box():
+    rng=np.random.default_rng(8)
+    rgb=rng.integers(0,255,(64,64,3),dtype=np.uint8)
+    mask=np.zeros((64,64),bool);mask[15:45,15:45]=True
+    sam,yolo=Mock(),Mock();sam.predict.return_value=(mask[None],np.array([.9]),None)
+    yolo.detect.return_value=[]
+    pipe=ImagePipeline(Mock(),yolo,sam)
+    ref={'ref':'obs:example','label':'part','box':[15,15,45,45],'semantic_status':'detected'}
+    result,detail=pipe.from_reference(rgb.copy(),rgb,ref,camera='scene',sequence=10,scene_id='s')
+    assert result.any() and detail['selected_ref']==ref['ref']
+    yolo.detect.assert_not_called()
+    empty=np.zeros_like(rgb)
+    result,detail=pipe.from_reference(empty,empty,ref,camera='scene',sequence=11,scene_id='s')
+    assert result is None and detail['status']=='reference_lost'
+    yolo.set_visual_prompt.assert_called_once()

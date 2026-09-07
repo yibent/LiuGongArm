@@ -1,0 +1,147 @@
+{
+  "description": "Reduced Q8 fixture: three regions 2/5/3, six-cell movable bin, fallen bin part, one stack base.",
+  "normal_pose": "closed flat end up, local +Z (open bore) down",
+  "regions": {
+    "A": {
+      "count": 2,
+      "part_ids": [
+        "qa_body_01",
+        "qa_body_02"
+      ]
+    },
+    "B": {
+      "count": 5,
+      "part_ids": [
+        "qa_body_03",
+        "qa_body_04",
+        "qa_body_05",
+        "qa_body_06",
+        "qa_body_07"
+      ]
+    },
+    "C": {
+      "count": 3,
+      "part_ids": [
+        "qa_body_08",
+        "qa_body_09",
+        "qa_body_10"
+      ]
+    }
+  },
+  "parts": [
+    {
+      "id": "qa_body_01",
+      "region": "A",
+      "state": "normal"
+    },
+    {
+      "id": "qa_body_02",
+      "region": "A",
+      "state": "normal"
+    },
+    {
+      "id": "qa_body_03",
+      "region": "B",
+      "state": "normal"
+    },
+    {
+      "id": "qa_body_04",
+      "region": "B",
+      "state": "inverted"
+    },
+    {
+      "id": "qa_body_05",
+      "region": "B",
+      "state": "normal"
+    },
+    {
+      "id": "qa_body_06",
+      "region": "B",
+      "state": "normal"
+    },
+    {
+      "id": "qa_body_07",
+      "region": "B",
+      "state": "fallen"
+    },
+    {
+      "id": "qa_body_08",
+      "region": "C",
+      "state": "normal"
+    },
+    {
+      "id": "qa_body_09",
+      "region": "C",
+      "state": "normal"
+    },
+    {
+      "id": "qa_body_10",
+      "region": "C",
+      "state": "inverted"
+    },
+    {
+      "id": "qa_body_11",
+      "region": "bin",
+      "state": "fallen"
+    }
+  ],
+  "cell_centres": [
+    {
+      "row": 1,
+      "column": 1,
+      "position": [
+        0.44329999999999997,
+        0.157,
+        0.008
+      ]
+    },
+    {
+      "row": 1,
+      "column": 2,
+      "position": [
+        0.49,
+        0.157,
+        0.008
+      ]
+    },
+    {
+      "row": 1,
+      "column": 3,
+      "position": [
+        0.5367,
+        0.157,
+        0.008
+      ]
+    },
+    {
+      "row": 2,
+      "column": 1,
+      "position": [
+        0.44329999999999997,
+        0.20299999999999999,
+        0.008
+      ]
+    },
+    {
+      "row": 2,
+      "column": 2,
+      "position": [
+        0.49,
+        0.20299999999999999,
+        0.008
+      ]
+    },
+    {
+      "row": 2,
+      "column": 3,
+      "position": [
+        0.5367,
+        0.20299999999999999,
+        0.008
+      ]
+    }
+  ],
+  "scale_note": "10 incoming parts and 6 cells, not a pixel-exact reconstruction or full-scale benchmark.",
+  "incoming_bin_id": "qa_body_12",
+  "stack_base_bin_id": "qa_body_14"
+}
