@@ -21,6 +21,8 @@ class ManipulationRequest:
     destination_ref: str | None = None
     region_ref: str | None = None
     placement_preference: str = 'nearest'
+    cell_ref: str | None = None
+    orientation: dict | None = None
 
     def __post_init__(self):
         if not self.target.strip() or len(self.target) > 256:
@@ -33,6 +35,12 @@ class ManipulationRequest:
             raise ValueError('placement_selection must be auto, center or free_space')
         if self.relation not in {"on", "inside"}:
             raise ValueError("Insertion and hanging require contact skills that are not yet available")
+        if self.orientation is not None:
+            if self.orientation.get('endpoint') not in (0, 1) or self.orientation.get('direction', 'up') not in {'up', 'down'}:
+                raise ValueError('orientation requires observed endpoint 0/1 and direction up/down')
+            if not self.orientation.get('axis_ref'):
+                raise ValueError('orientation requires a current observed axis_ref')
+            raise NotImplementedError('Observed endpoint orientation requires a reorientation skill; geometry inspection alone cannot execute it')
 
     @property
     def enhanced(self):

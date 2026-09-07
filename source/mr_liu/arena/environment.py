@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 from mr_liu.arena.arrays import numpy_data
 from mr_liu.arena.evaluation import support_metrics
+from mr_liu.arena.placement_geometry import cell_fit
 from scipy.spatial.transform import Rotation
 
 import isaaclab.sim as sim
@@ -81,9 +82,19 @@ class PandaTask(NoTask):
         success = bool(lifted and (released and support['supported_region'] and stability < .003
                                    and np.linalg.norm(velocity) < .03 and support['support_linear_speed_mps'] < .03
                                    if destination is not None else position[2] - initial_z > .04))
+        postconditions = {}
+        if destination and destination.get('grid_cell'):
+            # Independent simulation witness: transform the pregrasp measured
+            # shape with the actual rigid pose, and evaluate the observed cell.
+            points = np.asarray(destination['evaluation_points_object'])
+            placed = Rotation.from_quat(numpy_data(body.data.root_quat_w)[0]).apply(points)+position
+            check = cell_fit(placed,destination['grid_cell'],destination['grid_basis_xy'])
+            postconditions['requested_cell'] = {**check, 'satisfied':bool(check['fits'] and released and support['supported_region']),
+                'source':'observed_cell_with_simulation_pose_witness'}
+            success = bool(success and postconditions['requested_cell']['satisfied'])
         return {"physical_success": success, "lifted": bool(lifted), "released": bool(released),
                 "max_lift_m": float(max_lift), "final_position_world_m": position.tolist(),
-                **support,
+                **support, 'postconditions':postconditions,
                 "support_gap_m": support_gap, "gripper_opening_m": opening,
                 "settle_displacement_m": float(stability), "linear_speed_mps": float(np.linalg.norm(velocity)),
                 "evaluation_source": "arena_task_simulation_ground_truth"}

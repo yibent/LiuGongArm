@@ -73,3 +73,12 @@ def test_no_observed_place_does_not_start_an_unnecessary_model_grasp():
             enhanced, recover, Mock(), attempts=attempts)
     recover.assert_not_called(); enhanced.assert_not_called()
     assert len(attempts) == 1 and attempts[0]['error'] == '没有空位'
+
+
+def test_localization_failure_returns_to_selection_without_switching_grasp_model():
+    from mr_liu.arena.failure import LocalizationFailure
+    recover, enhanced = Mock(), Mock()
+    with pytest.raises(LocalizationFailure):
+        run_cascade(ManipulationRequest('part', 'tray'), Mock(side_effect=LocalizationFailure('ambiguous')),
+                    enhanced, recover, Mock())
+    recover.assert_not_called(); enhanced.assert_not_called()

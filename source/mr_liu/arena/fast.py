@@ -42,6 +42,15 @@ PHASES = ["pregrasp", "approach", "settle_grasp", "close_gripper", "lift",
           "transport", "place_approach", "release", "retreat", "finish"]
 
 
+def verify_release_pose(runtime, position, orientation_wxyz):
+    """The SDK advances on time; release must also wait for actual Arena IK arrival."""
+    if not runtime.holding_status()['verified']:
+        raise FastPathFailure('夹持状态已改变，释放前未确认持物。')
+    pose=np.eye(4);pose[:3,3]=position
+    pose[:3,:3]=Rotation.from_quat(np.roll(orientation_wxyz,-1)).as_matrix()
+    runtime.move(pose,label='place_approach')
+
+
 def fast_pick_place(runtime, request):
     row, destination = runtime.prepare_task(request)
     points = runtime.cloud(row["name"])
@@ -49,11 +58,14 @@ def fast_pick_place(runtime, request):
     geometry = None
     low, high = np.quantile(points, [.02, .98], axis=0)
     pick = (low + high) / 2
+    if request.cell_ref and high[2]-low[2] > max(high[:2]-low[:2]):
+        # Pinch above short dividers instead of putting the fingers between them.
+        pick[2] = low[2]+.8*(high[2]-low[2])
     place = pick.copy()
     if destination:
         support = runtime.placement_support(request, destination, points, runtime.tcp_pose()[:3, 3])
         place[:2] = support[:2]
-        place[2] = support[2] + (high[2] - low[2]) / 2 + .003
+        place[2] = support[2] + pick[2]-low[2] + .003
     runtime.event("planning", route=request.route(), object_points=len(points),
                   algorithm="isaacsim PickPlaceController / Arena IK")
     steps = runtime.config["fast"]["phase_steps"]
@@ -73,14 +85,18 @@ def fast_pick_place(runtime, request):
                 # and jaw occlusion make another segmentation unreliable.
                 geometry = {'points_tcp': transform_points(invert_transform(runtime.tcp_pose()), points),
                             'observation_ref': observation_ref}
+                runtime.remember_hold(row, geometry)
             if phase == 5:
                 if runtime.max_lift < .04:
                     raise FastPathFailure("Fast grasp did not lift the target")
-                runtime.remember_hold(row, geometry)
+                if not runtime.holding_status()['verified']:
+                    raise FastPathFailure('夹持状态已改变，抬升后物体未跟随夹爪。')
+                runtime.held_context['max_lift_m'] = runtime.max_lift
                 runtime.event("lift_verified", lift_m=runtime.max_lift)
                 if destination is None:
                     return runtime.task.evaluate(runtime.env, row["name"], runtime.initial_z, None,
                         released=False, max_lift=runtime.max_lift, stability=0.)
+            if phase == 7: verify_release_pose(runtime,place,place_orientation)
             runtime.event(PHASES[phase], backend="official_pick_place")
             if phase == 3: runtime.held = row["name"]
             if phase == 8: runtime.clear_hold()
@@ -127,6 +143,7 @@ the robot. Then use its original transport/release/retreat interpolation.
     while not controller.is_done():
         phase = controller.get_current_event()
         if phase != previous:
+            if phase == 7: verify_release_pose(runtime,place,orientation)
             runtime.event(PHASES[phase], backend='official_pick_place')
             if phase == 8: runtime.clear_hold()
             previous = phase

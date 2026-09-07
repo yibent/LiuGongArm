@@ -6,6 +6,9 @@ from queue import Empty, Queue
 import threading
 import time
 from urllib.parse import unquote
+from concurrent.futures import Future, TimeoutError as FutureTimeout
+from io import BytesIO
+import re
 
 
 class CommandQueue:
@@ -98,6 +101,27 @@ def serve(runtime, app, port):
             if path == "/api/workspace": return self.respond(200, workspace.snapshot)
             if path == "/api/status": return self.respond(200, runtime.snapshot)
             if path == "/api/capabilities": return self.respond(200, runtime.capabilities())
+            match = re.fullmatch(r'/api/observations/([a-f0-9]{32})(?:/frame/(scene|side|wrist))?', path)
+            if match:
+                directory = runtime.perception.root/match[1]
+                try:
+                    request = json.loads((directory/'request.json').read_text())
+                    if request['scene_id'] != runtime.perception.scene_id:
+                        return self.respond(409, {'error': 'observation belongs to another scene'})
+                    if match[2]:
+                        import numpy as np
+                        from PIL import Image
+                        camera = match[2]+'_camera'
+                        with np.load(directory/'frames.npz', allow_pickle=False) as frames:
+                            encoded = BytesIO(); Image.fromarray(frames[camera+'_rgb'].astype(np.uint8)).save(encoded, 'JPEG', quality=90)
+                        return self.respond(200, encoded.getvalue(), 'image/jpeg')
+                    result_path = directory/'result.json'
+                    metadata = json.loads(result_path.read_text()) if result_path.exists() else {
+                        'request_id':request['request_id'],'snapshot_ref':request['request_id'],
+                        'observed_at':request['observed_at'],'views':request['views'],'scope':'frame'}
+                    return self.respond(200, metadata)
+                except (FileNotFoundError, KeyError):
+                    return self.respond(404, {'error': 'observation unavailable'})
             if path.startswith("/api/commands/"):
                 result = commands.result(unquote(path.rsplit("/", 1)[1]))
                 if result and result["state"] == "running":
@@ -120,6 +144,19 @@ def serve(runtime, app, port):
                 size = int(self.headers.get("Content-Length", "0"))
                 if not 0 < size < 65536: raise ValueError("Invalid request size")
                 body = json.loads(self.rfile.read(size))
+                if self.path == '/api/snapshot':
+                    camera = body.get('camera')
+                    if camera not in {'scene', 'side', 'wrist'}:
+                        raise ValueError('Unknown camera')
+                    future = Future()
+                    runtime.snapshot_requests.put({'camera': camera+'_camera', 'future': future})
+                    try:
+                        packet = future.result(timeout=5)
+                    except FutureTimeout:
+                        future.cancel()
+                        return self.respond(503, {'error': 'Sensor snapshot timed out'})
+                    return self.respond(200, {'snapshot_ref': packet['request_id'], 'camera': camera,
+                        'frame_sequence': packet['views'][0]['sequence'], 'observed_at': packet['observed_at']})
                 if self.path == "/api/teleop":
                     updated = teleop.update(body.get("command_id"), body)
                     return self.respond(200 if updated else 409, {"ok": updated, "message": "Updated" if updated else "手动移动已结束"})

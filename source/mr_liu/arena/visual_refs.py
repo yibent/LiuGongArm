@@ -43,3 +43,22 @@ def load_reference(root, ref, scene_id):
     row = next((r for r in result.get('references', []) if r['ref'] == ref), None)
     if row is None: raise RuntimeError('视觉引用不存在，请重新观察。')
     return row, directory
+
+
+def load_snapshot(root, snapshot_ref, scene_id, camera, box_normalized):
+    """Ground a user/VLM box against exactly the image it inspected."""
+    import json
+    if not re.fullmatch(r'[a-f0-9]{32}', snapshot_ref or ''):
+        raise ValueError('Invalid image snapshot reference')
+    directory = root/snapshot_ref
+    request = json.loads((directory/'request.json').read_text())
+    if request['scene_id'] != scene_id:
+        raise RuntimeError('图像属于另一个场景，请读取当前图片。')
+    if camera not in {v['camera'] for v in request['views']}:
+        raise ValueError('Image snapshot does not contain this camera')
+    box = np.asarray(box_normalized, dtype=float)
+    if box.shape != (4,) or not np.isfinite(box).all() or (box < 0).any() or (box > 1).any() or np.any(box[2:] <= box[:2]):
+        raise ValueError('box_normalized must be [left,top,right,bottom] in [0,1]')
+    with np.load(directory/'frames.npz', allow_pickle=False) as frames:
+        height, width = frames[camera+'_rgb'].shape[:2]
+    return directory, (box * [width,height,width,height]).tolist()

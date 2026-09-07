@@ -1,0 +1,423 @@
+{
+  "date": "2026-09-07",
+  "checkpoint": {
+    "tag": "checkpoint/pre-industrial-closed-loop-20260907",
+    "arena": "dfeedff90aca37a65466bb92da2c9ec657244734",
+    "busagent": "1bbad512a2e5942fe380052b370dae49f24ca6ba",
+    "audit": "docs/arena/CHALLENGE_QA_AUDIT.md",
+    "status": "saved pre-upgrade state; industrial Q8 tests fail as documented"
+  },
+  "q8_complete": false,
+  "test_environment": "Real Isaac Sim + Arena + Panda + deployed SAM3/SAM2/Qwen; physical witness remains simulation ground truth",
+  "python_tests": {
+    "passed": 69,
+    "failed": 0
+  },
+  "busagent_tests": {
+    "passed": 35,
+    "failed": 0
+  },
+  "backend_build": "nest build passed",
+  "cases": [
+    {
+      "name": "parts",
+      "artifact": "output/industrial-upgrade/parts.json",
+      "sha256": "3e826c148fe5f45fe9af32cdd3dfa364d8ec4a8ca4ac3d7af41c3555bf6f36c8",
+      "state": "completed",
+      "elapsed_s": 0.9617512226104736,
+      "command_id": "collection-probe-2e6f000472f44e5384782412a7704ff7",
+      "goal_id": null,
+      "message": "Observed object collection. Choose actual member refs for manipulation; counts are visible estimates, not proof of exhaustive inventory.",
+      "failure": null,
+      "holding_verified": false,
+      "evaluation": null
+    },
+    {
+      "name": "bins",
+      "artifact": "output/industrial-upgrade/bins.json",
+      "sha256": "3deea7d441c4c02858a9a9a4ae3b4adf37bc68aeae022ae202ad54c492cfc54f",
+      "state": "completed",
+      "elapsed_s": 0.33471155166625977,
+      "command_id": "collection-probe-fb093b17ade54dc19403a7ab274828a7",
+      "goal_id": null,
+      "message": "Observed object collection. Choose actual member refs for manipulation; counts are visible estimates, not proof of exhaustive inventory.",
+      "failure": null,
+      "holding_verified": false,
+      "evaluation": null
+    },
+    {
+      "name": "grounded-bin-part",
+      "artifact": "output/industrial-upgrade/grounded-bin-part.json",
+      "sha256": "ecd0d2253cff7f42859683a1929bc7fec96ca4c76fde610497f398db3a113295",
+      "state": "completed",
+      "elapsed_s": 0.7112758159637451,
+      "command_id": "ground-probe-3db3f27b887846cea600cc0e1eb41a51",
+      "goal_id": null,
+      "message": "Only a provisional visual region was located. The queried category is unconfirmed; do not report it as a confirmed object.",
+      "failure": null,
+      "holding_verified": false,
+      "evaluation": null
+    },
+    {
+      "name": "selection-before-query-exit-fix",
+      "artifact": "output/industrial-upgrade/selection-before-query-exit-fix.json",
+      "sha256": "cfff8f2abadfee5aa9bb19be1107de2a7f8b34013d75ad0d22bc10624f26af77",
+      "state": "blocked",
+      "elapsed_s": 49.472435917,
+      "command_id": null,
+      "goal_id": "goal_evt_53a67cde-3500-4735-bc17-503c9c7b94f6",
+      "message": null,
+      "failure": null,
+      "holding_verified": null,
+      "evaluation": null
+    },
+    {
+      "name": "selection",
+      "artifact": "output/industrial-upgrade/selection.json",
+      "sha256": "d3f51ddf91b102a8845f6bca37a6a555b9bb65c35eb7adadb4b96c81e0dfafd4",
+      "state": "completed",
+      "elapsed_s": 37.097871458,
+      "command_id": null,
+      "goal_id": "goal_evt_ffccf033-fc40-425e-a7fe-d6c77ec9260a",
+      "message": null,
+      "failure": null,
+      "holding_verified": null,
+      "evaluation": null
+    },
+    {
+      "name": "grid-before-view-selection",
+      "artifact": "output/industrial-upgrade/grid-before-view-selection.json",
+      "sha256": "168adf81edf33b2e9dfa01dca59fd781de6a181df9515ec72c13610a649e172f",
+      "state": "completed",
+      "elapsed_s": 0.9498016834259033,
+      "command_id": "grid-probe-745dd993783747b8bfab4ce921abd51b",
+      "goal_id": null,
+      "message": "Target matched by detector",
+      "failure": null,
+      "holding_verified": false,
+      "evaluation": null
+    },
+    {
+      "name": "cell-before-depth-density",
+      "artifact": "output/industrial-upgrade/cell-before-depth-density.json",
+      "sha256": "dac3b7daa09c76c3fd7f3cedfd63899febdf86e978b7eb493915ee9a6225b89b",
+      "state": "failed",
+      "elapsed_s": 1.1324944496154785,
+      "command_id": "grid-probe-81a4ae80019f4dd3b63824f8edf85fab",
+      "goal_id": null,
+      "message": "指定格位被占用或底面尚不可见，需要重新观察或整理。",
+      "failure": {
+        "code": "NO_FREE_SPACE",
+        "phase": "attempt_finished",
+        "holding_verified": false,
+        "suggested_recovery": [
+          "inspect_destination",
+          "change_region_or_orientation",
+          "rearrange_obstacles_if_goal_allows"
+        ],
+        "message": "指定格位被占用或底面尚不可见，需要重新观察或整理。"
+      },
+      "holding_verified": false,
+      "evaluation": null
+    },
+    {
+      "name": "cell-before-multiview-continuity",
+      "artifact": "output/industrial-upgrade/cell-before-multiview-continuity.json",
+      "sha256": "858d7b7a0d4e41b3b58e36603201efedea10e4598cc889504d75bbc878841e25",
+      "state": "failed",
+      "elapsed_s": 1.4221675395965576,
+      "command_id": "grid-probe-8b447fb07cf94e19a9310342102465ed",
+      "goal_id": null,
+      "message": "指定格位被占用或底面尚不可见，需要重新观察或整理。",
+      "failure": {
+        "code": "NO_FREE_SPACE",
+        "phase": "attempt_finished",
+        "holding_verified": false,
+        "suggested_recovery": [
+          "inspect_destination",
+          "change_region_or_orientation",
+          "rearrange_obstacles_if_goal_allows"
+        ],
+        "message": "指定格位被占用或底面尚不可见，需要重新观察或整理。"
+      },
+      "holding_verified": false,
+      "evaluation": null
+    },
+    {
+      "name": "cell-execution-v2",
+      "artifact": "output/industrial-upgrade/cell-execution-v2.json",
+      "sha256": "3fb59461e6c62e0b69684e1f8b602bceaaa1b70b71ead1c9370c627583c07a46",
+      "state": "failed",
+      "elapsed_s": 12.871501445770264,
+      "command_id": "grid-probe-956f7f0f3b594f1c90fc5d58c8b4ffe7",
+      "goal_id": null,
+      "message": "Fast grasp did not lift the target",
+      "failure": {
+        "code": "EMPTY_GRASP",
+        "phase": "post_action_observed",
+        "holding_verified": false,
+        "suggested_recovery": [
+          "reobserve_then_regrasp"
+        ],
+        "message": "Fast grasp did not lift the target"
+      },
+      "holding_verified": false,
+      "evaluation": null
+    },
+    {
+      "name": "cell-execution-auto",
+      "artifact": "output/industrial-upgrade/cell-execution-auto.json",
+      "sha256": "e0ab47e1565f8e78053bacc32cee112a63d8988e08464ba45774ee6c2801e51d",
+      "state": "failed",
+      "elapsed_s": 38.38111877441406,
+      "command_id": "grid-probe-2fd99758700c4bf9bccce17a5a5960a5",
+      "goal_id": null,
+      "message": "需要重新观察料箱格网。",
+      "failure": {
+        "code": "NO_FREE_SPACE",
+        "phase": "observation",
+        "holding_verified": true,
+        "suggested_recovery": [
+          "preserve_grasp",
+          "place_held",
+          "inspect_destination",
+          "change_region_or_orientation",
+          "rearrange_obstacles_if_goal_allows"
+        ],
+        "message": "需要重新观察料箱格网。"
+      },
+      "holding_verified": true,
+      "evaluation": null
+    },
+    {
+      "name": "cell-place-held-before-grid-memory",
+      "artifact": "output/industrial-upgrade/cell-place-held-before-grid-memory.json",
+      "sha256": "6d2c8605ddc493e7bc5779a03ab0001387766d1278c6934d82fcd6ab450b9088",
+      "state": "failed",
+      "elapsed_s": 0.8391242027282715,
+      "command_id": "grid-probe-404aa7d75f4f44a0ac7310ad53e9dcf1",
+      "goal_id": null,
+      "message": "指定格位被占用或底面尚不可见，需要重新观察或整理。",
+      "failure": {
+        "code": "NO_FREE_SPACE",
+        "phase": "held_geometry_reused",
+        "holding_verified": true,
+        "suggested_recovery": [
+          "preserve_grasp",
+          "place_held",
+          "inspect_destination",
+          "change_region_or_orientation",
+          "rearrange_obstacles_if_goal_allows"
+        ],
+        "message": "指定格位被占用或底面尚不可见，需要重新观察或整理。"
+      },
+      "holding_verified": true,
+      "evaluation": null
+    },
+    {
+      "name": "cell-place-held",
+      "artifact": "output/industrial-upgrade/cell-place-held.json",
+      "sha256": "8bad74faed5d782dd201071c6e00a29bc27d7430d35e4f412c3d4684c6cdc79f",
+      "state": "failed",
+      "elapsed_s": 16.215292930603027,
+      "command_id": "grid-probe-2a4c10af79df451b90e91b79c7f0a21e",
+      "goal_id": null,
+      "message": "Fast task failed physical evaluation",
+      "failure": {
+        "code": "EXECUTION_FAILED",
+        "phase": "finish",
+        "holding_verified": false,
+        "suggested_recovery": [
+          "inspect_result"
+        ],
+        "message": "Fast task failed physical evaluation"
+      },
+      "holding_verified": false,
+      "evaluation": null
+    }
+  ],
+  "source_files": [
+    {
+      "path": "scripts/audit_challenge_qa.py",
+      "sha256": "483278f1487284191e57e28e42f6ff38e969e2aa3611ba5b73569d3f6e84d1a1"
+    },
+    {
+      "path": "scripts/serve_arena_vision.py",
+      "sha256": "7694a0899c60634b864fd3fc5c4372078b9a09e157a69727c9c8ec7debc75409"
+    },
+    {
+      "path": "source/mr_liu/arena/cascade.py",
+      "sha256": "388a1e3fed078e5c94e31669f15809be782f8545553bbcece2261f9aa7a9dfd8"
+    },
+    {
+      "path": "source/mr_liu/arena/contracts.py",
+      "sha256": "e6cb88c33fc4e84557ec450e3696ff41f4e76dc0994455083ec21eec2f4a4773"
+    },
+    {
+      "path": "source/mr_liu/arena/environment.py",
+      "sha256": "9ed3a7732b4fd73e7f4ae0c427069fcad4c0b4e35729e71689b38bf3f88a1138"
+    },
+    {
+      "path": "source/mr_liu/arena/failure.py",
+      "sha256": "af739ae4c2cd42c43e1c7c49ff66241c3b1375d9f568e6d597cbda5565ca4f78"
+    },
+    {
+      "path": "source/mr_liu/arena/fast.py",
+      "sha256": "4fd686b3fa6415176bcea7548d03b94f545d9877778dfcf8c5a664ade46bd75e"
+    },
+    {
+      "path": "source/mr_liu/arena/perception.py",
+      "sha256": "527af9bcf96e7353e5d6e73046978fe3f4146e7915943c923dc250cc6d4842ea"
+    },
+    {
+      "path": "source/mr_liu/arena/runtime.py",
+      "sha256": "566c620b4cf6711f6db1475c50a15d73d1e04a23edb93667dd041f301dbba77e"
+    },
+    {
+      "path": "source/mr_liu/arena/service.py",
+      "sha256": "bd3d77c16af1223bae5c5dff69758c71a12849014de9d5c4f8332198b8961099"
+    },
+    {
+      "path": "source/mr_liu/arena/visual_refs.py",
+      "sha256": "b37b8f36dced7b7da52f9302845d9c4a56d5ac565701e9dd0bba09392949d08a"
+    },
+    {
+      "path": "source/mr_liu/perception/arena_vision.py",
+      "sha256": "906bc4a82edde8e77f99780e970030514c93b9a62928c9f3c9696e360176970c"
+    },
+    {
+      "path": "tests/test_arena_cascade.py",
+      "sha256": "97782d4548ebd3d552853a98137444bf5f05ce1ae7c20a113088c2af4c9ee049"
+    },
+    {
+      "path": "tests/test_arena_contracts.py",
+      "sha256": "efea4dcac7861cf09b26ec3aaa7144fcd40b38527ff9872d074e23e10a203e35"
+    },
+    {
+      "path": "tests/test_arena_placement_intelligence.py",
+      "sha256": "694d4441cf93b2adfc08107dc5d3ea8cb7e2331f130748c593d9778cb9412542"
+    },
+    {
+      "path": "tests/test_arena_reobservation.py",
+      "sha256": "c74ac30234e2b7d63bbaf5ec37f5c48f405435ae37f774c978e04cf1b023a858"
+    },
+    {
+      "path": "tests/test_arena_visual_observation.py",
+      "sha256": "26d58f167153abe92f774fdda2e4acc628a008d2e78ce1cfe54b905bb4349156"
+    },
+    {
+      "path": "source/mr_liu/arena/observed_scene.py",
+      "sha256": "7496f35774d638f8ec263c9d5be4a0affc185c29ccae5fd0523c4041a027a528"
+    },
+    {
+      "path": "source/mr_liu/arena/placement_geometry.py",
+      "sha256": "30e4ddca31999d188dd6774fcbeefdb4944a195ab1bf0b34bf1343e53509a031"
+    },
+    {
+      "path": "tests/test_arena_collection.py",
+      "sha256": "d969fac51cce7db560f3229a58efdeeb995fbc5cdada3e651410eb0fee5757cc"
+    },
+    {
+      "path": "tests/test_arena_hold_transitions.py",
+      "sha256": "6afaea024291d0ea4a6571b77dca0f4697d1cf0cea0c9f9808c15edc672930e3"
+    },
+    {
+      "path": "tests/test_arena_placement_geometry.py",
+      "sha256": "34904bcca15364495e7965bfb1690875c34efd7fe074542d1477548a25b96acd"
+    },
+    {
+      "path": "BusAgent/backend/src/apps/desktop-robot/intelligence/planning-context.ts",
+      "sha256": "cd404be2ef1831e5a0fde3589634681188009419005d9ea94a60564084165287"
+    },
+    {
+      "path": "BusAgent/backend/src/apps/desktop-robot/intelligence/planning.ts",
+      "sha256": "8f7c718f03415dc0141b52ee3ffccea4bc5260a3cc23e6f0c8698e359fdaa05b"
+    },
+    {
+      "path": "BusAgent/backend/src/apps/desktop-robot/intelligence/task-engine.ts",
+      "sha256": "30611db1e98bbac3153cd20c3139df509878c1540176e15bd55fadea028cbdcf"
+    },
+    {
+      "path": "BusAgent/backend/test/intelligence-context.spec.ts",
+      "sha256": "2b6595ef90a8f13e319e02214f491ced89ab67572e0e83c3f70d297ae545e5d9"
+    },
+    {
+      "path": "BusAgent/backend/test/intelligence.spec.ts",
+      "sha256": "4ccb4dc16e47cfd5a5fc2bf3b92c28d025aa3b7a4899081b9b125d263947e352"
+    },
+    {
+      "path": "BusAgent/backend/src/apps/desktop-robot/intelligence/observation-tools.ts",
+      "sha256": "c18ce1e2cb3d984414d85e09a10ae5353d872c5ea2541923a4450263ee962cf0"
+    }
+  ],
+  "bus_cell_trial": {
+    "state": "completed",
+    "goal_id": "goal_evt_678d86aa-7c15-4867-8bc0-7a0a24f4c8bc",
+    "instruction": "请把零件最多的来料区域里一个当前竖直的金属圆柱零件，放入桌面低处蓝色料箱的第二排第三格。保持零件现有正反朝向，这次只测试指定格位放置，不要求翻转。",
+    "elapsed_s": 165.024847875,
+    "model_calls": 10,
+    "model_elapsed_ms": 81413,
+    "prompt_tokens_total": 128418,
+    "completion_tokens_total": 3907,
+    "max_prompt_tokens": 17924,
+    "selected_physical_witness": "qa_body_03",
+    "witness_usage": "offline validation only; original incoming group with five members",
+    "evaluation": {
+      "physical_success": true,
+      "lifted": true,
+      "released": true,
+      "max_lift_m": 0.15847328305244446,
+      "final_position_world_m": [
+        0.5332130789756775,
+        0.2013527750968933,
+        0.06800088286399841
+      ],
+      "destination_xy_error_m": 0.05129171162843704,
+      "destination_position_world_m": [
+        0.48619168996810913,
+        0.18086305260658264,
+        -1.6763806343078613e-08
+      ],
+      "support_contact": true,
+      "support_force_world_n": [
+        -0.00031539719202555716,
+        -0.00035269930958747864,
+        0.8097004294395447
+      ],
+      "supported_region": true,
+      "support_linear_speed_mps": 0.002378692850470543,
+      "selected_position_world_m": [
+        0.5336579745957963,
+        0.20221584032106688,
+        0.008
+      ],
+      "selected_position_xy_error_m": 0.0009709859391251235,
+      "postconditions": {
+        "requested_cell": {
+          "fits": true,
+          "minimum_wall_margin_m": 0.007952831315335312,
+          "bottom_gap_m": 0.00392709571739462,
+          "row": 2,
+          "column": 3,
+          "satisfied": true,
+          "source": "observed_cell_with_simulation_pose_witness"
+        }
+      },
+      "support_gap_m": null,
+      "gripper_opening_m": 0.07999997586011887,
+      "settle_displacement_m": 2.6237700634180802e-05,
+      "linear_speed_mps": 0.009024052880704403,
+      "evaluation_source": "arena_task_simulation_ground_truth"
+    },
+    "visual_postconditions": {
+      "cell_visually_occupied": {
+        "satisfied": true,
+        "status": "occupied",
+        "source": "fresh_rgbd",
+        "observation_ref": "f257964b8c9f4bb5a70eb6bcc94f0569"
+      }
+    },
+    "artifact": "output/industrial-upgrade/bus-cell/custom.json",
+    "artifact_sha256": "b77b9596908bd65dd516cbb1558348af13dfe0bb4f2dddbe405429cc9a8f3da7"
+  }
+}

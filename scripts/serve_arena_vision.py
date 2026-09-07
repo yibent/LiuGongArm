@@ -20,7 +20,9 @@ from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 from mr_liu.perception.arena_vision import ImagePipeline
 from mr_liu.perception.sam3_localizer import Sam3Localizer
-from mr_liu.arena.visual_refs import annotate_references, load_reference
+from mr_liu.arena.visual_refs import annotate_references, load_reference, load_snapshot
+from mr_liu.arena.observed_scene import collection_geometry, masked_points
+from mr_liu.arena.placement_geometry import inspect_grid_views, principal_axis, retained_grid
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--port', type=int, default=5570)
@@ -54,14 +56,29 @@ def observe(body):
     with torch.inference_mode(), torch.autocast('cuda', dtype=torch.bfloat16):
         for view in request['views']:
             camera = view['camera']
+            if request.get('scope') == 'collection':
+                detected, detail = pipeline.collect(frames[camera+'_rgb'], camera=camera,
+                    sequence=view['sequence'], scene_id=request['scene_id'], label=request['label'],
+                    mode=request.get('vision_mode', 'auto'), slow_provider=request.get('slow_provider'))
+                masks.update(detected)
+                views.append(detail)
+                continue
             if request.get('scope') == 'scene':
                 result = pipeline.describe(frames[camera+'_rgb'], camera=camera, sequence=view['sequence'],
                     scene_id=request['scene_id'], queries=request.get('queries', config['vocabulary']),
                     mode=request.get('scene_mode', 'describe'))
                 views.append(result)
                 continue
-            if request.get('visual_ref'):
-                reference, origin = load_reference(store, request['visual_ref'], request['scene_id'])
+            if request.get('grounding'):
+                grounding = request['grounding']
+                origin, box = load_snapshot(store, grounding['snapshot_ref'], request['scene_id'], camera, grounding['box_normalized'])
+                reference = {'label': request['label'], 'box': box, 'ref': 'image:'+grounding['snapshot_ref'], 'semantic_status': 'candidate'}
+                with np.load(origin/'frames.npz', allow_pickle=False) as previous:
+                    mask, result = pipeline.from_reference(frames[camera+'_rgb'], previous[camera+'_rgb'], reference,
+                        camera=camera, sequence=view['sequence'], scene_id=request['scene_id'])
+                result['origin'] = 'image_box_sam2'
+            elif request.get('visual_ref'):
+                reference, origin = load_reference(store, request.get('visual_refs', {}).get(camera, request['visual_ref']), request['scene_id'])
                 with np.load(origin/'frames.npz', allow_pickle=False) as previous:
                     mask, result = pipeline.from_reference(frames[camera+'_rgb'], previous[camera+'_rgb'], reference,
                         camera=camera, sequence=view['sequence'], scene_id=request['scene_id'])
@@ -76,13 +93,58 @@ def observe(body):
     result = {'request_id': request_id, 'command_id': request.get('command_id'),
         'label': request['label'], 'views': views, 'result_ref': request_id,
         'scope': request.get('scope', 'target'), 'observed_at': request.get('observed_at'),
-        'elapsed_s': time.perf_counter()-started, 'ok': bool(views) if request.get('scope') == 'scene' else bool(masks),
+        'elapsed_s': time.perf_counter()-started, 'ok': bool(views) if request.get('scope') in {'scene', 'collection'} else bool(masks),
         'perception_source': 'task_routed_image_models', 'transient': request.get('transient', False)}
     result.update(loop='slow' if any(v.get('loop') == 'slow' for v in views) else 'fast',
         fallback_reasons=sorted({v['fallback_reason'] for v in views if v.get('fallback_reason')}),
         semantic_status='detected' if any(v.get('semantic_status') == 'detected' for v in views)
             else 'candidate' if masks else 'scene' if request.get('scope') == 'scene' else 'unknown')
     annotate_references(result, frames)
+    if request.get('scope') == 'collection':
+        result['ok'] = any(v.get('status') in {'observed', 'not_found'} for v in views)
+        collection_geometry(result, frames, masks)
+    elif masks and request.get('inspect'):
+        points = np.concatenate([masked_points(frames, camera, mask) for camera,mask in masks.items()])
+        camera = next(iter(masks))
+        height,width = frames[camera+'_rgb'].shape[:2]
+        if request['inspect'] == 'axis':
+            result['geometry'] = {'kind':'axis','camera':camera, **principal_axis(points,
+                {'K':frames[camera+'_K'],'T':frames[camera+'_T'],'size':[width,height]})}
+        elif request['inspect'] == 'grid':
+            clouds=[]
+            low,high=np.quantile(points,[.01,.99],axis=0)
+            for view in request['views']:
+                key=view['camera']
+                cloud=masked_points(frames,key,np.ones(frames[key+'_depth'].shape,bool))
+                # Full depth density matters for small visible cell floors;
+                # discard distant scene points after calibrated projection.
+                cloud=cloud[((cloud[:,:2]>=low[:2]-.02)&(cloud[:,:2]<=high[:2]+.02)).all(1)]
+                clouds.append(cloud)
+            result['geometry'] = {'kind':'grid', **inspect_grid_views({key:{'points':masked_points(frames,key,mask),
+                'T':frames[key+'_T']} for key,mask in masks.items()},np.concatenate(clouds))}
+            if request.get('visual_ref'):
+                _,origin=load_reference(store,request['visual_ref'],request['scene_id'])
+                previous=json.loads((origin/'result.json').read_text()).get('geometry',{})
+                if previous.get('status')=='observed' and previous.get('kind')=='grid':
+                    with np.load(origin/'frames.npz',allow_pickle=False) as old_frames, np.load(origin/'masks.npz',allow_pickle=False) as old_masks:
+                        old_points=np.concatenate([masked_points(old_frames,key,mask) for key,mask in old_masks.items()])
+                    for key,mask in masks.items():
+                        kept=retained_grid(previous,old_points,masked_points(frames,key,mask),np.concatenate(clouds))
+                        if kept is not None:
+                            result['geometry']={**kept,'prior_observation_ref':origin.name,'confirmation_camera':key}
+                            break
+            camera = result['geometry']['camera']
+        # Geometry is stored once per observation, not repeated in every ref.
+        if request['inspect'] == 'grid' and result.get('geometry', {}).get('status') == 'observed':
+            container = next(row for row in result['references'] if row['camera'] == camera)
+            index = 1+max(int(row['ref'].rsplit(':',1)[1]) for row in result['references'] if row['camera'] == camera)
+            for cell in result['geometry']['cells']:
+                ref = f'obs:{request_id}:{camera}:{index}';index+=1
+                cell['ref'] = ref
+                result['references'].append({'ref':ref,'label':request['label'],'kind':'cell','camera':camera,
+                    'container_ref':container['ref'],'row':cell['row'],'column':cell['column'],
+                    'observed_at':result['observed_at'],'frame_sequence':container['frame_sequence'],
+                    'semantic_status':'observed_grid_cell'})
     (directory/'result.json').write_text(json.dumps(result, ensure_ascii=False, indent=2))
     print(json.dumps(result, ensure_ascii=False), flush=True)
     return result

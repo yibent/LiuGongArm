@@ -107,6 +107,24 @@ def test_capture_scene_and_unknown_target_without_catalog_binding(tmp_path):
         assert frames.files == ['scene_camera_rgb']
 
 
+def test_geometry_reinspection_retains_both_views_of_same_observed_instance(tmp_path):
+    import json
+    bridge = PerceptionBridge(tmp_path,'unused')
+    rid='a'*32; origin=tmp_path/rid;origin.mkdir()
+    refs=[{'ref':f'obs:{rid}:{camera}:0','camera':camera,'kind':'object','label':'unregistered bin'}
+          for camera in ['scene_camera','side_camera']]
+    (origin/'request.json').write_text(json.dumps({'scene_id':bridge.scene_id}))
+    (origin/'result.json').write_text(json.dumps({'scope':'target','references':refs}))
+    data=SimpleNamespace(output={'rgb':np.zeros((1,8,8,3),np.uint8),'distance_to_image_plane':np.ones((1,8,8,1))},
+        intrinsic_matrices=np.eye(3)[None],pos_w=np.zeros((1,3)),quat_w_ros=np.array([[0,0,0,1.]]))
+    runtime=SimpleNamespace(held=None,current='inspect',sequence=20,bus_context={},config={'vision':{}},
+        env=SimpleNamespace(scene={r['camera']:SimpleNamespace(data=data) for r in refs}))
+    request=bridge.capture(runtime,'actual query label',visual_ref=refs[0]['ref'],inspect='grid')
+    assert request['label']=='actual query label'
+    assert request['visual_refs']=={r['camera']:r['ref'] for r in refs}
+    assert len(request['views'])==2
+
+
 def test_low_confidence_slow_candidate_is_recalled_after_restart_without_semantic_promotion(tmp_path):
     rgb = np.random.default_rng(3).integers(0, 255, (64,64,3), np.uint8)
     mask = np.zeros((64,64), bool); mask[15:45,15:45] = True

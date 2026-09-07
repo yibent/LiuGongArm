@@ -13,6 +13,7 @@ from mr_liu.arena.arrays import numpy_data, pose_matrix
 from mr_liu.grasp.transforms import transform_points
 from mr_liu.arena.instances import instance_votes, consistent_witness
 from mr_liu.arena.visual_refs import load_reference
+from mr_liu.arena.observed_scene import ObservedScene
 
 
 class PerceptionBridge:
@@ -21,16 +22,32 @@ class PerceptionBridge:
         self.url = url
         self.scene_id = uuid4().hex
         self.references = {}
+        self.world = ObservedScene()
 
     def capture(self, runtime, name, *, refine=False, reset=False, cameras=None, vision_mode='auto',
-                slow_provider=None, scene_mode='describe', transient=False, visual_ref=None):
+                slow_provider=None, scene_mode='describe', transient=False, visual_ref=None, collection=False, grounding=None, inspect=None):
         request_id = uuid4().hex
         directory = self.root/request_id; directory.mkdir()
         row = getattr(runtime, 'observed_entities', {}).get(name)
         held_target = name and (runtime.held == name or (row and runtime.held == row['name']))
+        visual_refs = {}
         if visual_ref:
-            selected, _ = load_reference(self.root, visual_ref, self.scene_id)
+            selected, origin = load_reference(self.root, visual_ref, self.scene_id)
             cameras = [selected['camera']]
+            visual_refs[selected['camera']] = visual_ref
+            if inspect:
+                previous = json.loads((origin/'result.json').read_text())
+                instance = next((item for item in previous.get('collection', {}).get('instances', [])
+                                 if visual_ref in item['references']), None)
+                refs = instance['references'] if instance else [r['ref'] for r in previous.get('references', [])
+                    if r.get('kind') == 'object'] if previous.get('scope') == 'target' else []
+                if refs:
+                    for ref in refs:
+                        ref_row, _ = load_reference(self.root, ref, self.scene_id)
+                        visual_refs[ref_row['camera']] = ref
+                    cameras = list(visual_refs)
+        if grounding:
+            cameras = [grounding['camera']]
         cameras = cameras or (['wrist_camera'] if held_target else ['scene_camera', 'side_camera'])
         label = row['label'] if row else name
         arrays, views, instances, instance_labels = {}, [], {}, {}
@@ -47,11 +64,14 @@ class PerceptionBridge:
                     instance_labels[camera] = data.info[0][kind]['idToLabels']
             views.append({'camera': camera, 'sequence': runtime.sequence})
         request = {'request_id': request_id, 'scene_id': self.scene_id, 'command_id': runtime.current or 'observe',
-            'label': label or 'scene', 'scope': 'target' if name else 'scene',
+            'label': label or 'scene', 'scope': 'collection' if collection else 'target' if name else 'scene',
             'observed_at': time.time(),
             'queries': runtime.config.get('vision', {}).get('vocabulary', []) if not name else [],
             'vision_mode': vision_mode, 'slow_provider': slow_provider, 'scene_mode': scene_mode,
             'transient': transient, 'visual_ref': visual_ref,
+            'visual_refs': visual_refs,
+            'grounding': grounding,
+            'inspect': inspect,
             'views': views, 'refine': refine, 'reset': reset, **runtime.bus_context}
         # Same-machine SSD transport: compression cost exceeded model inference on the fast path.
         np.savez(directory/'frames.npz', **arrays)
@@ -81,6 +101,7 @@ class PerceptionBridge:
         if result.get('request_id') != request['request_id']:
             raise RuntimeError('Vision returned a different observation reference')
         self.references.update({r['ref']: r for r in result.get('references', [])})
+        self.world.update(result)
         while len(self.references) > 256: self.references.pop(next(iter(self.references)))
         return result
 

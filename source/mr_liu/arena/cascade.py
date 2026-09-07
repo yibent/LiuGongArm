@@ -1,7 +1,7 @@
 """One fast attempt, then one model attempt; cancellation never escalates."""
 from dataclasses import replace
 import time
-from mr_liu.arena.failure import PlacementSpaceUnavailable
+from mr_liu.arena.failure import PlacementSpaceUnavailable, LocalizationFailure
 
 
 class FastPathFailure(RuntimeError):
@@ -20,6 +20,7 @@ def run_cascade(request, fast, enhanced, recover, event, *, attempts=None):
         try:
             value = function(task)
             row["ok"] = bool(value["physical_success"])
+            if not row['ok']: row['evaluation'] = value
             return value
         except Exception as error:
             row.update(ok=False, error=str(error))
@@ -35,8 +36,10 @@ def run_cascade(request, fast, enhanced, recover, event, *, attempts=None):
         value = attempt("official_pick_place", fast, request)
         if value["physical_success"]:
             return value, request.route(), attempts
-        raise FastPathFailure("Fast task failed physical evaluation")
-    except (InterruptedError, PlacementSpaceUnavailable):
+        error = FastPathFailure("Fast task failed physical evaluation")
+        error.evaluation = value
+        raise error
+    except (InterruptedError, PlacementSpaceUnavailable, LocalizationFailure):
         raise
     except RuntimeError as error:
         if request.mode == "basic":

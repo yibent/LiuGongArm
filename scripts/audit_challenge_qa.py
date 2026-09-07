@@ -58,7 +58,7 @@ def baseline(args):
 
 
 def goal(args):
-    source = INSTRUCTIONS[args.case]
+    source = args.instruction if args.case == 'custom' else INSTRUCTIONS[args.case]
     if args.goal_id:
         goal_id = args.goal_id
     else:
@@ -108,13 +108,18 @@ def goal(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("case", choices=["baseline", *INSTRUCTIONS])
+    parser.add_argument("case", choices=["baseline", "custom", *INSTRUCTIONS])
+    parser.add_argument('--instruction', help='Natural-language component probe; requires case=custom, never changes the Q8 cases')
     parser.add_argument("--arena", default="http://127.0.0.1:7861")
     parser.add_argument("--bus", default="http://127.0.0.1:3100")
     parser.add_argument("--output", type=Path, default=Path("output/challenge-qa"))
     parser.add_argument("--timeout", type=float, default=210)
     parser.add_argument("--goal-id", help="Observe an already submitted goal without submitting it again")
     args = parser.parse_args()
+    if args.case == 'custom' and not args.instruction:
+        parser.error('custom requires --instruction')
+    if args.case != 'custom' and args.instruction:
+        parser.error('--instruction is only valid for custom; official audit cases retain their full requirements')
     args.output.mkdir(parents=True, exist_ok=True)
     if not api(args.arena, "/health")["ready"]:
         parser.error("Arena is not ready")

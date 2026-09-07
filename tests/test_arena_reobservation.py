@@ -68,3 +68,21 @@ def test_held_geometry_moves_with_gripper_without_resegmenting_occluded_object()
     r.holding_status = lambda: {'verified': False}
     with pytest.raises(RuntimeError, match='夹持状态已改变'):
         runtime_method('held_cloud')(r)
+
+
+def test_normal_post_action_captures_new_frame_without_another_model_call():
+    r=runtime();r.perception.capture.return_value={'request_id':'after','observed_at':4.,'views':[{'camera':'scene_camera'}]}
+    result={'ok':True}
+    runtime_method('post_action_observation')(r,result,SimpleNamespace(cell_ref=None))
+    assert result['post_action_snapshot']['observation_ref']=='after'
+    r.perception.request.assert_not_called()
+
+
+def test_uncertain_grid_check_preserves_completed_motion_and_requests_review():
+    r=runtime();r.perception.capture.return_value={'request_id':'after','observed_at':4.,'views':[{'camera':'scene_camera'}]}
+    r.perception.resolve_reference.return_value={'container_ref':'bin-ref','row':2,'column':3}
+    r.perception.request.return_value={'ok':True,'geometry':{'cells':[{'row':2,'column':3,'occupancy':'unknown'}]}}
+    result={'ok':True,'evaluation':{'physical_success':True}}
+    runtime_method('post_action_observation')(r,result,SimpleNamespace(cell_ref='cell-ref',destination='bin'))
+    assert result['ok'] and result['review_required']
+    assert not result['postconditions']['cell_visually_occupied']['satisfied']

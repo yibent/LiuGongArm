@@ -73,6 +73,18 @@ def test_failure_feedback_preserves_successful_hold():
     assert feedback['code']=='NO_IK' and feedback['suggested_recovery'][:2]==['preserve_grasp','place_held']
 
 
+def test_failed_cell_metrics_survive_the_fast_path_and_inform_recovery():
+    evaluation={'physical_success':False,'postconditions':{'requested_cell':{
+        'satisfied':False,'minimum_wall_margin_m':-.014,'bottom_gap_m':.03,'row':2,'column':3}}}
+    with pytest.raises(FastPathFailure) as error:
+        run_cascade(ManipulationRequest('part','bin',mode='basic'),lambda request:evaluation,Mock(),Mock(),Mock())
+    assert error.value.evaluation is evaluation
+    feedback=failure_feedback(str(error.value),'finish',{'verified':False},error.value.evaluation)
+    assert feedback['code']=='WRONG_CELL'
+    assert feedback['measured_postcondition']['row']==2
+    assert 'preserve_requested_cell' in feedback['suggested_recovery']
+
+
 def test_hold_monitor_ignores_release_and_requires_persistent_loss():
     from mr_liu.arena.holding import HoldMonitor
     monitor=HoldMonitor()

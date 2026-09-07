@@ -156,6 +156,64 @@ class ImagePipeline:
             'box': mask_box(mask).tolist() if mask.any() else None}
         return (mask if mask.any() else None), detail
 
+    def collect(self, rgb, *, camera, sequence, scene_id, label, mode='auto', slow_provider=None):
+        """Discover a set; multiple instances are useful evidence, not ambiguity.
+
+        Keep masks outside the returned metadata. A collection never initializes
+        one class-wide flow track or overwrites its memory with an arbitrary item.
+        """
+        started = time.perf_counter()
+        bgr = np.ascontiguousarray(rgb[:, :, ::-1])
+        stages, located, reason = [], [], None
+        provider, semantic, loop = 'yoloe_text', 'detected', 'fast'
+        if mode != 'slow':
+            found, reason = self._text(bgr, [label], stages)
+            located = [(item, None) for item in found]
+        if not located and mode != 'fast':
+            loop = 'slow'
+            provider = slow_provider or self.slow_localizer
+            reason = reason or 'collection_localization_requested'
+            if provider in self.localizers:
+                located = self.localizers[provider].locate(bgr, [label])
+            elif provider == 'florence2':
+                located = [(item, None) for item in unique_detections(self.florence.find(bgr, [label], beams=1))]
+                semantic = 'candidate'
+            else:
+                return {}, {'camera': camera, 'sequence': sequence, 'label': label,
+                    'status': 'provider_unavailable', 'objects': [], 'loop': loop, 'stages': stages}
+            stages.append({'model': provider, 'loop': loop, 'operation': 'find_all',
+                           'reason': reason, 'candidates': len(located)})
+        masks, objects = {}, []
+        image_set = False
+        for detection, mask in located:
+            if mask is None:
+                if not image_set:
+                    self.sam.set_image(rgb)
+                    image_set = True
+                proposals, scores, _ = self.sam.predict(box=detection.xyxy, multimask_output=True)
+                mask = np.asarray(proposals[int(np.argmax(scores))], bool)
+            else:
+                mask = np.asarray(mask, bool)
+            if mask.shape != rgb.shape[:2]:
+                mask = cv2.resize(mask.astype(np.uint8), (rgb.shape[1], rgb.shape[0]), interpolation=cv2.INTER_NEAREST).astype(bool)
+            if not mask.any():
+                continue
+            box = mask_box(mask)
+            # Repeated overlapping masks from one image are one proposal.
+            if any(overlap(box, np.asarray(item['box'])) > .75 for item in objects):
+                continue
+            key = f'{camera}__{len(objects)}'
+            masks[key] = mask
+            objects.append({'label': label, 'box': box.tolist(), 'mask_key': key,
+                'score': float(detection.score), 'semantic_status': semantic, 'origin': provider})
+        if image_set:
+            stages.append({'model': 'sam2_tiny', 'loop': 'fast', 'operation': 'segment_collection', 'instances': len(objects)})
+        return masks, {'camera': camera, 'sequence': sequence, 'label': label,
+            'status': 'observed' if objects else 'not_found', 'objects': objects,
+            'semantic_status': semantic if objects else 'unknown', 'loop': loop,
+            'fallback_reason': reason if loop == 'slow' else None, 'stages': stages,
+            'exhaustive_inventory': False, 'elapsed_s': time.perf_counter()-started}
+
     def observe(self, rgb, *, scene_id, camera, label, sequence, refine=False, reset=False,
                 mode='auto', slow_provider=None):
         started = time.perf_counter()
