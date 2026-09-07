@@ -1,0 +1,35 @@
+{
+  "date": "2026-09-07",
+  "busagent_commit": "6dcbaba436e309d79c60782d562d85b8dcb46ca5",
+  "tests": {
+    "backend_related": 84,
+    "frontend": 14,
+    "backend_build": "passed",
+    "frontend_build": "passed"
+  },
+  "cloud": {
+    "changed_source_and_build_hashes": 420,
+    "services": "all running",
+    "backup": "output/checkpoints/pre-dialogue-upgrade-20260907-161304.tar.gz"
+  },
+  "voice_probe": {
+    "input": "Qwen TTS synthesized question through real Qwen realtime ASR and BusAgent WebSocket",
+    "final_transcripts": 1,
+    "intents": 1,
+    "streaming_timeline_cards": 0,
+    "physical_actions": 0,
+    "ack_after_final_transcript_ms": 823,
+    "completed_information_goals": 1
+  },
+  "restart_context_probe": {
+    "same_conversation": "dialogue-upgrade-1788768858756",
+    "ack_ms": 1115,
+    "final_ms": 7184,
+    "physical_actions": 0
+  },
+  "limits": [
+    "Synthetic audio does not validate ambient microphone noise/echo.",
+    "Measured latency is from individual cloud runs, not a throughput benchmark.",
+    "Shared conversation-memory budget is distinct from the complete vision-planning prompt budget."
+  ]
+}
