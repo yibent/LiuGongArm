@@ -12,6 +12,7 @@ from isaacsim.robot.manipulators.controllers.pick_place_controller import PickPl
 from mr_liu.arena.cascade import FastPathFailure
 from mr_liu.grasp.transforms import invert_transform, transform_points
 from mr_liu.arena.orientation import endpoint_vector
+from mr_liu.arena.grasp_geometry import top_grasp_orientation
 
 
 class ArenaCartesian:
@@ -56,6 +57,7 @@ def fast_pick_place(runtime, request):
     row, destination = runtime.prepare_task(request)
     points = runtime.cloud(row["name"])
     observation_ref = runtime.visual_result['request_id']
+    scene = runtime.perception.scene_cloud(runtime.visual_result)
     binding = runtime.bind_orientation(request, row, points)
     if binding and endpoint_vector(binding['axis_world'],binding['endpoint'],binding['direction'])[2] < -.7:
         raise FastPathFailure('端点翻转需要侧向抓法，使用 GraspGenX 选择可翻转的抓取姿态。')
@@ -81,31 +83,42 @@ def fast_pick_place(runtime, request):
     if request.cell_ref and high[2]-low[2] > max(high[:2]-low[:2]):
         # Pinch above short dividers instead of putting the fingers between them.
         pick[2] = low[2]+.8*(high[2]-low[2])
+    if not binding or abs(binding['axis_world'][2]) >= .5:
+        grasp_orientation, clearance = top_grasp_orientation(pick,scene,runtime.tcp_pose()[:3,:3])
+        runtime.event('grasp_clearance_selected', **clearance)
     place = pick.copy()
     if destination and not request.orientation:
         support = runtime.placement_support(request, destination, points, runtime.tcp_pose()[:3, 3])
         place[:2] = support[:2]
         place[2] = support[2] + pick[2]-low[2] + .003
     runtime.event("planning", route=request.route(), object_points=len(points),
-                  algorithm="isaacsim PickPlaceController / Arena IK")
+                  algorithm="isaacsim PickPlaceController / Arena IK",
+                  grasp_position_world_m=pick.tolist(), grasp_orientation_wxyz=grasp_orientation.tolist())
     steps = runtime.config["fast"]["phase_steps"]
     controller = PickPlaceController("arena_fast_pick_place", ArenaCartesian(runtime), ArenaGripper(runtime),
         end_effector_initial_height=max(pick[2], place[2]) + .14,
         events_dt=[1. / count for count in steps])
-    place_orientation = np.array([0., 1., 0., 0.])
+    place_orientation = grasp_orientation.copy()
     if destination and destination.get('yaw_delta_rad'):
-        rotation = Rotation.from_euler('z', destination['yaw_delta_rad']) * Rotation.from_quat([1., 0., 0., 0.])
+        rotation = Rotation.from_euler('z', destination['yaw_delta_rad']) * Rotation.from_quat(np.roll(grasp_orientation,-1))
         place_orientation = np.roll(rotation.as_quat(), 1)
     previous = -1
     while not controller.is_done():
         phase = controller.get_current_event()
         if phase != previous:
+            if phase == 3:
+                # The SDK advances by elapsed steps even if IK is lagging.
+                # Finish the observed approach before closing the fingers.
+                pose=np.eye(4);pose[:3,3]=pick
+                pose[:3,:3]=Rotation.from_quat(np.roll(grasp_orientation,-1)).as_matrix()
+                runtime.move(pose,label='approach')
             if phase == 4:
                 # Preserve measured pregrasp geometry at closure, before lift
                 # and jaw occlusion make another segmentation unreliable.
                 geometry = {'points_tcp': transform_points(invert_transform(runtime.tcp_pose()), points),
                             'observation_ref': observation_ref}
                 runtime.remember_hold(row, geometry)
+                runtime.event('grasp_closure_measured', holding_measurement=runtime.holding_status())
             if phase == 5:
                 if runtime.max_lift < .04:
                     raise FastPathFailure("Fast grasp did not lift the target")

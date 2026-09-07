@@ -69,11 +69,33 @@ def principal_axis(points, view=None):
     centre = np.quantile(points, [.02,.98], axis=0).mean(0)
     eigenvalues, vectors = np.linalg.eigh(np.cov((points-centre).T))
     axis = vectors[:, -1]
+    method = 'point_covariance'
+    # A visible end cap and one side of a shaft bias point covariance toward
+    # the camera. Local side-surface normals constrain the shaft direction
+    # without assuming it is vertical or reading a configured asset shape.
+    if len(points) >= 48 and eigenvalues[-1] > 1.5*eigenvalues[-2]:
+        sample = points[np.linspace(0,len(points)-1,min(len(points),2400),dtype=int)]
+        neighbours = cKDTree(points).query(sample,k=16)[1]
+        local = points[neighbours]-points[neighbours].mean(1,keepdims=True)
+        values, bases = np.linalg.eigh(np.einsum('nki,nkj->nij',local,local))
+        normals = bases[:,:,0]
+        sides = (np.abs(normals@axis)<.6)&(values[:,0]<.15*values[:,1])
+        if sides.sum() >= 32:
+            spread, directions = np.linalg.eigh(normals[sides].T@normals[sides])
+            refined = directions[:,0]
+            span = np.ptp(sample[sides]@axis)
+            # One visible flat face cannot determine a long axis. Retain PCA
+            # when normal directions or length coverage do not constrain it.
+            if (spread[1]>.04*spread[2] and spread[0]<.08*spread[1]
+                    and span>.5*np.ptp(sample@axis) and abs(refined@axis)>.85):
+                axis = refined
+                method = 'side_surface_normals'
     if axis[np.argmax(np.abs(axis))] < 0:
         axis = -axis
     projected = (points-centre) @ axis
     ends = centre + np.quantile(projected, [.02,.98])[:, None]*axis
     result = {'axis_world': axis.tolist(), 'endpoints_m': ends.tolist(),
+              'axis_method': method,
               'axis_confidence': float(eigenvalues[-1]/max(eigenvalues[-2], 1e-9))}
     if view:
         T,K = np.asarray(view['T']),np.asarray(view['K'])

@@ -11,6 +11,8 @@ from mr_liu.grasp.transforms import invert_transform, transform_points
 
 
 def test_grasp_records_closure_reference_before_lift_can_fail():
+    from scipy.spatial.transform import Rotation
+    from mr_liu.arena.grasp_geometry import top_grasp_orientation
     path=Path(__file__).resolve().parents[1]/'source/mr_liu/arena/fast.py'
     tree=ast.parse(path.read_text())
     function=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='fast_pick_place')
@@ -22,12 +24,14 @@ def test_grasp_records_closure_reference_before_lift_can_fail():
         def forward(self,*args,**kwargs):self.phase+=1
     namespace={'np':np,'PickPlaceController':Controller,'ArenaCartesian':lambda r:r,'ArenaGripper':lambda r:r,
         'PHASES':[str(i) for i in range(10)],'FastPathFailure':FastPathFailure,
+        'Rotation':Rotation,'top_grasp_orientation':top_grasp_orientation,
         'invert_transform':invert_transform,'transform_points':transform_points}
     exec(compile(ast.Module(body=[function],type_ignores=[]),str(path),'exec'),namespace)
     remember=Mock()
     r=SimpleNamespace(prepare_task=lambda req:({'name':'observed-body'},None),cloud=lambda name:np.array([[0,0,0],[.02,.02,.06]]),
         visual_result={'request_id':'before'},config={'fast':{'phase_steps':[1]*10}},event=Mock(),tick=Mock(),
-        tcp_pose=lambda:np.eye(4),max_lift=0.,remember_hold=remember,bind_orientation=lambda *args:None)
+        tcp_pose=lambda:np.eye(4),max_lift=0.,remember_hold=remember,bind_orientation=lambda *args:None,
+        perception=SimpleNamespace(scene_cloud=lambda result:np.empty((0,3))),move=Mock(),holding_status=lambda:{'verified':False})
     with pytest.raises(FastPathFailure,match='did not lift'):
         namespace['fast_pick_place'](r,ManipulationRequest('part',mode='basic'))
     remember.assert_called_once()

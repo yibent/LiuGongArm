@@ -76,6 +76,34 @@ def test_observed_axis_endpoints_follow_a_fallen_part():
     assert np.linalg.norm(np.diff(result['endpoints_m'],axis=0))>.055
 
 
+def test_partial_shaft_and_visible_end_cap_do_not_tilt_the_estimated_axis():
+    from scipy.spatial.transform import Rotation
+    theta,z=np.meshgrid(np.linspace(-1.25,1.25,45),np.linspace(0,.06,48))
+    side=np.c_[.014*np.cos(theta.ravel()),.014*np.sin(theta.ravel()),z.ravel()]
+    x,y=np.meshgrid(np.linspace(-.014,.014,50),np.linspace(-.014,.014,50))
+    disk=x*x+y*y<.014**2
+    cap=np.c_[x[disk],y[disk],np.full(disk.sum(),.06)]
+    points=np.r_[side,cap]
+    points+=np.random.default_rng(27).normal(0,.000035,points.shape)
+    for angles in [[0,0,0],[70,42,19],[90,0,0]]:
+        rotation=Rotation.from_euler('xyz',angles,degrees=True)
+        observed=rotation.apply(points)+[.5,.1,.04]
+        actual=rotation.apply([0,0,1])
+        _,vectors=np.linalg.eigh(np.cov(observed.T))
+        assert abs(vectors[:,-1]@actual)<np.cos(np.deg2rad(10))
+        result=principal_axis(observed)
+        assert result['axis_method']=='side_surface_normals'
+        assert abs(np.dot(result['axis_world'],actual))>np.cos(np.deg2rad(2))
+
+
+def test_one_flat_face_retains_covariance_axis_when_normals_are_ambiguous():
+    x,z=np.meshgrid(np.linspace(-.01,.01,24),np.linspace(0,.06,50))
+    points=np.c_[x.ravel(),np.zeros(x.size),z.ravel()]
+    result=principal_axis(points)
+    assert result['axis_method']=='point_covariance'
+    assert abs(result['axis_world'][2])>.999
+
+
 def test_cell_evaluation_rejects_wrong_cell_overhang_and_resting_on_dividers():
     points,R=grid_cloud(angle=.4)
     grid=inspect_grid(points,camera_right=R[:,0])
