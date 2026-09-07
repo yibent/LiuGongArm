@@ -7,8 +7,15 @@ class LocalizationFailure(RuntimeError):
     """Select/reobserve an instance before asking either motion backend to grasp."""
 
 
+class RegraspRequired(RuntimeError):
+    """The held grasp cannot satisfy the goal; another pose provider is insufficient."""
+
+
 def failure_feedback(error, phase, holding, evaluation=None):
     message = str(error)
+    if isinstance(error, RegraspRequired):
+        return {'code': 'REGRASP_REQUIRED', 'phase': phase, 'holding_verified': bool(holding.get('verified')),
+            'suggested_recovery': ['preserve_grasp', 'stage_and_regrasp'], 'message': message}
     orientation = (evaluation or {}).get('postconditions',{}).get('requested_orientation',{})
     if orientation and not orientation.get('satisfied'):
         return {'code':'WRONG_ORIENTATION','phase':phase,'holding_verified':bool(holding.get('verified')),

@@ -19,7 +19,7 @@ from mr_liu.arena.holding import holding_measurement, HoldMonitor
 from mr_liu.arena.free_space import choose_free_support, placement_is_free, support_grid
 from mr_liu.arena.visual_refs import load_reference
 from mr_liu.arena.failure import failure_feedback, LocalizationFailure
-from mr_liu.arena.failure import PlacementSpaceUnavailable
+from mr_liu.arena.failure import PlacementSpaceUnavailable, RegraspRequired
 from mr_liu.arena.placement_geometry import cell_fit
 from mr_liu.arena.orientation import endpoint_vector, placement_rotations, transformed_payload, placement_pose
 from mr_liu.arena.instances import InstanceConflict
@@ -88,6 +88,7 @@ class ArenaRuntime:
         name = observation['physical_witness']['instance_id']
         votes = observation['physical_witness']['votes']
         row = {**self.body_entities[name], 'label': observation['label'],
+               'object_id': observation.get('object_id'),
                'visual_ref': next((r['ref'] for r in observation.get('references', []) if r['kind'] == 'object'), None)}
         # Freeze the evaluator's body-frame shape at observation time. A grasp
         # can move/rotate the part before closure; a predicted held cloud must
@@ -133,7 +134,11 @@ class ArenaRuntime:
             grid = self.visual_result.get('geometry', {})
             if grid.get('kind') != 'grid':
                 raise PlacementSpaceUnavailable('需要重新观察料箱格网。')
-            cell = next((row for row in grid.get('cells', []) if row['row']==selected['row'] and row['column']==selected['column']), None)
+            if selected.get('grid_frame_id') and selected['grid_frame_id'] != grid.get('grid_frame_id'):
+                raise PlacementSpaceUnavailable('料箱参考几何发生变化，需要重新确认原指定格位，不能按另一视角的行列替换。')
+            cell = next((row for row in grid.get('cells', []) if
+                (row.get('cell_id') == selected['cell_id'] if selected.get('cell_id') else
+                 row['row'] == selected['row'] and row['column'] == selected['column'])), None)
             if not cell or cell['occupancy'] != 'empty':
                 raise PlacementSpaceUnavailable('指定格位被占用或底面尚不可见，需要重新观察或整理。')
             axes = np.asarray(grid['basis_xy'])
@@ -180,7 +185,7 @@ class ArenaRuntime:
                     'axis_tcp': (self.tcp_pose()[:3,:3].T @ self.orientation_binding['axis_world']).tolist()}
         robot = self.env.scene['robot']
         fingers, _ = robot.find_joints('panda_finger_joint.*')
-        self.held_context = {'instance_id': self.held, 'label': row['label'],
+        self.held_context = {'instance_id': self.held, 'label': row['label'], 'object_id': row.get('object_id'),
             'opening_at_grasp_m': float(numpy_data(robot.data.joint_pos)[0, fingers].sum()),
             'grasp_command_id': self.current, 'initial_z': self.initial_z,
             'max_lift_m': self.max_lift,
@@ -380,6 +385,7 @@ class ArenaRuntime:
                         vision_options.update(vision_mode='slow', slow_provider='sam3')
                         continue
                 points, views = self.perception.cloud(result)
+                self.perception.remember_target(result, points, packet.get('visual_ref'))
                 self.event('observation', target=name, request_id=packet['request_id'],
                            perception_source=result['perception_source'], views=views, models=result['views'])
                 return points
@@ -552,7 +558,7 @@ class ArenaRuntime:
         if request.cell_ref:
             destination['evaluation_points_object'] = row['evaluation_points_object']
         if not candidates:
-            raise RuntimeError('当前抓法无法以所需端点朝向释放，需要从侧面重新抓取。')
+            raise RegraspRequired('当前抓法无法以所需端点朝向释放，需要暂放换抓。')
         candidates.sort(key=lambda pose: Rotation.from_matrix(pose[:3,:3]@tcp[:3,:3].T).magnitude())
         def approach(pose):
             value = pose.copy();value[2,3] = max(tcp[2,3],pose[2,3]+.16)
@@ -794,8 +800,13 @@ class ArenaRuntime:
             if inspect_cell:
                 observed = self.infer(self.perception.request,packet)
                 self.visual_result = observed
+                if observed.get('ok'):
+                    points, _ = self.perception.cloud(observed)
+                    self.perception.remember_target(observed, points, packet.get('visual_ref'))
                 grid = observed.get('geometry',{})
-                selected = next((c for c in grid.get('cells',[]) if c['row']==cell['row'] and c['column']==cell['column']),None)
+                selected = next((c for c in grid.get('cells',[]) if
+                    (c.get('cell_id') == cell['cell_id'] if cell.get('cell_id') else
+                     c['row']==cell['row'] and c['column']==cell['column'])),None)
                 verified = bool(observed.get('ok') and selected and selected['occupancy']=='occupied')
                 result['postconditions'] = {'cell_visually_occupied':{'satisfied':verified,
                     'status': selected['occupancy'] if selected else 'unknown',
@@ -815,6 +826,7 @@ class ArenaRuntime:
         self.bus_context = {key:command[key] for key in ('task_id','task_version','correlation_id','causation_id') if key in command}
         attempts = []
         request = None
+        failure_error = None
         directory = self.output / (time.strftime("%Y%m%d-%H%M%S") + "-" + uuid4().hex[:8])
         directory.mkdir()
         self.active_directory = directory
@@ -915,6 +927,7 @@ class ArenaRuntime:
                 raise ValueError(f"Unsupported skill: {skill}")
             result["state"] = "completed" if result["ok"] else "failed"
         except Exception as exc:
+            failure_error = exc
             self.goal = self.tcp_pose()
             result = {"ok": False, "state": "cancelled" if isinstance(exc, InterruptedError) else "failed",
                       "message": str(exc), "error_type": type(exc).__name__, "held_object": self.held,
@@ -936,9 +949,16 @@ class ArenaRuntime:
             if 'held_object' in result: result['held_object'] = None
         result['holding'] = self.holding_status()
         if not result.get('ok') and result.get('state') != 'cancelled':
-            result['failure'] = failure_feedback(result.get('message', ''), result.get('failure_phase',self.phase), result['holding'],result.get('evaluation'))
+            result['failure'] = failure_feedback(failure_error or result.get('message', ''), result.get('failure_phase',self.phase), result['holding'],result.get('evaluation'))
         result.update(command_id=self.current, skill=command["skill"], elapsed_s=time.time() - started,
                       evidence_dir=str(directory), events=self.events, vision=self.visual_result, tcp_pose_world=self.tcp_pose().tolist())
+        if command['skill'] in {'grasp', 'pick_place', 'place_held'} and request is not None:
+            identity = self.observed_entities.get(self.target_name, {}).get('object_id')
+            destination = {'ref': request.destination_ref, 'cell_ref': request.cell_ref,
+                'label': request.destination} if request.destination else None
+            self.perception.world.action_result(identity, command['skill'], result, destination)
+            result['operation'] = {'object_id': identity, 'skill': command['skill'], 'destination': destination}
+            result['world'] = self.perception.world.snapshot()
         self.last_result = {key: value for key, value in result.items() if key != "events"}
         (directory / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2))
         for name, data in self.frames.items(): (directory / f"{name}.jpg").write_bytes(data)

@@ -1,5 +1,7 @@
 """Collection geometry from model masks and calibrated depth, with no asset catalog."""
 from uuid import uuid4
+from copy import deepcopy
+from threading import RLock
 import numpy as np
 from scipy.ndimage import binary_erosion
 from mr_liu.grasp.transforms import transform_points
@@ -109,35 +111,139 @@ def spatial_groups(instances):
 
 
 class ObservedScene:
-    """Latest object tracks; missing observations are unknown, never proof of absence."""
+    """Observation identities and action effects; never an asset-name resolver."""
     def __init__(self):
         self.objects = {}
         self.collections = {}
+        self.references = {}
+        self.geometry_memory = {}
         self.revision = 0
+        self.lock = RLock()
+
+    def _associate(self, item, used=(), source_ref=None):
+        refs = list(dict.fromkeys(item.get('references', []) + [item['ref']]))
+        explicit = {self.references[r] for r in refs + [source_ref] if r in self.references}
+        candidates = []
+        if len(explicit) == 1:
+            key = next(iter(explicit))
+        else:
+            point = np.asarray(item['position_m'])
+            for identity, row in self.objects.items():
+                if identity in used or row.get('state') in {'held', 'unknown'}:
+                    continue
+                distance = np.linalg.norm(point - row['position_m'])
+                extent = np.maximum(np.asarray(row['extent_m']), .003)
+                ratio = np.asarray(item['extent_m']) / extent
+                if distance <= .025 and np.all((ratio > .35) & (ratio < 2.8)):
+                    candidates.append(identity)
+            # Dense neighbours must not be collapsed by a nearest-name heuristic.
+            key = candidates[0] if len(candidates) == 1 else 'object:' + uuid4().hex
+        previous = self.objects.get(key, {})
+        all_refs = list(dict.fromkeys(previous.get('references', []) + refs))
+        # Preserve the latest reference from every camera; old refs remain aliases.
+        latest = {}
+        for ref in all_refs:
+            if len(ref.split(':')) == 4: latest[ref.split(':')[2]] = ref
+        self.objects[key] = {**previous, **item, 'track_id': key, 'current': True,
+            'state': previous.get('state', 'observed'), 'references': list(latest.values()),
+            'labels': sorted(set(previous.get('labels', [])) | {item.get('label', 'object')}),
+            'association': 'reference' if explicit else 'geometry' if len(candidates) == 1 else 'new',
+            'association_candidates': candidates if len(candidates) > 1 else []}
+        for ref in refs: self.references[ref] = key
+        item['track_id'] = key
+        return key
 
     def update(self, result):
         collection = result.get('collection')
-        if collection is None:
-            return
-        self.revision += 1
-        used = set()
-        for row in self.objects.values():
-            if collection['label'] in row['labels']:
-                row['current'] = False
-        for item in collection['instances']:
-            candidates = [(np.linalg.norm(np.asarray(item['position_m'])-row['position_m']), key)
-                          for key,row in self.objects.items() if key not in used]
-            distance, key = min(candidates, default=(float('inf'), None))
-            if distance > .025:
-                key = 'object:'+uuid4().hex
-            previous = self.objects.get(key, {})
-            self.objects[key] = {**item, 'track_id': key, 'current': True,
-                'labels': sorted(set(previous.get('labels', [])) | {collection['label']}),
+        if collection is None: return
+        with self.lock:
+            self.revision += 1
+            for row in self.objects.values():
+                if collection['label'] in row['labels']: row['current'] = False
+            used = set()
+            for item in collection['instances']:
+                item.update(observed_at=result.get('observed_at'), observation_ref=result['request_id'])
+                used.add(self._associate(item, used))
+            for ref in result.get('references', []):
+                if ref['ref'] in self.references: ref['track_id'] = self.references[ref['ref']]
+            self.collections[collection['label']] = {**deepcopy(collection),
                 'observed_at': result.get('observed_at'), 'observation_ref': result['request_id']}
-            item['track_id'] = key
-            used.add(key)
-        self.collections[collection['label']] = {**collection, 'observed_at': result.get('observed_at'), 'observation_ref': result['request_id']}
+
+    def observe_target(self, result, points, source_ref=None, scene=None):
+        refs = [r for r in result.get('references', []) if r.get('kind') == 'object']
+        if not refs or len(points) < 3: return None
+        with self.lock:
+            bounds = np.quantile(points, [.02, .98], axis=0)
+            item = {**refs[0], 'position_m': bounds.mean(0).tolist(),
+                'extent_m': (bounds[1]-bounds[0]).tolist(), 'references': [r['ref'] for r in refs],
+                'observed_at': result.get('observed_at'), 'observation_ref': result['request_id']}
+            key = self._associate(item, source_ref=source_ref)
+            for ref in refs: ref['track_id'] = key
+            result['object_id'] = key
+            geometry = result.get('geometry', {})
+            if geometry.get('kind') == 'grid':
+                from mr_liu.arena.placement_geometry import retained_grid
+                prior = self.geometry_memory.get(key)
+                kept = retained_grid(prior['geometry'], prior['points'], points, scene) if prior and scene is not None else None
+                if kept:
+                    geometry = {**kept, 'prior_observation_ref': prior['observation_ref']}
+                elif geometry.get('status') == 'observed':
+                    geometry = {**geometry, 'grid_frame_id': 'grid:' + uuid4().hex}
+                if geometry.get('status') == 'observed':
+                    primary = refs[0]
+                    result['references'] = [r for r in result['references'] if r.get('kind') != 'cell']
+                    index = 1 + max(int(r['ref'].rsplit(':', 1)[1]) for r in result['references'] if r['camera'] == primary['camera'])
+                    cells = []
+                    for cell in geometry['cells']:
+                        ref = f"obs:{result['request_id']}:{primary['camera']}:{index}"; index += 1
+                        cell_id = f"{geometry['grid_frame_id']}:{cell['row']}:{cell['column']}"
+                        cells.append({**cell, 'ref': ref, 'cell_id': cell_id})
+                        result['references'].append({'ref': ref, 'cell_id': cell_id, 'kind': 'cell',
+                            'label': primary.get('label'), 'camera': primary['camera'],
+                            'container_ref': primary['ref'], 'container_id': key,
+                            'row': cell['row'], 'column': cell['column'],
+                            'grid_frame_id': geometry['grid_frame_id'], 'observed_at': result.get('observed_at')})
+                    geometry = {**geometry, 'cells': cells, 'container_id': key,
+                        'reference_camera': geometry.get('reference_camera', geometry.get('camera')),
+                        'camera': primary['camera']}
+                    self.geometry_memory[key] = {'geometry': deepcopy(geometry), 'points': np.asarray(points).copy(),
+                        'observation_ref': result['request_id']}
+                    self.objects[key]['grid'] = deepcopy(geometry)
+                result['geometry'] = geometry
+            self.revision += 1
+            return key
+
+    def view_references(self, ref):
+        with self.lock:
+            row = self.objects.get(self.references.get(ref), {})
+            return {r.split(':')[2]: r for r in row.get('references', []) if len(r.split(':')) == 4}
+
+    def action_result(self, key, skill, result, destination=None):
+        with self.lock:
+            row = self.objects.get(key)
+            if not row: return
+            holding = result.get('holding', {})
+            row['last_command_id'] = result.get('command_id')
+            if holding.get('verified'):
+                row.update(state='held', current=False, placement=None)
+            elif skill in {'pick_place', 'place_held'} and result.get('ok'):
+                row.update(state='placed' if not result.get('review_required') else 'released_unverified',
+                    current=False, placement=deepcopy(destination))
+            elif row.get('state') == 'held':
+                row.update(state='unknown', current=False)
+            self.revision += 1
 
     def snapshot(self):
-        return {'revision': self.revision, 'collections': list(self.collections.values()),
-                'complete': False, 'source': 'observed_rgbd', 'stale_means': 'reobserve_before_execution'}
+        with self.lock:
+            # Collections retain membership; current poses/state come from the object table.
+            collections = []
+            for collection in self.collections.values():
+                instances = []
+                for old in collection['instances']:
+                    current = self.objects.get(old.get('track_id'), old)
+                    instances.append({**old, 'current': current.get('current', False),
+                        'state': current.get('state', 'observed')})
+                collections.append({**collection, 'instances': instances})
+            return deepcopy({'revision': self.revision, 'objects': list(self.objects.values()),
+                'collections': collections, 'complete': False, 'source': 'observed_rgbd_and_action_feedback',
+                'stale_means': 'reobserve_before_execution'})

@@ -33,19 +33,23 @@ class PerceptionBridge:
         visual_refs = {}
         if visual_ref:
             selected, origin = load_reference(self.root, visual_ref, self.scene_id)
-            cameras = [selected['camera']]
-            visual_refs[selected['camera']] = visual_ref
+            requested_cameras = cameras
+            visual_refs = {selected['camera']: visual_ref, **self.world.view_references(visual_ref)}
+            cameras = [camera for camera in (requested_cameras or [selected['camera']]) if camera in visual_refs]
+            if not cameras:
+                raise RuntimeError('所选视角尚无该物体的对应观察，请先从此视角定位并关联物体。')
             if inspect:
                 previous = json.loads((origin/'result.json').read_text())
                 instance = next((item for item in previous.get('collection', {}).get('instances', [])
                                  if visual_ref in item['references']), None)
-                refs = instance['references'] if instance else [r['ref'] for r in previous.get('references', [])
+                refs = list(self.world.view_references(visual_ref).values()) or (instance['references'] if instance else [r['ref'] for r in previous.get('references', [])
                     if r.get('kind') == 'object'] if previous.get('scope') == 'target' else []
+                )
                 if refs:
                     for ref in refs:
                         ref_row, _ = load_reference(self.root, ref, self.scene_id)
                         visual_refs[ref_row['camera']] = ref
-                    cameras = list(visual_refs)
+                    if not requested_cameras: cameras = list(visual_refs)
         if grounding:
             cameras = [grounding['camera']]
         cameras = cameras or (['wrist_camera'] if held_target else ['scene_camera', 'side_camera'])
@@ -104,6 +108,18 @@ class PerceptionBridge:
         self.world.update(result)
         while len(self.references) > 256: self.references.pop(next(iter(self.references)))
         return result
+
+    def remember_target(self, result, points, source_ref=None):
+        scene = self.scene_cloud(result) if result.get('geometry', {}).get('kind') == 'grid' else None
+        identity = self.world.observe_target(result, points, source_ref, scene)
+        if identity:
+            self.references.update({r['ref']: r for r in result.get('references', [])})
+            # Publish references and geometry together, never leave readers half a JSON file.
+            directory = self.root / result['request_id']
+            temporary = directory / 'result.state.json'
+            temporary.write_text(json.dumps({k:v for k,v in result.items() if k != 'physical_witness'}, ensure_ascii=False))
+            temporary.replace(directory / 'result.json')
+        return identity
 
     def resolve_reference(self, ref):
         return load_reference(self.root, ref, self.scene_id)[0]
