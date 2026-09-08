@@ -119,7 +119,8 @@ class ImagePipeline:
             objects.append({'label': detection.label, 'box': detection.xyxy.tolist(),
                             'score': float(detection.score), 'semantic_status': 'detected', 'memory_id': memory_id})
         caption = ''
-        if mode == 'caption' or (mode == 'auto' and not objects):
+        informative = [item for item in objects if item['label'].lower() not in {'table'}]
+        if mode == 'caption' or (mode == 'auto' and not informative):
             parsed = self.florence.describe(bgr, detail='detailed', beams=1)
             block = parsed.get('<DETAILED_CAPTION>', parsed)
             caption = block if isinstance(block, str) else str(block.get('caption', '')) if isinstance(block, dict) else ''

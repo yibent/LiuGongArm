@@ -112,6 +112,18 @@ def test_scene_auto_uses_one_low_threshold_yolo_batch_without_florence():
     yolo.detect.assert_called_once()
 
 
+def test_scene_auto_does_not_treat_the_table_alone_as_an_object_inventory():
+    finder, yolo, sam = Mock(), Mock(), Mock()
+    yolo.detect.return_value = [Detection(np.array([0, 0, 8, 8]), 'table', .36)]
+    finder.describe.return_value = {'<DETAILED_CAPTION>': 'Parts on a work surface.'}
+    result = ImagePipeline(finder, yolo, sam).describe(
+        np.zeros((8, 8, 3), np.uint8), camera='scene', sequence=23,
+        scene_id='s', queries=['table', 'cylinder'], mode='auto')
+    assert result['caption'] == 'Parts on a work surface.'
+    assert result['loop'] == 'slow'
+    finder.describe.assert_called_once()
+
+
 def test_capture_scene_and_unknown_target_without_catalog_binding(tmp_path):
     data = SimpleNamespace(output={'rgb': np.zeros((1, 8, 8, 4), np.uint8),
                                   'distance_to_image_plane': np.ones((1, 8, 8, 1))},
