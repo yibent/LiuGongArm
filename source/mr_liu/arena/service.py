@@ -144,6 +144,22 @@ def serve(runtime, app, port):
                 size = int(self.headers.get("Content-Length", "0"))
                 if not 0 < size < 65536: raise ValueError("Invalid request size")
                 body = json.loads(self.rfile.read(size))
+                if self.path == '/api/observe':
+                    from mr_liu.arena.observation_request import observation_result
+                    key = body.get('command_id')
+                    if not isinstance(key, str) or not key or len(key) > 160:
+                        raise ValueError('A bounded observation command_id is required')
+                    future = Future()
+                    runtime.snapshot_requests.put({'observation': body, 'future': future})
+                    try:
+                        packet = future.result(timeout=5)
+                    except FutureTimeout:
+                        future.cancel()
+                        return self.respond(503, {'error': 'Sensor snapshot timed out'})
+                    try:
+                        return self.respond(200, observation_result(runtime, packet))
+                    except Exception as error:
+                        return self.respond(503, {'ok': False, 'state': 'failed', 'message': str(error)})
                 if self.path == '/api/snapshot':
                     camera = body.get('camera')
                     if camera not in {'scene', 'side', 'wrist'}:

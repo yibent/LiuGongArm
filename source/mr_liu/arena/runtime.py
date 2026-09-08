@@ -306,7 +306,11 @@ class ArenaRuntime:
             request = None
         if request is not None and request['future'].set_running_or_notify_cancel():
             try:
-                packet = self.perception.capture(self, None, cameras=[request['camera']], scene_mode='frame')
+                if 'observation' in request:
+                    from mr_liu.arena.observation_request import capture_observation
+                    packet = capture_observation(self, request['observation'])
+                else:
+                    packet = self.perception.capture(self, None, cameras=[request['camera']], scene_mode='frame')
                 request['future'].set_result(packet)
             except Exception as error:
                 request['future'].set_exception(error)
