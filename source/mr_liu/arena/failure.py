@@ -36,7 +36,7 @@ def failure_feedback(error, phase, holding, evaluation=None):
     categories = [
         ('CAPABILITY_MISSING', ('requires a reorientation skill', 'contact skills that are not yet available'), ['retain_unfulfilled_condition', 'select_available_skill_or_report_gap']),
         ('REFERENCE_STALE', ('视觉引用', 'reference'), ['observe', 'select_current_reference']),
-        ('TARGET_AMBIGUOUS', ('不唯一', 'ambiguous'), ['select_visual_reference']),
+        ('TARGET_AMBIGUOUS', ('不唯一', 'ambiguous', '不同视角', '关联到地面'), ['select_visual_reference']),
         ('TARGET_NOT_FOUND', ('未找到', 'No observed target depth'), ['change_view_or_detector']),
         ('NO_FREE_SPACE', ('空位', '格位', '料箱格网', 'fitting the requested support'), ['inspect_destination', 'change_region_or_orientation', 'rearrange_obstacles_if_goal_allows']),
         ('NO_IK', ('Arena IK did not reach',), ['try_other_pose']),
