@@ -82,9 +82,10 @@ class ArenaRuntime:
         data = self.env.scene[name].data
         return pose_matrix(numpy_data(data.root_pos_w)[0], numpy_data(data.root_quat_w)[0])
 
-    def locate(self, label, **vision_options):
+    def locate(self, label, *, manipulation_target=False, **vision_options):
         """Visual geometry first. Physical IDs are evaluation witnesses only."""
-        points = self.cloud(label, associate=True, **vision_options)
+        points = self.cloud(label, associate=True, manipulation_target=manipulation_target,
+                            **vision_options)
         observation = self.visual_result
         name = observation['physical_witness']['instance_id']
         votes = observation['physical_witness']['votes']
@@ -348,7 +349,7 @@ class ArenaRuntime:
         print(json.dumps(self.events[-1], ensure_ascii=False), flush=True)
         self.refresh_snapshot()
 
-    def cloud(self, name, *, associate=False, **vision_options):
+    def cloud(self, name, *, associate=False, manipulation_target=False, **vision_options):
         if not vision_options and name in self.prepared_clouds:
             points, self.visual_result = self.prepared_clouds.pop(name)
             return points
@@ -384,6 +385,8 @@ class ArenaRuntime:
                 if associate or name in self.observed_entities:
                     try:
                         witness, votes = self.perception.witness(result, self.body_entities)
+                        if manipulation_target and witness == 'floor':
+                            raise InstanceConflict('可抓目标错误地关联到地面，需要换慢环重新定位。')
                         if name in self.observed_entities and witness != name:
                             raise InstanceConflict('观测切换到了另一实例，需要重新识别。')
                         result['physical_witness'] = {'instance_id': witness, 'votes': votes}
@@ -493,7 +496,8 @@ class ArenaRuntime:
         if self.held is not None:
             raise ValueError('夹爪仍持有物体，可使用 place_held 指定目的地继续放置。')
         self.gripper = 1.
-        row = self.locate(request.target, **({'visual_ref': request.target_ref} if request.target_ref else {}))
+        row = self.locate(request.target, manipulation_target=True,
+                          **({'visual_ref': request.target_ref} if request.target_ref else {}))
         destination = self.locate_destination(request)
         if destination and destination['name'] == row['name']:
             raise ValueError('抓取对象和支撑对象相同，请指定另一个放置对象。')
