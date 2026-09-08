@@ -1,0 +1,243 @@
+{
+  "robot": "franka_panda",
+  "arena_revision": "8b4a3a47fc53de23e8205089d71109a2e2348acd",
+  "isaaclab_revision": "e57379c634b42db5a0fe9f754341be6e2a7c7c43",
+  "base_revision": "0576d673fa396d1373d9bcd298d45a93bc582904",
+  "camera": {
+    "width": 960,
+    "height": 720,
+    "render_interval": 8,
+    "update_period_s": 0.06666666666666667,
+    "scene": {
+      "position": [
+        0.72,
+        -0.46,
+        0.78
+      ],
+      "lookat": [
+        0.51,
+        0,
+        0.02
+      ]
+    },
+    "side": {
+      "position": [
+        0.8,
+        0.55,
+        0.68
+      ],
+      "lookat": [
+        0.51,
+        0,
+        0.02
+      ]
+    },
+    "wrist": {
+      "position": [
+        0.055,
+        0,
+        0.02
+      ],
+      "lookat": [
+        0,
+        0,
+        0.1034
+      ]
+    }
+  },
+  "fast": {
+    "phase_steps": [
+      60,
+      50,
+      8,
+      25,
+      50,
+      80,
+      50,
+      25,
+      40,
+      1
+    ]
+  },
+  "vision": {
+    "service_url": "http://127.0.0.1:5570/observe",
+    "track_every_steps": 8,
+    "vocabulary": [
+      "block",
+      "cylinder",
+      "nut",
+      "gear",
+      "shaft",
+      "bolt",
+      "bracket",
+      "sleeve",
+      "washer",
+      "wrench",
+      "screwdriver",
+      "tray",
+      "bowl",
+      "box",
+      "table"
+    ],
+    "fast_conf": 0.45,
+    "refresh_updates": 8,
+    "max_frame_gap": 90,
+    "slow_localizer": "sam3",
+    "sam3_conf": 0.4,
+    "planned_disabled": [
+      "qwen_multimodal"
+    ]
+  },
+  "controller": {
+    "position_tolerance_m": 0.006,
+    "rotation_tolerance_deg": 5,
+    "max_steps": 360
+  },
+  "graspgenx": {
+    "host": "127.0.0.1",
+    "port": 5556,
+    "timeout_ms": 120000,
+    "num_grasps": 64
+  },
+  "anyplace": {
+    "url": "http://127.0.0.1:5590",
+    "timeout_s": 120,
+    "candidates": 20,
+    "iterations": 50
+  },
+  "ports": {
+    "busagent": 8991,
+    "preview": 8993,
+    "spare": 8999,
+    "controller_internal": 7861
+  },
+  "entities": [
+    {
+      "usd_path": "assets/scenes/industrial/asset_03.usda",
+      "position": [
+        0.41,
+        -0.15,
+        0.001
+      ],
+      "dynamic": true,
+      "mass": 0.08,
+      "label": "橙色齿轮",
+      "name": "part_01"
+    },
+    {
+      "usd_path": "assets/scenes/industrial/asset_04.usda",
+      "position": [
+        0.56,
+        -0.14,
+        0.001
+      ],
+      "dynamic": true,
+      "mass": 0.08,
+      "label": "阶梯轴",
+      "name": "part_02"
+    },
+    {
+      "usd_path": "assets/scenes/industrial/asset_05.usda",
+      "position": [
+        0.66,
+        -0.06,
+        0.001
+      ],
+      "dynamic": true,
+      "mass": 0.08,
+      "label": "黄铜螺栓",
+      "name": "part_03"
+    },
+    {
+      "usd_path": "assets/scenes/industrial/asset_06.usda",
+      "position": [
+        0.38,
+        0.01,
+        0.001
+      ],
+      "dynamic": true,
+      "mass": 0.08,
+      "label": "青色轴套",
+      "name": "part_04"
+    },
+    {
+      "shape": "cylinder",
+      "position": [
+        0.5,
+        -0.02,
+        0.03
+      ],
+      "size": [
+        0.032,
+        0.032,
+        0.06
+      ],
+      "color": [
+        0.6,
+        0.63,
+        0.66
+      ],
+      "label": "金属圆柱",
+      "dynamic": true,
+      "mass": 0.08,
+      "name": "part_05"
+    },
+    {
+      "usd_path": "assets/scenes/demo/asset_01.usda",
+      "position": [
+        0.4,
+        0.19,
+        0.001
+      ],
+      "dynamic": false,
+      "mass": 0.08,
+      "label": "蓝色料盘",
+      "name": "part_06"
+    },
+    {
+      "usd_path": "assets/scenes/demo/asset_04.usda",
+      "position": [
+        0.62,
+        0.19,
+        0.001
+      ],
+      "dynamic": false,
+      "mass": 0.08,
+      "label": "金属圆盘",
+      "name": "part_07"
+    },
+    {
+      "shape": "cuboid",
+      "position": [
+        0.7,
+        -0.19,
+        0.012
+      ],
+      "size": [
+        0.1,
+        0.1,
+        0.024
+      ],
+      "color": [
+        0.4,
+        0.42,
+        0.45
+      ],
+      "label": "低支撑台",
+      "dynamic": false,
+      "mass": 1.0,
+      "name": "part_08"
+    }
+  ],
+  "scene": {
+    "id": "machining",
+    "name": "机加工零件整理",
+    "description": "齿轮、轴、螺栓和轴套，配有料盘、圆盘和低支撑台。",
+    "kind": "parts",
+    "examples": [
+      "将橙色齿轮放到蓝色料盘里。",
+      "把金属圆柱放到桌面空处。"
+    ],
+    "count": 8
+  }
+}

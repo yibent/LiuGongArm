@@ -1,0 +1,74 @@
+[
+  {
+    "id": "sorting",
+    "name": "零件分拣",
+    "description": "彩色工件按颜色或形状分拣，配有红蓝料盘和开放桌面。",
+    "kind": "sort",
+    "examples": [
+      "将红色方块放到蓝色料盘里。",
+      "拿起绿色方块，保持拿着。",
+      "把手里的物体放到桌面空处。"
+    ],
+    "count": 6,
+    "config": "configs/scenes/sorting.json"
+  },
+  {
+    "id": "machining",
+    "name": "机加工零件整理",
+    "description": "齿轮、轴、螺栓和轴套，配有料盘、圆盘和低支撑台。",
+    "kind": "parts",
+    "examples": [
+      "将橙色齿轮放到蓝色料盘里。",
+      "把金属圆柱放到桌面空处。"
+    ],
+    "count": 8,
+    "config": "configs/scenes/machining.json"
+  },
+  {
+    "id": "packing",
+    "name": "分格装箱",
+    "description": "金属圆柱和方形工件，配有六格料箱、周转料盘和叠放底箱。",
+    "kind": "pack",
+    "examples": [
+      "拿起一个金属圆柱放到绿色料盘里。",
+      "观察蓝色料箱有哪些空格。"
+    ],
+    "count": 7,
+    "config": "configs/scenes/packing.json"
+  },
+  {
+    "id": "assembly",
+    "name": "工装装配",
+    "description": "圆柱销、轴套、垫圈和支架，配有插孔座、定位销架、挂钩及暂存盘。",
+    "kind": "fixture",
+    "examples": [
+      "把金属圆柱放到蓝色料盘里。",
+      "拿起青色轴套，保持拿着。"
+    ],
+    "count": 8,
+    "config": "configs/scenes/assembly.json"
+  },
+  {
+    "id": "tools",
+    "name": "工具归位",
+    "description": "扳手、螺丝刀、螺母和工件，配有双料盘及圆柱支撑台。",
+    "kind": "tools",
+    "examples": [
+      "将红色方块放到蓝色料盘里。",
+      "拿起黄色螺丝刀，保持拿着。"
+    ],
+    "count": 7,
+    "config": "configs/scenes/tools.json"
+  },
+  {
+    "id": "challenge_qa",
+    "name": "挑战杯综合验收",
+    "description": "多区域密集来料、翻正、六格装箱及整箱叠放，用于综合能力验证。",
+    "kind": "pack",
+    "examples": [
+      "观察来料最多的区域。"
+    ],
+    "count": 14,
+    "config": "configs/scenes/challenge_qa.json"
+  }
+]

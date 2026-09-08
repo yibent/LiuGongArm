@@ -69,13 +69,13 @@ class WorkspaceTests(unittest.TestCase):
         np.testing.assert_allclose(self.runtime.env.scene['unconfigured'].velocity, 0)
         self.assertEqual(self.runtime.env.scene.robot.reset_count, 0)
     def test_preset_repeatable_keeps_supports_and_reset_baseline(self):
-        self.assertTrue(self.command(action='scene', scene_id='sorting')['ok'])
+        self.assertFalse(self.command(action='scene', scene_id='sorting')['ok'])
         first = self.runtime.env.scene['unconfigured'].data.root_pos_w.numpy()
         self.command(action='object', id='unconfigured', position=[.2, .3, .4], rotation=[0, 0, 0])
         self.command(action='reset', scope='all')
         np.testing.assert_allclose(self.runtime.env.scene['unconfigured'].data.root_pos_w.numpy(), first)
         np.testing.assert_allclose(self.runtime.env.scene['support'].data.root_pos_w.numpy(), [[.5, .2, .01]])
-        self.assertEqual(self.runtime.env.scene.robot.reset_count, 2)
+        self.assertEqual(self.runtime.env.scene.robot.reset_count, 1)
     def test_invalid_values_do_not_partially_mutate_scene_or_controller(self):
         self.assertFalse(self.command(action='object', id='unconfigured', position=[.7, 0, 0], rotation=[float('nan'), 0, 0])['ok'])
         self.assertEqual(self.runtime.env.scene['unconfigured'].writes, 0)

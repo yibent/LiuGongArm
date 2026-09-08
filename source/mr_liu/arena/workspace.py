@@ -6,16 +6,14 @@ The editor enumerates live rigid bodies; configured names never gate execution.
 """
 import math
 import time
+import json
+from pathlib import Path
 import numpy as np
 from scipy.spatial.transform import Rotation
 from mr_liu.arena.arrays import numpy_data
 from mr_liu.arena.teleop import finite_vector
 
-PRESETS = [
-    {"id": "initial", "name": "基础抓放", "description": "恢复当前场景的初始物体布局。", "kind": "pick"},
-    {"id": "sorting", "name": "桌面整理", "description": "分散排列现有物体，进行桌面整理实验。", "kind": "sort"},
-    {"id": "precision", "name": "精确摆放", "description": "紧凑排列现有物体，进行定位与堆叠实验。", "kind": "stack"},
-]
+PRESETS = json.loads((Path(__file__).resolve().parents[3] / 'configs/industrial_scenes.json').read_text())
 
 
 def simulation_array(values, device):
@@ -26,7 +24,7 @@ def simulation_array(values, device):
 class Workspace:
     def __init__(self, runtime, teleop=None):
         self.runtime, self.teleop = runtime, teleop
-        self.scene_id = "initial"
+        self.scene_id = runtime.config.get('scene', {}).get('id', 'initial')
         self.initial, self.baseline = {}, {}
         self.metadata = {row["name"]: row for key in ("entities", "objects", "destinations")
                          for row in runtime.config.get(key, [])}
@@ -52,7 +50,7 @@ class Workspace:
         robot = runtime.env.scene["robot"]
         tcp = runtime.tcp_pose()
         self.snapshot = {"available": True, "api_version": 2, "scene_id": self.scene_id,
-                         "scenes": [{**p, "active": p["id"] == self.scene_id, "count": len(rows)} for p in PRESETS],
+                         "scenes": [{**p, "active": p["id"] == self.scene_id} for p in PRESETS],
                          "objects": rows, "controller": dict(runtime.config["controller"]),
                          "controls": {"robot_pose": True, "jog": True, "teleop": self.teleop is not None, "gripper": True},
                          "robot": {"position": tcp[:3, 3].tolist(),
@@ -240,29 +238,12 @@ class Workspace:
                 runtime.gripper = 1. if params["state"] == "open" else -1.
                 for _ in range(24):
                     runtime.tick()
-            elif action in {"reset", "scene"}:
-                scope = "all" if action == "scene" else params.get("scope", "all")
-                scene_id = params.get("scene_id", self.scene_id)
+            elif action == 'scene':
+                raise ValueError('请从场景选择页面确认切换；切换会重建场景并清空运行数据。')
+            elif action == "reset":
+                scope = params.get("scope", "all")
                 if scope not in {"all", "objects", "robot"}:
                     raise ValueError("Unknown reset scope")
-                if scene_id not in {p["id"] for p in PRESETS}:
-                    raise ValueError("Unknown scene preset")
-                if action == "scene":
-                    self.scene_id = scene_id
-                    self.initial = {name: state.copy() for name, state in self.baseline.items()}
-                    if scene_id != "initial":
-                        index = 0
-                        for name, state in self.initial.items():
-                            body = runtime.env.scene.rigid_objects.get(name)
-                            if body is None:
-                                continue
-                            rigid = getattr(getattr(body.cfg, "spawn", None), "rigid_props", None)
-                            if getattr(rigid, "kinematic_enabled", False):
-                                continue
-                            spacing = .13 if scene_id == "sorting" else .085
-                            state[0, 0] = .43 + (index % 3) * spacing
-                            state[0, 1] = -.16 + (index // 3) * spacing
-                            index += 1
                 self._invalidate_perception(clear_hold=True)
                 if scope in {"all", "objects"}:
                     self._write_objects(self.initial)

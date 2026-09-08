@@ -1,0 +1,355 @@
+{
+  "robot": "franka_panda",
+  "arena_revision": "8b4a3a47fc53de23e8205089d71109a2e2348acd",
+  "isaaclab_revision": "e57379c634b42db5a0fe9f754341be6e2a7c7c43",
+  "base_revision": "0576d673fa396d1373d9bcd298d45a93bc582904",
+  "camera": {
+    "width": 1280,
+    "height": 960,
+    "render_interval": 8,
+    "update_period_s": 0.06666666666666667,
+    "scene": {
+      "position": [
+        0.7,
+        -0.4,
+        0.76
+      ],
+      "lookat": [
+        0.52,
+        0,
+        0.02
+      ]
+    },
+    "side": {
+      "position": [
+        0.8,
+        0.55,
+        0.65
+      ],
+      "lookat": [
+        0.52,
+        0,
+        0.02
+      ]
+    },
+    "wrist": {
+      "position": [
+        0.055,
+        0,
+        0.02
+      ],
+      "lookat": [
+        0,
+        0,
+        0.1034
+      ]
+    }
+  },
+  "fast": {
+    "phase_steps": [
+      60,
+      50,
+      8,
+      25,
+      50,
+      80,
+      50,
+      25,
+      40,
+      1
+    ]
+  },
+  "vision": {
+    "service_url": "http://127.0.0.1:5570/observe",
+    "track_every_steps": 8,
+    "vocabulary": [
+      "metal cylinder",
+      "sleeve",
+      "box",
+      "tray",
+      "robot arm",
+      "table"
+    ],
+    "fast_conf": 0.45,
+    "refresh_updates": 8,
+    "max_frame_gap": 90,
+    "slow_localizer": "sam3",
+    "sam3_conf": 0.4,
+    "planned_disabled": [
+      "qwen_multimodal"
+    ]
+  },
+  "controller": {
+    "position_tolerance_m": 0.006,
+    "rotation_tolerance_deg": 5,
+    "max_steps": 360
+  },
+  "graspgenx": {
+    "host": "127.0.0.1",
+    "port": 5556,
+    "timeout_ms": 120000,
+    "num_grasps": 64
+  },
+  "anyplace": {
+    "url": "http://127.0.0.1:5590",
+    "timeout_s": 120,
+    "candidates": 20,
+    "iterations": 50
+  },
+  "ports": {
+    "busagent": 8991,
+    "preview": 8993,
+    "spare": 8999,
+    "controller_internal": 7861
+  },
+  "entities": [
+    {
+      "name": "qa_body_01",
+      "usd_path": "assets/scenes/challenge_qa/asset_01.usda",
+      "position": [
+        0.31,
+        -0.14,
+        0.062
+      ],
+      "orientation": [
+        0.0,
+        1.0,
+        0.0,
+        6.123233995736766e-17
+      ],
+      "dynamic": true,
+      "mass": 0.08
+    },
+    {
+      "name": "qa_body_02",
+      "usd_path": "assets/scenes/challenge_qa/asset_01.usda",
+      "position": [
+        0.35,
+        -0.14,
+        0.062
+      ],
+      "orientation": [
+        0.0,
+        1.0,
+        0.0,
+        6.123233995736766e-17
+      ],
+      "dynamic": true,
+      "mass": 0.08
+    },
+    {
+      "name": "qa_body_03",
+      "usd_path": "assets/scenes/challenge_qa/asset_01.usda",
+      "position": [
+        0.47,
+        -0.22,
+        0.062
+      ],
+      "orientation": [
+        0.0,
+        1.0,
+        0.0,
+        6.123233995736766e-17
+      ],
+      "dynamic": true,
+      "mass": 0.08
+    },
+    {
+      "name": "qa_body_04",
+      "usd_path": "assets/scenes/challenge_qa/asset_01.usda",
+      "position": [
+        0.514,
+        -0.22,
+        0.002
+      ],
+      "orientation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "dynamic": true,
+      "mass": 0.08
+    },
+    {
+      "name": "qa_body_05",
+      "usd_path": "assets/scenes/challenge_qa/asset_01.usda",
+      "position": [
+        0.47,
+        -0.176,
+        0.062
+      ],
+      "orientation": [
+        0.0,
+        1.0,
+        0.0,
+        6.123233995736766e-17
+      ],
+      "dynamic": true,
+      "mass": 0.08
+    },
+    {
+      "name": "qa_body_06",
+      "usd_path": "assets/scenes/challenge_qa/asset_01.usda",
+      "position": [
+        0.514,
+        -0.176,
+        0.062
+      ],
+      "orientation": [
+        0.0,
+        1.0,
+        0.0,
+        6.123233995736766e-17
+      ],
+      "dynamic": true,
+      "mass": 0.08
+    },
+    {
+      "name": "qa_body_07",
+      "usd_path": "assets/scenes/challenge_qa/asset_01.usda",
+      "position": [
+        0.532,
+        -0.132,
+        0.016
+      ],
+      "orientation": [
+        0.0,
+        0.7071067811865475,
+        0.0,
+        0.7071067811865476
+      ],
+      "dynamic": true,
+      "mass": 0.08
+    },
+    {
+      "name": "qa_body_08",
+      "usd_path": "assets/scenes/challenge_qa/asset_01.usda",
+      "position": [
+        0.695,
+        -0.16,
+        0.062
+      ],
+      "orientation": [
+        0.0,
+        1.0,
+        0.0,
+        6.123233995736766e-17
+      ],
+      "dynamic": true,
+      "mass": 0.08
+    },
+    {
+      "name": "qa_body_09",
+      "usd_path": "assets/scenes/challenge_qa/asset_01.usda",
+      "position": [
+        0.735,
+        -0.16,
+        0.062
+      ],
+      "orientation": [
+        0.0,
+        1.0,
+        0.0,
+        6.123233995736766e-17
+      ],
+      "dynamic": true,
+      "mass": 0.08
+    },
+    {
+      "name": "qa_body_10",
+      "usd_path": "assets/scenes/challenge_qa/asset_01.usda",
+      "position": [
+        0.715,
+        -0.112,
+        0.002
+      ],
+      "orientation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "dynamic": true,
+      "mass": 0.08
+    },
+    {
+      "name": "qa_body_11",
+      "usd_path": "assets/scenes/challenge_qa/asset_01.usda",
+      "position": [
+        0.465,
+        0.156,
+        0.07
+      ],
+      "orientation": [
+        0.0,
+        0.7071067811865475,
+        0.0,
+        0.7071067811865476
+      ],
+      "dynamic": true,
+      "mass": 0.08
+    },
+    {
+      "name": "qa_body_12",
+      "usd_path": "assets/scenes/challenge_qa/asset_02.usda",
+      "position": [
+        0.49,
+        0.18,
+        0.0
+      ],
+      "orientation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "dynamic": true,
+      "mass": 0.3
+    },
+    {
+      "name": "qa_body_13",
+      "usd_path": "assets/scenes/challenge_qa/asset_03.usda",
+      "position": [
+        0.75,
+        0.21,
+        0.0
+      ],
+      "orientation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "dynamic": false,
+      "mass": 2.0
+    },
+    {
+      "name": "qa_body_14",
+      "usd_path": "assets/scenes/challenge_qa/asset_02.usda",
+      "position": [
+        0.75,
+        0.21,
+        0.072
+      ],
+      "orientation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "dynamic": true,
+      "mass": 0.3
+    }
+  ],
+  "scene": {
+    "id": "challenge_qa",
+    "name": "挑战杯综合验收",
+    "description": "多区域密集来料、翻正、六格装箱及整箱叠放，用于综合能力验证。",
+    "kind": "pack",
+    "examples": [
+      "观察来料最多的区域。"
+    ],
+    "count": 14
+  }
+}

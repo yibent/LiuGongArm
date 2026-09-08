@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=刘工智能
+Comment=打开刘工智能工业机器人工作台
+Exec=bash /root/gpufree-data/arena-panda/ops/open_liugong_desktop.sh
+Icon=applications-engineering
+Terminal=false
+StartupNotify=false
+X-GNOME-Autostart-enabled=true

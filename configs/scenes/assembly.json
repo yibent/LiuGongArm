@@ -1,0 +1,233 @@
+{
+  "robot": "franka_panda",
+  "arena_revision": "8b4a3a47fc53de23e8205089d71109a2e2348acd",
+  "isaaclab_revision": "e57379c634b42db5a0fe9f754341be6e2a7c7c43",
+  "base_revision": "0576d673fa396d1373d9bcd298d45a93bc582904",
+  "camera": {
+    "width": 960,
+    "height": 720,
+    "render_interval": 8,
+    "update_period_s": 0.06666666666666667,
+    "scene": {
+      "position": [
+        0.72,
+        -0.46,
+        0.78
+      ],
+      "lookat": [
+        0.51,
+        0,
+        0.02
+      ]
+    },
+    "side": {
+      "position": [
+        0.8,
+        0.55,
+        0.68
+      ],
+      "lookat": [
+        0.51,
+        0,
+        0.02
+      ]
+    },
+    "wrist": {
+      "position": [
+        0.055,
+        0,
+        0.02
+      ],
+      "lookat": [
+        0,
+        0,
+        0.1034
+      ]
+    }
+  },
+  "fast": {
+    "phase_steps": [
+      60,
+      50,
+      8,
+      25,
+      50,
+      80,
+      50,
+      25,
+      40,
+      1
+    ]
+  },
+  "vision": {
+    "service_url": "http://127.0.0.1:5570/observe",
+    "track_every_steps": 8,
+    "vocabulary": [
+      "block",
+      "cylinder",
+      "nut",
+      "gear",
+      "shaft",
+      "bolt",
+      "bracket",
+      "sleeve",
+      "washer",
+      "wrench",
+      "screwdriver",
+      "tray",
+      "bowl",
+      "box",
+      "table"
+    ],
+    "fast_conf": 0.45,
+    "refresh_updates": 8,
+    "max_frame_gap": 90,
+    "slow_localizer": "sam3",
+    "sam3_conf": 0.4,
+    "planned_disabled": [
+      "qwen_multimodal"
+    ]
+  },
+  "controller": {
+    "position_tolerance_m": 0.006,
+    "rotation_tolerance_deg": 5,
+    "max_steps": 360
+  },
+  "graspgenx": {
+    "host": "127.0.0.1",
+    "port": 5556,
+    "timeout_ms": 120000,
+    "num_grasps": 64
+  },
+  "anyplace": {
+    "url": "http://127.0.0.1:5590",
+    "timeout_s": 120,
+    "candidates": 20,
+    "iterations": 50
+  },
+  "ports": {
+    "busagent": 8991,
+    "preview": 8993,
+    "spare": 8999,
+    "controller_internal": 7861
+  },
+  "entities": [
+    {
+      "shape": "cylinder",
+      "position": [
+        0.43,
+        -0.14,
+        0.03
+      ],
+      "size": [
+        0.032,
+        0.032,
+        0.06
+      ],
+      "color": [
+        0.6,
+        0.63,
+        0.66
+      ],
+      "label": "金属圆柱",
+      "dynamic": true,
+      "mass": 0.08,
+      "name": "part_01"
+    },
+    {
+      "usd_path": "assets/scenes/industrial/asset_06.usda",
+      "position": [
+        0.55,
+        -0.14,
+        0.001
+      ],
+      "dynamic": true,
+      "mass": 0.08,
+      "label": "青色轴套",
+      "name": "part_02"
+    },
+    {
+      "usd_path": "assets/scenes/industrial/asset_07.usda",
+      "position": [
+        0.66,
+        -0.14,
+        0.001
+      ],
+      "dynamic": true,
+      "mass": 0.08,
+      "label": "垫圈",
+      "name": "part_03"
+    },
+    {
+      "usd_path": "assets/scenes/industrial/asset_01.usda",
+      "position": [
+        0.37,
+        -0.02,
+        0.001
+      ],
+      "dynamic": true,
+      "mass": 0.08,
+      "label": "绿色支架",
+      "name": "part_04"
+    },
+    {
+      "usd_path": "assets/scenes/demo/asset_05.usda",
+      "position": [
+        0.42,
+        0.17,
+        0.001
+      ],
+      "dynamic": false,
+      "mass": 0.08,
+      "label": "插孔座",
+      "name": "part_05"
+    },
+    {
+      "usd_path": "assets/scenes/demo/asset_06.usda",
+      "position": [
+        0.59,
+        0.16,
+        0.001
+      ],
+      "dynamic": false,
+      "mass": 0.08,
+      "label": "定位销架",
+      "name": "part_06"
+    },
+    {
+      "usd_path": "assets/scenes/industrial/asset_10.usda",
+      "position": [
+        0.74,
+        0.15,
+        0.001
+      ],
+      "dynamic": false,
+      "mass": 0.08,
+      "label": "挂钩工装",
+      "name": "part_07"
+    },
+    {
+      "usd_path": "assets/scenes/demo/asset_01.usda",
+      "position": [
+        0.59,
+        0.0,
+        0.001
+      ],
+      "dynamic": false,
+      "mass": 0.08,
+      "label": "蓝色暂存盘",
+      "name": "part_08"
+    }
+  ],
+  "scene": {
+    "id": "assembly",
+    "name": "工装装配",
+    "description": "圆柱销、轴套、垫圈和支架，配有插孔座、定位销架、挂钩及暂存盘。",
+    "kind": "fixture",
+    "examples": [
+      "把金属圆柱放到蓝色料盘里。",
+      "拿起青色轴套，保持拿着。"
+    ],
+    "count": 8
+  }
+}
