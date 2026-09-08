@@ -29,14 +29,27 @@ def test_every_service_has_one_foreground_supervisor_owner():
     config = configparser.ConfigParser(interpolation=None)
     config.read(ROOT/'ops/arena-supervisord.conf')
     names = {s.split(':', 1)[1] for s in config.sections() if s.startswith('program:')}
-    assert names == {'database', *stack.SERVICES}
+    assert names == {
+        'database',
+        *stack.SERVICES,
+        'workspace_status',
+        'desktop_browser',
+    }
     for name in names:
         program = config['program:'+name]
         assert program.getboolean('autostart')
-        assert program.getboolean('autorestart')
         assert program.getboolean('stopasgroup')
         assert program.getboolean('killasgroup')
-        assert program['command'].endswith('arena_supervisor.py '+name)
+        if name in {'database', *stack.SERVICES}:
+            assert program.getboolean('autorestart')
+            assert program['command'].endswith('arena_supervisor.py '+name)
+        elif name == 'workspace_status':
+            assert program.getboolean('autorestart')
+            assert program['command'].endswith('workspace_status_server.py')
+        else:
+            assert name == 'desktop_browser'
+            assert not program.getboolean('autorestart')
+            assert program['command'].endswith('open_liugong_desktop.sh')
     assert '0700' == config['unix_http_server']['chmod']
 
 

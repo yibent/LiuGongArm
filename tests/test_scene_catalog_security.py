@@ -36,13 +36,26 @@ def test_supervisor_has_no_lifecycle_manager():
     assert "workspace_manager.py" not in text
 
 
+def test_workspace_status_proxy_is_read_only_and_independent_of_busagent():
+    for name in ("arena-nginx.conf", "arena-ui-preview-nginx.conf"):
+        text = (ROOT / "ops" / name).read_text()
+        assert "location = /v1/workspace/status" in text
+        assert "limit_except GET { deny all; }" in text
+        assert "proxy_pass http://127.0.0.1:5599/status;" in text
+    supervisor = (ROOT / "ops/arena-supervisord.conf").read_text()
+    assert "[program:workspace_status]" in supervisor
+    server = (ROOT / "ops/workspace_status_server.py").read_text()
+    assert '("127.0.0.1", 5599)' in server
+    assert "do_POST" in server
+    assert "send_error(405)" in server
+
+
 def test_lifecycle_worker_has_no_network_listener_and_narrow_runtime_targets():
     text = (ROOT / "ops/workspace_lifecycle_worker.py").read_text()
     assert "HTTPServer" not in text
     assert "BaseHTTPRequestHandler" not in text
     assert "output/arena" in text
-    assert "output/perception" in text
-    assert "output/visual-memory" in text
+    assert "reset_vision()" in text
     assert "BusAgent/backend/.local/mastra" in text
     assert 'ROOT / "output/services",' not in text
     assert 'ROOT / "output/supervisor",' not in text
