@@ -17,11 +17,9 @@ import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
 JOURNAL = ROOT / "output/system/workspace.json"
-SERVICES = ("busagent", "arena", "vision", "graspgenx", "anyplace")
+SERVICES = ("busagent", "arena")
 RUNTIME_PATHS = (
     ROOT / "output/arena",
-    ROOT / "output/perception",
-    ROOT / "output/visual-memory",
     ROOT / "output/busagent_grasp",
     ROOT / "BusAgent/backend/.local/mastra",
 )
@@ -119,6 +117,21 @@ def api(port, path):
         return json.load(response)
 
 
+def reset_vision():
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    request = urllib.request.Request(
+        "http://127.0.0.1:5570/reset",
+        data=b"{}",
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with opener.open(request, timeout=15) as response:
+        result = json.load(response)
+    if not result.get("ok"):
+        raise RuntimeError("Vision session reset failed")
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--operation", required=True)
@@ -144,6 +157,7 @@ def main():
         update(operation, "stopping", "正在停止当前任务和仿真…")
         supervisor("stop", SERVICES)
         update(operation, "clearing", "正在清理当前场景的历史和缓存…")
+        reset_vision()
         cleared_tables = clear_runtime_tables()
         for path in RUNTIME_PATHS:
             remove_runtime(path)
@@ -156,7 +170,7 @@ def main():
             "正在加载新场景和模型服务…",
             cleared_tables=cleared_tables,
         )
-        supervisor("start", ("vision", "graspgenx", "anyplace", "arena", "busagent"))
+        supervisor("start", ("arena", "busagent"))
         update(operation, "waiting", "等待场景和任务系统就绪…")
         deadline = time.monotonic() + 300
         while time.monotonic() < deadline:

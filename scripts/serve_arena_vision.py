@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 import time
 import re
+import shutil
 from http.server import BaseHTTPRequestHandler, HTTPServer
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'source'))
@@ -166,6 +167,22 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+            if self.path == '/reset':
+                pipeline.tracks.clear()
+                memories = memory.list()
+                for item in memories:
+                    memory.delete(item['memory_id'])
+                for path in tuple(store.iterdir()):
+                    if path.is_dir() and not path.is_symlink():
+                        shutil.rmtree(path)
+                    else:
+                        path.unlink(missing_ok=True)
+                store.mkdir(parents=True, exist_ok=True)
+                return self.respond(200, {
+                    'ok': True,
+                    'cleared_memories': len(memories),
+                    'message': 'Vision session state cleared',
+                })
             if self.path == '/verify':
                 return self.respond(200, verify_region(store, finder, body))
             if self.path == '/forget':
