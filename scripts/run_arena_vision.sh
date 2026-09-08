@@ -2,7 +2,9 @@
 set -euo pipefail
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export PYTHONUNBUFFERED=1
-export LD_LIBRARY_PATH="${ISAAC_SIM_PATH:-/root/isaacsim}/kit/python/lib:${LD_LIBRARY_PATH:-}"
+nvidia_libs="$(find -L "$project_dir/_envs/graspgenx/lib/python3.11/site-packages/nvidia" \
+  -mindepth 2 -maxdepth 2 -type d -name lib -printf '%p:' 2>/dev/null | sort)"
+export LD_LIBRARY_PATH="${ISAAC_SIM_PATH:-/root/isaacsim}/kit/python/lib:${nvidia_libs}${LD_LIBRARY_PATH:-}"
 export BUSAGENT_FLORENCE_MODEL="${BUSAGENT_FLORENCE_MODEL:-$(ls -d "$project_dir"/_models/florence-cache/snapshots/* | head -1)}"
 export BUSAGENT_YOLOE_WEIGHTS="${BUSAGENT_YOLOE_WEIGHTS:-$project_dir/_models/yoloe-26x-seg.pt}"
 cd "$project_dir"
