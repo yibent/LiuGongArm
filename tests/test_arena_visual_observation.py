@@ -272,6 +272,7 @@ def test_fast_multiple_candidates_are_resolved_by_sam3_then_tracked(tmp_path):
 
 def test_slow_confirmed_multiple_instances_still_return_no_target():
     finder, yolo, sam2, sam3 = Mock(), Mock(), Mock(), Mock()
+    finder.find.return_value = []
     found = [Detection(np.array(box), 'part', .9) for box in [[1,1,5,5], [10,10,20,20]]]
     yolo.detect.return_value = found
     sam3.locate.return_value = [(d, np.ones((32,32), bool)) for d in found]
@@ -280,7 +281,7 @@ def test_slow_confirmed_multiple_instances_still_return_no_target():
         scene_id='s', camera='scene', label='part', sequence=1)
     assert mask is None and detail['status'] == 'ambiguous' and detail['loop'] == 'slow'
     assert not pipe.tracks
-    sam3.locate.assert_called_once(); finder.find.assert_not_called(); sam2.predict.assert_not_called()
+    sam3.locate.assert_called_once(); finder.find.assert_called_once(); sam2.predict.assert_not_called()
 
 
 def test_sam3_concept_mask_hands_back_to_fast_tracking_without_florence_or_sam2(tmp_path):
@@ -301,13 +302,14 @@ def test_sam3_concept_mask_hands_back_to_fast_tracking_without_florence_or_sam2(
     sam3.locate.assert_called_once(); finder.find.assert_not_called(); sam2.predict.assert_not_called()
 
 
-def test_sam3_absence_does_not_force_florence_to_invent_a_box():
+def test_sam3_absence_uses_florence_final_fallback_but_rejects_full_frame_box():
     finder, yolo, sam2, sam3 = Mock(), Mock(), Mock(), Mock()
     yolo.detect.return_value = []; sam3.locate.return_value = []
+    finder.find.return_value = [Detection(np.array([0,0,32,32]), 'absent', .1)]
     pipe = ImagePipeline(finder, yolo, sam2, slow_localizer='sam3', localizers={'sam3': sam3})
     mask, detail = pipe.observe(np.zeros((32,32,3), np.uint8), scene_id='s', camera='scene', label='absent', sequence=1)
     assert mask is None and detail['status'] == 'not_found'
-    finder.find.assert_not_called(); sam2.predict.assert_not_called()
+    finder.find.assert_called_once(); sam2.predict.assert_not_called()
 
 
 def test_visual_reference_is_reacquired_and_lost_reference_never_reuses_old_box():

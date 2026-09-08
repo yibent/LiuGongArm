@@ -26,6 +26,18 @@ def unique_detections(found):
     return unique
 
 
+def credible_florence(found, shape):
+    """Reject the full-frame phrase-grounding fallback used for absent labels."""
+    height, width = shape[:2]
+    output = []
+    for detection in unique_detections(found):
+        x0, y0, x1, y1 = np.asarray(detection.xyxy, dtype=float)
+        area = max(0., x1-x0)*max(0., y1-y0)
+        if area < width*height*.92:
+            output.append(detection)
+    return output
+
+
 class ImagePipeline:
     def __init__(self, florence, yoloe, sam, *, memory_store=None, fast_conf=.45,
                  refresh_updates=8, max_frame_gap=90, slow_localizer='florence2', localizers=None):
@@ -215,8 +227,18 @@ class ImagePipeline:
             reason = reason or 'collection_localization_requested'
             if provider in self.localizers:
                 located = self.localizers[provider].locate(bgr, [label])
+                if not located and provider == 'sam3':
+                    fallback = credible_florence(
+                        self.florence.find(bgr, [label], beams=1), bgr.shape)
+                    located = [(item, None) for item in fallback]
+                    if located:
+                        provider, semantic = 'florence2', 'candidate'
+                    stages.append({'model': 'florence2', 'loop': loop,
+                                   'operation': 'find_all', 'reason': 'sam3_not_found',
+                                   'candidates': len(located)})
             elif provider == 'florence2':
-                located = [(item, None) for item in unique_detections(self.florence.find(bgr, [label], beams=1))]
+                located = [(item, None) for item in credible_florence(
+                    self.florence.find(bgr, [label], beams=1), bgr.shape)]
                 semantic = 'candidate'
             else:
                 return {}, {'camera': camera, 'sequence': sequence, 'label': label,
@@ -325,8 +347,21 @@ class ImagePipeline:
                         detection, mask = located[0]
                         semantic_status, origin = 'detected', provider
                         score_model = provider
+                    elif provider == 'sam3':
+                        sam3_found = found
+                        found = credible_florence(
+                            self.florence.find(bgr, [label], beams=1), bgr.shape)
+                        stages.append({'model': 'florence2', 'loop': 'slow',
+                                       'operation': 'find', 'reason': 'sam3_not_unique',
+                                       'candidates': len(found)})
+                        if len(found) == 1:
+                            detection, semantic_status, origin = found[0], 'candidate', 'florence2'
+                            score_model = 'florence2'
+                        elif not found:
+                            found = sam3_found
                 elif provider == 'florence2':
-                    found = unique_detections(self.florence.find(bgr, [label], beams=1))
+                    found = credible_florence(
+                        self.florence.find(bgr, [label], beams=1), bgr.shape)
                     if len(found) == 1:
                         detection, semantic_status, origin = found[0], 'candidate', provider
                 else:
