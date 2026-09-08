@@ -30,6 +30,7 @@ from mr_liu.arena.contracts import ManipulationRequest, model_grasp_to_tcp, plac
 from mr_liu.grasp.backends.graspgenx import ZmqGraspGenXTransport
 from mr_liu.grasp.transforms import invert_transform, transform_points
 from mr_liu.place.anyplace import AnyPlaceClient
+from mr_liu.arena.contact_relations import CONTACT_RELATIONS, contact_pose_candidates
 
 
 
@@ -225,7 +226,9 @@ class ArenaRuntime:
         return {"robot": "franka_panda", "execution": "isaaclab_arena.franka_ik",
                 "skills": ["status", "capabilities", "select_target", "perceive", "grasp", "pick_place", "place_held", "stop", "hold", "home"],
                 "grasp": {"backend": "official_pick_place_or_graspgenx", "ready": True},
-                "placement": {"backend": "official_pick_place_or_anyplace", "relations": ["on"], "place_held": True,
+                "placement": {"backend": "official_pick_place_or_anyplace", "relations": ["on", "inside", "insert", "sleeve_on_peg", "hang"], "place_held": True,
+                    "contact_relations": {"backend": "anyplace_full_pose_plus_observed_contact_motion",
+                        "required_loop": "slow_placement", "physical_verification": True},
                     "selection": ["auto", "center", "free_space"], "preferences": ["nearest", "left", "right", "near", "far", "center", "compact"],
                     "visual_references": True, "region_reference": True,
                     "cell_reference": True, "endpoint_reorientation": True,
@@ -652,6 +655,8 @@ class ArenaRuntime:
         return self._place_held(request, row, destination)
 
     def _place_held(self, request, row, destination):
+        if request.relation in CONTACT_RELATIONS:
+            return self.contact_place_held(request, row, destination)
         if request.orientation:
             return self.oriented_place_held(request, row, destination)
         # Geometry below comes from RGB-D. Simulator object pose is used only by
@@ -721,6 +726,78 @@ class ArenaRuntime:
         stability = float(np.linalg.norm(self.object_pose(row["name"])[:3, 3] - before))
         return self.task.evaluate(self.env, row["name"], self.initial_z, destination,
                                   released=True, max_lift=self.max_lift, stability=stability)
+
+    def contact_place_held(self, request, row, destination):
+        """Run AnyPlace orientation plus relation-specific measured contact motion."""
+        child = self.held_cloud()
+        tcp = self.tcp_pose()
+        object_input = np.eye(4)
+        object_input[:3, 3] = np.quantile(child, [.02, .98], axis=0).mean(0)
+        tcp_to_object = invert_transform(tcp) @ object_input
+        parent = self.cloud(destination['name'], vision_mode='slow', slow_provider='sam3')
+        cfg = self.config['anyplace']
+        self.event('placement_inference', backend='anyplace', relation=request.relation,
+                   parent_points=len(parent), child_points=len(child))
+        client = AnyPlaceClient(cfg['url'], cfg['timeout_s'])
+        answer = self.infer(client.infer, sequence=self.sequence, parent=parent.tolist(), child=child.tolist(),
+                            candidates=cfg['candidates'], iterations=cfg['iterations'],
+                            input_geometry='partial_multiview_rgbd', init_current_orientation=True)
+        rows = contact_pose_candidates(answer['transforms'], child, parent, object_input,
+                                       tcp_to_object, request.relation, tcp[:3, 3])
+        if not rows:
+            raise RuntimeError('AnyPlace returned no contact-placement candidates')
+        np.savez(self.active_directory/'anyplace_contact_candidates.npz', parent=parent, child=child,
+                 relative=np.asarray(answer['transforms']), poses=np.asarray([item['pose'] for item in rows]))
+        destination.update(requested_relation=request.relation, relation_feature=rows[0]['feature'],
+                           evaluation_points_object=row['evaluation_points_object'])
+        self.event('placement_candidates', backend='anyplace', relation=request.relation, count=len(rows),
+                   feature=rows[0]['feature'], inference_s=answer.get('inference_s'))
+        axis = np.asarray(rows[0]['feature']['axis'])
+        current = self.tcp_pose()[:3, 3]
+
+        def approach(item):
+            pose = item['pose'].copy()
+            if request.relation in {'insert', 'sleeve_on_peg'}:
+                pose[2, 3] += .12
+            else:
+                sign = 1. if np.dot(current-pose[:3, 3], axis) >= 0 else -1.
+                pose[:3, 3] += sign * .10 * axis
+                pose[2, 3] += .018
+            return pose
+
+        selected = self.try_precontact_candidates(rows, approach, phase='contact_preapproach', holding=True)
+        goal = selected['pose']
+        destination['relation_feature'] = selected['feature']
+        self.event('selected_placement', pose_world=goal.tolist(), backend='anyplace',
+                   relation=request.relation, proposal_index=selected['proposal_index'])
+        self.move(goal, label='contact_align')
+        settle = goal.copy()
+        if request.relation in {'insert', 'sleeve_on_peg'}:
+            settle[2, 3] -= .006
+        else:
+            settle[2, 3] -= .010
+        self.move(settle, label='contact_settle', until_contact=lambda:
+                  self.task.support_contact(self.env, row['name'], destination))
+        if not self.holding_status()['verified']:
+            raise RuntimeError('接触运动中持物发生滑移，未执行释放。')
+        self.event('relation_contact', relation=request.relation,
+                   force_world=self.task.support_force(self.env, row['name'], destination).tolist())
+        self.event('release'); self.gripper = 1.
+        for _ in range(55): self.tick()
+        self.clear_hold()
+        retreat = self.tcp_pose()
+        if request.relation in {'insert', 'sleeve_on_peg'}:
+            retreat[2, 3] += .14
+        else:
+            sign = 1. if np.dot(current-goal[:3, 3], axis) >= 0 else -1.
+            retreat[:3, 3] += sign * .12 * axis
+            retreat[2, 3] += .035
+        self.move(retreat, label='contact_retreat')
+        before = self.object_pose(row['name'])[:3, 3]
+        for _ in range(80): self.tick()
+        stability = float(np.linalg.norm(self.object_pose(row['name'])[:3, 3]-before))
+        return self.task.evaluate_contact_relation(self.env, row['name'], self.initial_z, destination,
+            released=True, max_lift=self.max_lift, stability=stability)
 
     def recover_fast(self, request):
         if self.target_name is None:

@@ -87,7 +87,7 @@ def fast_pick_place(runtime, request):
         grasp_orientation, clearance = top_grasp_orientation(pick,scene,runtime.tcp_pose()[:3,:3])
         runtime.event('grasp_clearance_selected', **clearance)
     place = pick.copy()
-    if destination and not request.orientation:
+    if destination and not request.orientation and request.relation in {'on', 'inside'}:
         support = runtime.placement_support(request, destination, points, runtime.tcp_pose()[:3, 3])
         place[:2] = support[:2]
         place[2] = support[2] + pick[2]-low[2] + .003
@@ -129,6 +129,8 @@ def fast_pick_place(runtime, request):
                 if destination is None:
                     return runtime.task.evaluate(runtime.env, row["name"], runtime.initial_z, None,
                         released=False, max_lift=runtime.max_lift, stability=0.)
+                if request.relation in {'insert', 'sleeve_on_peg', 'hang'}:
+                    return runtime.contact_place_held(request, row, destination)
                 if request.orientation:
                     return runtime.oriented_place_held(request, row, destination)
             if phase == 7: verify_release_pose(runtime,place,place_orientation)
@@ -151,6 +153,8 @@ def fast_place_held(runtime, request, row, destination):
 Warm the controller's first phases with detached adapters, without stepping
 the robot. Then use its original transport/release/retreat interpolation.
 """
+    if request.relation in {'insert', 'sleeve_on_peg', 'hang'}:
+        return runtime.contact_place_held(request, row, destination)
     if request.orientation:
         return runtime.oriented_place_held(request, row, destination)
     child = runtime.held_cloud()

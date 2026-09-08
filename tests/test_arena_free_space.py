@@ -44,5 +44,14 @@ class FreeSupportTests(unittest.TestCase):
         self.assertGreater(large['footprint_radius_m'], small['footprint_radius_m'])
         self.assertLess(target[0] + large['footprint_size_m'][0]/2, .304)
 
+    def test_compact_packing_preserves_space_instead_of_following_the_tcp(self):
+        table = plane()
+        nearest, _ = choose_free_support(table, table, self.child, [0, 0, .3])
+        compact, details = choose_free_support(
+            table, table, self.child, [0, 0, .3], preference='compact')
+        self.assertLess(np.linalg.norm(nearest[:2]), .04)
+        self.assertGreater(np.linalg.norm(compact[:2]), .20)
+        self.assertEqual(details['preference'], 'compact')
+
 
 if __name__ == '__main__': unittest.main()

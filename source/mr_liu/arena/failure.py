@@ -28,6 +28,11 @@ def failure_feedback(error, phase, holding, evaluation=None):
         if holding.get('verified'): recovery = ['preserve_grasp','place_held']+recovery
         return {'code':code,'phase':phase,'holding_verified':bool(holding.get('verified')),
             'suggested_recovery':recovery,'message':message,'measured_postcondition':check}
+    relation = (evaluation or {}).get('postconditions',{}).get('requested_relation',{})
+    if relation and not relation.get('satisfied'):
+        return {'code':'NOT_SEATED','phase':phase,'holding_verified':bool(holding.get('verified')),
+            'suggested_recovery':['inspect_contact_feature','replan_contact_approach'],
+            'message':message,'measured_postcondition':relation}
     categories = [
         ('CAPABILITY_MISSING', ('requires a reorientation skill', 'contact skills that are not yet available'), ['retain_unfulfilled_condition', 'select_available_skill_or_report_gap']),
         ('REFERENCE_STALE', ('视觉引用', 'reference'), ['observe', 'select_current_reference']),
