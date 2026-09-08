@@ -1,8 +1,8 @@
-"""Execute one authenticated scene transition without exposing a network API.
+"""Execute one validated scene transition without exposing a privileged network API.
 
-BusAgent validates the administrator token and writes the operation journal
-before spawning this worker. The worker accepts only a catalog scene id and
-clears only data owned by the current simulation session.
+BusAgent validates the request and writes the operation journal before spawning
+this worker. The worker accepts only a catalog scene id and clears only data
+owned by the current simulation session.
 """
 import argparse
 import json
@@ -139,7 +139,7 @@ def main():
     }
     try:
         config = scene_config(args.scene)
-        # Leave enough time for the authenticated HTTP response to reach the UI.
+        # Leave enough time for the HTTP response to reach the UI.
         time.sleep(1.5)
         update(operation, "stopping", "正在停止当前任务和仿真…")
         supervisor("stop", SERVICES)
