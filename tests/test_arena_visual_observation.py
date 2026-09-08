@@ -1,7 +1,7 @@
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import ANY, Mock
 import numpy as np
 import cv2
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'source'))
@@ -82,6 +82,20 @@ def test_scene_queries_require_current_image_detections():
     assert result['regions'][0]['description'] == 'toy'
     yolo.detect.assert_called_once()
     finder.find.assert_not_called()
+    sam.predict.assert_not_called()
+
+
+def test_scene_caption_is_one_local_florence_request():
+    finder = Mock()
+    finder.describe.return_value = {'<MORE_DETAILED_CAPTION>': 'A red block beside a tray.'}
+    yolo, sam = Mock(), Mock()
+    yolo.detect.return_value = []
+    result = ImagePipeline(finder, yolo, sam).describe(
+        np.zeros((8, 8, 3), np.uint8), camera='scene', sequence=21,
+        scene_id='s', queries=['block'], mode='caption')
+    assert result['caption'] == 'A red block beside a tray.'
+    assert result['loop'] == 'slow'
+    finder.describe.assert_called_once_with(ANY, detail='more', beams=1)
     sam.predict.assert_not_called()
 
 

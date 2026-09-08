@@ -113,7 +113,14 @@ class ImagePipeline:
             memory_id = self._remember(bgr, detection, camera, 'detected', 'yoloe_text', scene_id)
             objects.append({'label': detection.label, 'box': detection.xyxy.tolist(),
                             'score': float(detection.score), 'semantic_status': 'detected', 'memory_id': memory_id})
-        if mode == 'describe':
+        caption = ''
+        if mode == 'caption':
+            parsed = self.florence.describe(bgr, detail='more', beams=1)
+            block = parsed.get('<MORE_DETAILED_CAPTION>', parsed)
+            caption = block if isinstance(block, str) else str(block.get('caption', '')) if isinstance(block, dict) else ''
+            stages.append({'model': 'florence2', 'loop': 'slow', 'operation': 'scene_caption',
+                           'reason': 'scene_caption_requested'})
+        elif mode == 'describe':
             parsed = self.florence.describe(bgr, detail='regions', beams=1)
             block = parsed.get('<DENSE_REGION_CAPTION>', parsed)
             regions = [{'description': label, 'box': box} for label, box in
@@ -121,10 +128,12 @@ class ImagePipeline:
             stages.append({'model': 'florence2', 'loop': 'slow', 'operation': 'dense_region_caption',
                            'reason': 'scene_description_requested'})
         missing = [label for label in queries if label not in {d.label for d in found}]
-        return {'camera': camera, 'sequence': sequence, 'status': 'described' if regions else 'observed',
-                'objects': objects, 'regions': regions, 'exhaustive_inventory': False,
+        return {'camera': camera, 'sequence': sequence,
+                'status': 'described' if regions or caption else 'observed',
+                'objects': objects, 'regions': regions, 'caption': caption,
+                'exhaustive_inventory': False,
                 'unconfirmed_queries': [{'label': label, 'reason': reason} for label in missing],
-                'loop': 'slow' if mode == 'describe' else 'fast', 'stages': stages,
+                'loop': 'slow' if mode in {'describe', 'caption'} else 'fast', 'stages': stages,
                 'elapsed_s': time.perf_counter()-started}
 
     def from_reference(self, rgb, reference_rgb, reference, *, camera, sequence, scene_id):
