@@ -87,7 +87,7 @@ def test_scene_queries_require_current_image_detections():
 
 def test_scene_caption_is_one_local_florence_request():
     finder = Mock()
-    finder.describe.return_value = {'<MORE_DETAILED_CAPTION>': 'A red block beside a tray.'}
+    finder.describe.return_value = {'<DETAILED_CAPTION>': 'A red block beside a tray.'}
     yolo, sam = Mock(), Mock()
     yolo.detect.return_value = []
     result = ImagePipeline(finder, yolo, sam).describe(
@@ -95,8 +95,21 @@ def test_scene_caption_is_one_local_florence_request():
         scene_id='s', queries=['block'], mode='caption')
     assert result['caption'] == 'A red block beside a tray.'
     assert result['loop'] == 'slow'
-    finder.describe.assert_called_once_with(ANY, detail='more', beams=1)
+    finder.describe.assert_called_once_with(ANY, detail='detailed', beams=1)
     sam.predict.assert_not_called()
+
+
+def test_scene_auto_uses_one_low_threshold_yolo_batch_without_florence():
+    finder, yolo, sam = Mock(), Mock(), Mock()
+    yolo.detect.return_value = [Detection(np.array([1, 2, 4, 5]), 'cylinder', .36)]
+    result = ImagePipeline(finder, yolo, sam).describe(
+        np.zeros((8, 8, 3), np.uint8), camera='scene', sequence=22,
+        scene_id='s', queries=['block', 'cylinder'], mode='auto')
+    assert [item['label'] for item in result['objects']] == ['cylinder']
+    assert result['loop'] == 'fast'
+    assert result['stages'][0]['accept_conf'] == .3
+    finder.describe.assert_not_called()
+    yolo.detect.assert_called_once()
 
 
 def test_capture_scene_and_unknown_target_without_catalog_binding(tmp_path):

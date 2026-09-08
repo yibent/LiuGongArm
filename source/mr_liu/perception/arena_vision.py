@@ -37,14 +37,16 @@ class ImagePipeline:
         self.localizers = localizers or {}
         self.tracks = OrderedDict()
 
-    def _text(self, bgr, labels, stages):
+    def _text(self, bgr, labels, stages, accept_conf=None):
         started = time.perf_counter()
         try:
+            threshold = self.fast_conf if accept_conf is None else float(accept_conf)
             self.yoloe.set_text_prompt(list(labels))
             found = unique_detections(self.yoloe.detect(bgr, conf=min(.1, self.fast_conf)))
-            accepted = [d for d in found if d.score >= self.fast_conf]
+            accepted = [d for d in found if d.score >= threshold]
             stages.append({'model': 'yoloe', 'loop': 'fast', 'operation': 'text_detect',
                            'candidates': len(found), 'accepted': len(accepted),
+                           'accept_conf': threshold,
                            'accepted_boxes': [{'box': d.xyxy.tolist(), 'label': d.label,
                                                'score': float(d.score)} for d in accepted],
                            'best_score': max((float(d.score) for d in found), default=0.),
@@ -107,16 +109,19 @@ class ImagePipeline:
         bgr = np.ascontiguousarray(rgb[:, :, ::-1])
         stages, regions = [], []
         # One batched inference, not a Florence call per configured object.
-        found, reason = self._text(bgr, tuple(dict.fromkeys(queries)), stages) if queries else ([], 'no_vocabulary')
+        threshold = min(self.fast_conf, .3) if mode == 'auto' else self.fast_conf
+        found, reason = self._text(
+            bgr, tuple(dict.fromkeys(queries)), stages, threshold
+        ) if queries else ([], 'no_vocabulary')
         objects = []
         for detection in found:
             memory_id = self._remember(bgr, detection, camera, 'detected', 'yoloe_text', scene_id)
             objects.append({'label': detection.label, 'box': detection.xyxy.tolist(),
                             'score': float(detection.score), 'semantic_status': 'detected', 'memory_id': memory_id})
         caption = ''
-        if mode == 'caption':
-            parsed = self.florence.describe(bgr, detail='more', beams=1)
-            block = parsed.get('<MORE_DETAILED_CAPTION>', parsed)
+        if mode == 'caption' or (mode == 'auto' and not objects):
+            parsed = self.florence.describe(bgr, detail='detailed', beams=1)
+            block = parsed.get('<DETAILED_CAPTION>', parsed)
             caption = block if isinstance(block, str) else str(block.get('caption', '')) if isinstance(block, dict) else ''
             stages.append({'model': 'florence2', 'loop': 'slow', 'operation': 'scene_caption',
                            'reason': 'scene_caption_requested'})
@@ -133,7 +138,8 @@ class ImagePipeline:
                 'objects': objects, 'regions': regions, 'caption': caption,
                 'exhaustive_inventory': False,
                 'unconfirmed_queries': [{'label': label, 'reason': reason} for label in missing],
-                'loop': 'slow' if mode in {'describe', 'caption'} else 'fast', 'stages': stages,
+                'loop': 'slow' if mode in {'describe', 'caption'} or caption else 'fast',
+                'stages': stages,
                 'elapsed_s': time.perf_counter()-started}
 
     def from_reference(self, rgb, reference_rgb, reference, *, camera, sequence, scene_id):
