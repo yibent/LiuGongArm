@@ -120,6 +120,30 @@ class ImagePipeline:
                             'score': float(detection.score), 'semantic_status': 'detected', 'memory_id': memory_id})
         caption = ''
         informative = [item for item in objects if item['label'].lower() not in {'table'}]
+        used_slow = False
+        if mode == 'auto' and not informative and 'sam3' in self.localizers:
+            located = self.localizers['sam3'].locate(bgr, tuple(dict.fromkeys(queries)))
+            for detection in unique_detections([item for item, _ in located]):
+                if any(
+                    item['label'] == detection.label and
+                    overlap(np.asarray(item['box']), detection.xyxy) > .5
+                    for item in objects
+                ):
+                    continue
+                memory_id = self._remember(
+                    bgr, detection, camera, 'detected', 'sam3', scene_id)
+                objects.append({
+                    'label': detection.label, 'box': detection.xyxy.tolist(),
+                    'score': float(detection.score), 'semantic_status': 'detected',
+                    'memory_id': memory_id, 'origin': 'sam3',
+                })
+            informative = [item for item in objects if item['label'].lower() not in {'table'}]
+            used_slow = True
+            stages.append({
+                'model': 'sam3', 'loop': 'slow', 'operation': 'scene_concept_detection',
+                'reason': 'fast_inventory_empty', 'candidates': len(located),
+                'accepted': len(informative),
+            })
         if mode == 'caption' or (mode == 'auto' and not informative):
             parsed = self.florence.describe(bgr, detail='detailed', beams=1)
             block = parsed.get('<DETAILED_CAPTION>', parsed)
@@ -139,7 +163,7 @@ class ImagePipeline:
                 'objects': objects, 'regions': regions, 'caption': caption,
                 'exhaustive_inventory': False,
                 'unconfirmed_queries': [{'label': label, 'reason': reason} for label in missing],
-                'loop': 'slow' if mode in {'describe', 'caption'} or caption else 'fast',
+                'loop': 'slow' if mode in {'describe', 'caption'} or caption or used_slow else 'fast',
                 'stages': stages,
                 'elapsed_s': time.perf_counter()-started}
 

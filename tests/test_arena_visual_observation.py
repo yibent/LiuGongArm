@@ -124,6 +124,25 @@ def test_scene_auto_does_not_treat_the_table_alone_as_an_object_inventory():
     finder.describe.assert_called_once()
 
 
+def test_scene_auto_uses_one_batched_sam3_fallback_before_florence():
+    finder, yolo, sam2, sam3 = Mock(), Mock(), Mock(), Mock()
+    yolo.detect.return_value = []
+    mask = np.ones((8, 8), bool)
+    sam3.locate.return_value = [
+        (Detection(np.array([1, 1, 4, 6]), 'washer', .83), mask),
+        (Detection(np.array([5, 1, 7, 7]), 'cylinder', .79), mask),
+    ]
+    result = ImagePipeline(
+        finder, yolo, sam2, localizers={'sam3': sam3}, slow_localizer='sam3'
+    ).describe(
+        np.zeros((8, 8, 3), np.uint8), camera='scene', sequence=24,
+        scene_id='s', queries=['washer', 'cylinder', 'table'], mode='auto')
+    assert {item['label'] for item in result['objects']} == {'washer', 'cylinder'}
+    assert result['loop'] == 'slow'
+    sam3.locate.assert_called_once_with(ANY, ('washer', 'cylinder', 'table'))
+    finder.describe.assert_not_called()
+
+
 def test_capture_scene_and_unknown_target_without_catalog_binding(tmp_path):
     data = SimpleNamespace(output={'rgb': np.zeros((1, 8, 8, 4), np.uint8),
                                   'distance_to_image_plane': np.ones((1, 8, 8, 1))},
