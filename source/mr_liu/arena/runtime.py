@@ -53,7 +53,9 @@ class ArenaRuntime:
         self.observed_entities = {}
         self.prepared_clouds = {}
         self.body_entities = {name: {'name': name, 'prim_path': body.cfg.prim_path.replace(
-            self.env.scene.env_regex_ns, self.env.scene.env_prim_paths[0])}
+            self.env.scene.env_regex_ns, self.env.scene.env_prim_paths[0]),
+            'manipulable': not bool(getattr(getattr(body.cfg.spawn, 'rigid_props', None),
+                                            'kinematic_enabled', False))}
             for name, body in self.env.scene.rigid_objects.items()}
         self.bus_context = {}
         self.perception = PerceptionBridge(Path(__file__).resolve().parents[3]/'output/perception', config['vision']['service_url'])
@@ -387,6 +389,8 @@ class ArenaRuntime:
                         witness, votes = self.perception.witness(result, self.body_entities)
                         if manipulation_target and witness == 'floor':
                             raise InstanceConflict('可抓目标错误地关联到地面，需要换慢环重新定位。')
+                        if manipulation_target and not self.body_entities[witness].get('manipulable', True):
+                            raise ValueError('观测目标是固定工装，不可作为抓取对象；请跳过或选择可运动物体。')
                         if name in self.observed_entities and witness != name:
                             raise InstanceConflict('观测切换到了另一实例，需要重新识别。')
                         result['physical_witness'] = {'instance_id': witness, 'votes': votes}
