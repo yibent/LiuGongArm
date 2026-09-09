@@ -40,6 +40,8 @@ def failure_feedback(error, phase, holding, evaluation=None):
         ('TARGET_NOT_FOUND', ('未找到', 'No observed target depth'), ['change_view_or_detector']),
         ('NO_FREE_SPACE', ('空位', '格位', '料箱格网', 'fitting the requested support'), ['inspect_destination', 'change_region_or_orientation', 'rearrange_obstacles_if_goal_allows']),
         ('NO_IK', ('Arena IK did not reach',), ['try_other_pose']),
+        ('NOT_SEATED', ('接触候选切换前持物发生滑移', '接触运动中持物发生滑移'),
+         ['reobserve_payload','replan_contact_approach']),
         ('EMPTY_GRASP', ('did not lift', 'lift verification'), ['reobserve_then_regrasp']),
         ('NOT_HOLDING', ('没有确认', '夹持状态已改变'), ['reobserve_before_regrasp']),
         ('NO_CANDIDATE', ('no grasp candidates', 'no placement candidates'), ['change_view_or_model']),

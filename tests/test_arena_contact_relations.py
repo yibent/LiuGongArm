@@ -31,3 +31,13 @@ def test_insert_snaps_anyplace_orientation_to_observed_socket_centre_and_floor()
     centre = np.quantile(placed, [.02, .98], axis=0).mean(0)
     assert np.linalg.norm(centre[:2]) < .006
     assert abs(np.quantile(placed[:, 2], .02)-rows[0]['feature']['base_z']-.002) < .002
+
+
+def test_sleeve_stops_at_partial_engagement_to_keep_fingers_above_fixture():
+    parent = np.r_[plane(), cylinder(.04, 0)]
+    child = cylinder(.10, -.10, radius=.02, low=.10, high=.14)
+    rows = contact_pose_candidates([np.eye(4)], child, parent, np.eye(4), np.eye(4),
+                                   'sleeve_on_peg', [.04, 0, .2])
+    bottom = np.quantile(rows[0]['placed'][:, 2], .02)
+    assert abs(bottom - (rows[0]['feature']['top_z']-.018)) < .002
+    assert bottom > rows[0]['feature']['base_z'] + .025

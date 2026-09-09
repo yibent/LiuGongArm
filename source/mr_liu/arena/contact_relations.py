@@ -101,8 +101,14 @@ def contact_pose_candidates(transforms, child, parent, object_input, tcp_to_obje
         if relation in {"insert", "sleeve_on_peg"}:
             payload_axis = vectors[:, np.argmax(values)]
             orientation_cost = 1. - abs(float(payload_axis @ feature_axis))
+            # A sleeve must be engaged while the fingers still clear the
+            # fixture.  Releasing after partial insertion lets the observed peg
+            # guide gravity settling; commanding the payload all the way to the
+            # base would require the Panda fingers to pass through the plate.
+            target_bottom = (feature["top_z"] - .018 if relation == "sleeve_on_peg"
+                             else feature["base_z"] + .002)
             shift = np.r_[target[:2] - _bounds_centre(placed)[:2],
-                          feature["base_z"] + .002 - np.quantile(placed[:, 2], .02)]
+                          target_bottom - np.quantile(placed[:, 2], .02)]
         else:
             # A ring/handle's thinnest PCA axis is normal to its opening plane;
             # align it with the hook so the contact motion passes through it.
@@ -114,5 +120,6 @@ def contact_pose_candidates(transforms, child, parent, object_input, tcp_to_obje
         pose = placement_to_tcp(relative, object_input, tcp_to_object)
         rows.append({"pose": pose, "placed": snapped, "feature": feature,
                      "score": 3. * orientation_cost + .01 * index,
-                     "proposal_index": index})
+                     "proposal_index": index,
+                     "engagement_depth_m": (.018 if relation == "sleeve_on_peg" else None)})
     return sorted(rows, key=lambda row: row["score"])
