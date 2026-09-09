@@ -493,8 +493,13 @@ class GeneralGraspNode:
                 if isinstance(after_close_result, FineGraspResult):
                     return self._with_elapsed(after_close_result, started, metrics)
                 after_close = after_close_result
+                closed_state = self.gripper.state()
+                self._emit(FineGraspPhase.CLOSE, event="gripper_closed",
+                    width_m=closed_state.width_m, stalled=closed_state.stalled,
+                    effort_n=closed_state.effort_n,
+                    tool_world_matrix=self.motion.robot_state().T_base_ee.tolist())
                 close_check = self.verifier.verify_closed(
-                    before_close, after_close, self.gripper.state()
+                    before_close, after_close, closed_state
                 )
                 metrics["close_confidence"] = close_check.confidence
                 if not close_check.success:
@@ -526,6 +531,10 @@ class GeneralGraspNode:
                         lift_pose, speed_scale=min(policy.motion_speed_scale, 0.4)
                     )
                 metrics["lift_motion_completed"] = int(lift_motion_completed)
+                lifted_state = self.gripper.state()
+                self._emit(FineGraspPhase.LIFT, event="gripper_after_lift",
+                    width_m=lifted_state.width_m, stalled=lifted_state.stalled,
+                    effort_n=lifted_state.effort_n)
                 current_state = self.motion.robot_state()
                 expected_center_after_lift = None
                 if before_close_center_base is not None:

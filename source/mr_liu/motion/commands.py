@@ -33,6 +33,8 @@ class MotionCommands:
         self.speed = 0.5  # rad/s
         self.holding = False
         self.hold_target = None
+        # The closed drive setpoint (not the measured, object-blocked angle).
+        self.gripper_hold_target = None
         cfg = config or {}
         self.speed = np.deg2rad(float(cfg.get("speed_deg_s", 28.65)))
         self.acceleration = np.deg2rad(float(cfg.get("acceleration_deg_s2", 60)))
@@ -81,6 +83,9 @@ class MotionCommands:
             return copy.deepcopy({**self.snapshot, "active_command_id": self.external_owner or self.active or self.pending,
                                   "mode": "moving" if self.active or self.external_owner else "hold" if self.holding else "idle",
                                   "can_resume": self.saved is not None, "speed_deg_s": np.rad2deg(self.speed),
+                                  "gripper_hold_active": self.gripper_hold_target is not None,
+                                  "gripper_hold_target_deg": (None if self.gripper_hold_target is None
+                                                              else float(np.rad2deg(self.gripper_hold_target))),
                                   "drives": getattr(self, "drive_info", {}),
                                   "last_command": next(reversed(self.records.values()), None)})
 
@@ -121,6 +126,11 @@ class MotionCommands:
             # an old HOLD pose. Interrupt remains pending for its guard to see.
             if self.external_owner:
                 return True
+            write_positions = apply
+            def apply(target):
+                if self.gripper_hold_target is not None:
+                    target = {**target, "gripper": self.gripper_hold_target}
+                write_positions(target)
             if apply_velocity is not None and (self.holding or self.pending or self.interruption):
                 apply_velocity({k: 0. for k in joints})
             if self.interruption:
@@ -150,14 +160,24 @@ class MotionCommands:
                             lo, hi = self.kinematics.limits[name]
                             if not np.isfinite(value) or not lo <= value <= hi:
                                 raise ValueError(f"JOINT_LIMIT：{name} 目标超出 [{np.rad2deg(lo):.1f}, {np.rad2deg(hi):.1f}] 度；未执行")
-                        distance = max(abs(goal[k]-v) for k, v in joints.items())
+                        explicit_jaw = (record["skill"] == "gripper" or
+                                        (record["skill"] == "move_joint" and record["params"].get("joint") == "gripper"))
+                        if explicit_jaw:
+                            self.gripper_hold_target = None
+                        if self.gripper_hold_target is not None:
+                            goal["gripper"] = self.gripper_hold_target
+                        checked_joints = [k for k in joints if k != "gripper" or self.gripper_hold_target is None]
+                        distance = max(abs(goal[k]-joints[k]) for k in checked_joints)
                         # Quintic smoothstep peak derivatives: 1.875 and 10/sqrt(3).
                         speed = self.gripper_speed if record["skill"] == "gripper" else self.speed
                         acceleration = self.gripper_acceleration if record["skill"] == "gripper" else self.acceleration
                         duration = max(self.min_duration, 1.875*distance/speed,
                                        np.sqrt((10/np.sqrt(3))*distance/acceleration))
+                        start = joints.copy()
+                        if self.gripper_hold_target is not None:
+                            start["gripper"] = self.gripper_hold_target
                         record.update(state="started", message="轨迹已开始，等待实测到位", goal=goal,
-                                      start=joints.copy(), started_at=now, started_sim_time=sim_time,
+                                      start=start, checked_joints=checked_joints, started_at=now, started_sim_time=sim_time,
                                       duration=duration, settled=0, settled_sim_s=0.)
                         self.active = cid
                         self.saved = None
@@ -177,14 +197,15 @@ class MotionCommands:
                     apply_velocity({k: (record["goal"][k]-v)*derivative
                                     for k, v in record["start"].items()})
                 apply(target)
-                error = max(abs(joints[k]-v) for k, v in record["goal"].items())
+                checked_joints = record["checked_joints"]
+                error = max(abs(joints[k]-record["goal"][k]) for k in checked_joints)
                 record["max_joint_error_deg"] = float(np.rad2deg(error))
                 # TGS reports end-of-substep velocities, which can be nonzero at
                 # a stationary frame-level equilibrium under gravity. Preserve
                 # them in telemetry, but allow measured per-physics-step deltas
                 # (not command velocity) for frame-level settling.
                 settle_velocities = frame_velocities if self.settle_velocity_source == "position_delta" else velocities
-                speed = max(abs(v) for v in settle_velocities.values())
+                speed = max(abs(settle_velocities[k]) for k in checked_joints)
                 record["settle_velocity_source"] = self.settle_velocity_source
                 record["max_joint_speed_deg_s"] = float(np.rad2deg(speed)) if np.isfinite(speed) else None
                 stable = u == 1 and error < self.position_tolerance and speed < self.velocity_tolerance

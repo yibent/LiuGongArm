@@ -131,6 +131,45 @@ class MotionTests(unittest.TestCase):
             self.assertEqual(self.complete(cid)['state'], 'completed')
             self.assertAlmostEqual(self.joints['gripper'],1.4*opening)
 
+    def test_payload_hold_survives_idle_stop_and_arm_motion_until_explicit_open(self):
+        self.joints['gripper'] = .52  # object prevents reaching the close setpoint
+        self.motion.holding = True
+        self.motion.hold_target = {**self.joints, 'gripper': -.05}
+        self.motion.gripper_hold_target = -.05
+        writes = []
+        def drive(q):
+            writes.append(q.copy())
+            self.joints.update(q)
+            if self.motion.gripper_hold_target is not None:
+                self.joints['gripper'] = .52
+        def tick():
+            self.now += .1
+            self.motion.tick(self.joints.copy(), self.base, drive)
+        for _ in range(100):
+            tick()
+        self.motion.submit('stop', {}, 'stop-payload')
+        tick()
+        self.assertEqual(self.motion.result('stop-payload')['state'], 'completed')
+        for skill, params in [('move_joint', {'joint': 'shoulder_pan', 'degrees': 10}), ('home', {})]:
+            self.motion.submit(skill, params, skill)
+            for _ in range(300):
+                tick()
+                if self.motion.result(skill)['state'] == 'completed':
+                    break
+            self.assertEqual(self.motion.result(skill)['state'], 'completed')
+        self.assertTrue(all(q['gripper'] == -.05 for q in writes))
+        self.motion.submit('gripper', {'opening': float('nan')}, 'invalid-open')
+        tick()
+        self.assertEqual(self.motion.gripper_hold_target, -.05)
+        self.motion.submit('gripper', {'opening': 1.}, 'explicit-open')
+        for _ in range(300):
+            tick()
+            if self.motion.result('explicit-open')['state'] == 'completed':
+                break
+        self.assertEqual(self.motion.result('explicit-open')['state'], 'completed')
+        self.assertIsNone(self.motion.gripper_hold_target)
+        self.assertAlmostEqual(self.joints['gripper'], 1.4)
+
     def test_wall_clock_stall_does_not_skip_simulation_trajectory(self):
         self.motion.submit('move_joint', {'joint': 'shoulder_pan', 'degrees': 30}, 'slow')
         targets = []
