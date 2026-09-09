@@ -328,13 +328,31 @@ class ArenaRuntime:
                 result = self.vision_worker.poll()
                 expected = self.current or (self.tracking['command_id'] if self.tracking else None)
                 if result and result.get('command_id') == expected:
-                    self.visual_result = result
+                    # Once the grasp is physically verified, scene-camera
+                    # detections of the held label add no evidence. The object
+                    # is often hidden by the hand at this point, so a delayed
+                    # transient result can otherwise relabel the Panda base as
+                    # the held ring and draw a misleading overlay.
+                    held_target_result = (
+                        result.get('transient') and self.held and
+                        self.target_name == self.held
+                    )
+                    if not held_target_result:
+                        self.visual_result = result
                     if self.tracking and not self.current:
                         # One slow recovery per loss episode; keep looking with the fast detector afterwards.
                         self.tracking['lost'] = not result.get('ok', False)
             except Exception as error:
                 self.visual_result = {'ok': False, 'error': str(error), 'views': []}
-            track_label = self.target_name if self.current else (self.tracking['label'] if self.tracking else None)
+            physically_held_target = bool(
+                self.current and self.held and self.target_name == self.held and
+                self.holding_status().get('verified')
+            )
+            track_label = (
+                None if physically_held_target else
+                self.target_name if self.current else
+                self.tracking['label'] if self.tracking else None
+            )
             if (track_label and not self.observing and self.vision_worker.available
                     and self.sequence-self.last_track >= self.config['vision']['track_every_steps']):
                 self.last_track = self.sequence
@@ -395,11 +413,16 @@ class ArenaRuntime:
                             raise InstanceConflict('观测切换到了另一实例，需要重新识别。')
                         result['physical_witness'] = {'instance_id': witness, 'votes': votes}
                     except InstanceConflict as error:
-                        if recovery or vision_options.get('vision_mode') in {'slow', 'fast'}:
+                        if recovery or vision_options.get('vision_mode') == 'fast':
                             raise
                         self.event('visual_relocalization', reason=str(error),
-                                   previous_observation_ref=result['request_id'], provider='sam3')
-                        vision_options.update(vision_mode='slow', slow_provider='sam3')
+                                   previous_observation_ref=result['request_id'], provider='sam3',
+                                   cameras=['scene_camera'])
+                        # A second open-vocabulary view can lock onto a similar
+                        # robot/base silhouette. Keep the verified primary view
+                        # and use SAM3 there for the one allowed semantic retry.
+                        vision_options.update(vision_mode='slow', slow_provider='sam3',
+                                              cameras=['scene_camera'])
                         continue
                 points, views = self.perception.cloud(result)
                 self.perception.remember_target(result, points, packet.get('visual_ref'))
