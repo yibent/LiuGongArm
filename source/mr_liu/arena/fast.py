@@ -44,13 +44,15 @@ PHASES = ["pregrasp", "approach", "settle_grasp", "close_gripper", "lift",
           "transport", "place_approach", "release", "retreat", "finish"]
 
 
-def verify_release_pose(runtime, position, orientation_wxyz):
+def verify_release_pose(runtime, position, orientation_wxyz, row=None, destination=None):
     """The SDK advances on time; release must also wait for actual Arena IK arrival."""
     if not runtime.holding_status()['verified']:
         raise FastPathFailure('夹持状态已改变，释放前未确认持物。')
     pose=np.eye(4);pose[:3,3]=position
     pose[:3,:3]=Rotation.from_quat(np.roll(orientation_wxyz,-1)).as_matrix()
-    runtime.move(pose,label='place_approach')
+    contact = (lambda: runtime.task.support_contact(
+        runtime.env, row['name'], destination)) if row is not None and destination is not None else None
+    runtime.move(pose,label='place_approach', until_contact=contact)
 
 
 def fast_pick_place(runtime, request):
@@ -133,7 +135,7 @@ def fast_pick_place(runtime, request):
                     return runtime.contact_place_held(request, row, destination)
                 if request.orientation:
                     return runtime.oriented_place_held(request, row, destination)
-            if phase == 7: verify_release_pose(runtime,place,place_orientation)
+            if phase == 7: verify_release_pose(runtime,place,place_orientation,row,destination)
             runtime.event(PHASES[phase], backend="official_pick_place")
             if phase == 3: runtime.held = row["name"]
             if phase == 8: runtime.clear_hold()
@@ -184,7 +186,7 @@ the robot. Then use its original transport/release/retreat interpolation.
     while not controller.is_done():
         phase = controller.get_current_event()
         if phase != previous:
-            if phase == 7: verify_release_pose(runtime,place,orientation)
+            if phase == 7: verify_release_pose(runtime,place,orientation,row,destination)
             runtime.event(PHASES[phase], backend='official_pick_place')
             if phase == 8: runtime.clear_hold()
             previous = phase
