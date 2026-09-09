@@ -1,0 +1,60 @@
+{
+  "date": "2026-09-09",
+  "scene": "machining",
+  "request": "帮我收拾桌子。",
+  "goal_id": "goal_evt_f5d5564c-89bb-48b9-b8af-80684b6090f4",
+  "initial_planning_model_calls": 2,
+  "total_model_calls_after_recovery_and_final_review": 8,
+  "final_state": "blocked_partial_completion",
+  "completed_manipulations": [
+    {
+      "title": "将橙色齿轮放入蓝色方形托盘",
+      "controller_elapsed_s": 24.668750286102295,
+      "physical_success": true,
+      "released": true,
+      "support_contact": true,
+      "selected_position_xy_error_m": 0.0007917498040391345
+    },
+    {
+      "title": "将青色圆环放入蓝色方形托盘",
+      "controller_elapsed_s": 24.64516544342041,
+      "physical_success": true,
+      "released": true,
+      "support_contact": true,
+      "selected_position_xy_error_m": 0.00010472129640358247
+    },
+    {
+      "title": "将灰色圆柱放入银色圆形托盘",
+      "controller_elapsed_s": 24.024266481399536,
+      "physical_success": true,
+      "released": true,
+      "support_contact": true,
+      "selected_position_xy_error_m": 0.0008058668600827425
+    }
+  ],
+  "skipped_targets": [
+    {
+      "label": "golden bolt",
+      "reason": "Repeated placement/localization attempts reached the per-object limit."
+    },
+    {
+      "label": "stepped shaft",
+      "reason": "NO_FREE_SPACE: no observed container patch fit both payload and Panda jaw envelope."
+    }
+  ],
+  "rejected_target": {
+    "label": "grey block",
+    "reason": "CAPABILITY_MISSING: the visual target is a kinematic fixed fixture, not a manipulable body."
+  },
+  "validated_behavior": [
+    "A complex image-grounded action list is produced in one task call plus one advanced-planner call when providers respond normally.",
+    "Actions sharing a destination use compact free-space placement and re-observe occupancy after every release.",
+    "Fast placement releases on measured destination contact and then uses physical support/stability evaluation.",
+    "Visual uncertainty or checker outage cannot replay a physically completed released action.",
+    "A hard independent stage cannot discard or block later independent stages solely because of a global recovery count.",
+    "Skipped object labels survive replanning and are filtered from later plans in the same task list.",
+    "A fixed fixture is rejected by physical manipulability rather than configured asset names."
+  ],
+  "remaining_gap": "The scene does not contain a container/support arrangement reachable for every loose part with the current grasp. Full-table completion needs a larger reachable bin, object regrasp/staging for the shaft, and a more reliable bolt localization/placement attempt.",
+  "final_image": "docs/arena/complex-cleanup-final-20260909.jpg"
+}
