@@ -113,16 +113,11 @@ class PandaTask(NoTask):
                 "settle_displacement_m": float(stability), "linear_speed_mps": float(np.linalg.norm(velocity)),
                 "evaluation_source": "arena_task_simulation_ground_truth"}
 
-    def evaluate_contact_relation(self, env, name, initial_z, destination, *, released, max_lift, stability):
-        """Independent contact/pose witness for insert, sleeve and hang."""
+    def contact_relation_state(self, env, name, destination):
+        """Measure seating before or after release from simulation witnesses."""
         body = env.scene[name]
         position = numpy_data(body.data.root_pos_w)[0]
         velocity = numpy_data(body.data.root_lin_vel_w)[0]
-        robot = env.scene["robot"]
-        finger_ids, _ = robot.find_joints("panda_finger_joint.*")
-        opening = float(numpy_data(robot.data.joint_pos)[0, finger_ids].sum())
-        tcp = numpy_data(env.scene["ee_frame"].data.target_pos_w)[0, 0]
-        released = bool(released and opening > .065 and np.linalg.norm(tcp - position) > .08)
         points = Rotation.from_quat(numpy_data(body.data.root_quat_w)[0]).apply(
             np.asarray(destination['evaluation_points_object'])) + position
         feature = destination['relation_feature']
@@ -141,13 +136,27 @@ class PandaTask(NoTask):
             clearance = float(bottom - feature['base_z'])
             relation_ok = clearance > .018
             metrics = {'axis_xy_error_m': xy_error, 'payload_bottom_clearance_m': clearance}
+        return {'relation': relation, 'satisfied': bool(contact and relation_ok),
+                'contact': contact, 'stable': bool(np.linalg.norm(velocity) < .035),
+                'feature_source': feature['source'], **metrics}
+
+    def evaluate_contact_relation(self, env, name, initial_z, destination, *, released, max_lift, stability):
+        """Independent contact/pose witness for insert, sleeve and hang."""
+        body = env.scene[name]
+        position = numpy_data(body.data.root_pos_w)[0]
+        velocity = numpy_data(body.data.root_lin_vel_w)[0]
+        robot = env.scene["robot"]
+        finger_ids, _ = robot.find_joints("panda_finger_joint.*")
+        opening = float(numpy_data(robot.data.joint_pos)[0, finger_ids].sum())
+        tcp = numpy_data(env.scene["ee_frame"].data.target_pos_w)[0, 0]
+        released = bool(released and opening > .065 and np.linalg.norm(tcp - position) > .08)
+        relation = self.contact_relation_state(env, name, destination)
         stable = stability < .005 and np.linalg.norm(velocity) < .035
-        success = bool(max_lift >= .04 and released and contact and relation_ok and stable)
-        postcondition = {'relation': relation, 'satisfied': success, 'contact': contact,
-                         'feature_source': feature['source'], **metrics}
+        success = bool(max_lift >= .04 and released and relation['satisfied'] and stable)
+        postcondition = {**relation, 'satisfied': success}
         return {'physical_success': success, 'lifted': bool(max_lift >= .04), 'released': released,
                 'max_lift_m': float(max_lift), 'final_position_world_m': position.tolist(),
-                'destination_contact': contact, 'settle_displacement_m': float(stability),
+                'destination_contact': relation['contact'], 'settle_displacement_m': float(stability),
                 'linear_speed_mps': float(np.linalg.norm(velocity)), 'gripper_opening_m': opening,
                 'postconditions': {'requested_relation': postcondition},
                 'evaluation_source': 'arena_task_simulation_ground_truth'}

@@ -769,12 +769,38 @@ class ArenaRuntime:
                 pose[2, 3] += .018
             return pose
 
-        selected = self.try_precontact_candidates(rows, approach, phase='contact_preapproach', holding=True)
+        selected = None
+        last_error = None
+        for index, candidate in enumerate(rows[:3]):
+            if not self.holding_status()['verified']:
+                raise RuntimeError('接触候选切换前持物发生滑移，未执行释放。')
+            destination['relation_feature'] = candidate['feature']
+            self.event('candidate_attempt', index=index, total=len(rows),
+                       inference_reused=index > 0, phase_scope='contact_full_path')
+            try:
+                self.move(approach(candidate), label='contact_preapproach')
+                self.move(candidate['pose'], label='contact_align')
+                selected = candidate
+                break
+            except RuntimeError as error:
+                if 'Arena IK did not reach' not in str(error):
+                    raise
+                witness = self.task.contact_relation_state(self.env, row['name'], destination)
+                if witness['satisfied'] and self.holding_status()['verified']:
+                    self.event('contact_goal_accepted', reason='relation_seated_before_tcp_goal',
+                               measured_relation=witness)
+                    selected = candidate
+                    break
+                last_error = error
+                self.event('candidate_rejected', index=index, reason=str(error),
+                           measured_relation=witness, retry_scope='full_contact_path')
+                retreat = self.tcp_pose(); retreat[2, 3] += .08
+                self.move(retreat, label='contact_candidate_retreat')
+        if selected is None:
+            raise last_error or RuntimeError('No reachable contact-placement candidate')
         goal = selected['pose']
-        destination['relation_feature'] = selected['feature']
         self.event('selected_placement', pose_world=goal.tolist(), backend='anyplace',
                    relation=request.relation, proposal_index=selected['proposal_index'])
-        self.move(goal, label='contact_align')
         settle = goal.copy()
         if request.relation in {'insert', 'sleeve_on_peg'}:
             settle[2, 3] -= .006
