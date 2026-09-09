@@ -20,6 +20,12 @@ from isaaclab.sensors import CameraCfg, ContactSensorCfg
 from isaaclab.envs.common import ViewerCfg
 from isaaclab_assets.robots.franka import FRANKA_PANDA_HIGH_PD_CFG
 from isaaclab_arena.assets.asset import Asset
+# This environment constructs every asset locally and imports its Franka class
+# directly.  Arena's decorator otherwise expands the entire optional registry,
+# including Lightwheel cloud objects, during import.  A transient registry API
+# timeout must not prevent a local Panda scene from starting after reboot.
+import isaaclab_arena.assets.asset_registry as arena_asset_registry
+arena_asset_registry._assets_registered = True
 from isaaclab_arena.embodiments.franka.franka import FrankaIKEmbodiment
 from isaaclab_arena.environments.arena_env_builder import ArenaEnvBuilder
 from isaaclab_arena.environments.isaaclab_arena_environment import IsaacLabArenaEnvironment
