@@ -495,7 +495,7 @@ class ArenaRuntime:
         return candidates
 
     def prepare_task(self, request):
-        if self.held_context and not self.holding_status()['verified']:
+        if self.held is not None and not self.holding_status()['verified']:
             self.clear_hold()
         if self.held is not None:
             raise ValueError('夹爪仍持有物体，可使用 place_held 指定目的地继续放置。')
@@ -858,7 +858,7 @@ class ArenaRuntime:
     def place_held(self, request, attempts=None):
         measured = self.holding_status()
         if not measured['verified']:
-            if self.held_context:
+            if self.held is not None:
                 self.clear_hold()
             raise RuntimeError('当前没有确认仍在夹爪中的物体，未执行放置。')
         row = self.observed_entities[self.held]
@@ -1066,7 +1066,7 @@ class ArenaRuntime:
                 # Do not erase a completed physical action if its new camera
                 # evidence is unavailable; the queue must inspect before advancing.
                 result.update(review_required=True,review_reason='动作后观察不可用：'+str(error))
-        if self.held_context and not self.holding_status()['verified']:
+        if self.held is not None and not self.holding_status()['verified']:
             self.clear_hold()
             if 'held_object' in result: result['held_object'] = None
         result['holding'] = self.holding_status()
