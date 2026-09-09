@@ -34,7 +34,7 @@ def failure_feedback(error, phase, holding, evaluation=None):
             'suggested_recovery':['inspect_contact_feature','replan_contact_approach'],
             'message':message,'measured_postcondition':relation}
     categories = [
-        ('CAPABILITY_MISSING', ('requires a reorientation skill', 'contact skills that are not yet available'), ['retain_unfulfilled_condition', 'select_available_skill_or_report_gap']),
+        ('CAPABILITY_MISSING', ('requires a reorientation skill', 'contact skills that are not yet available', '固定工装'), ['retain_unfulfilled_condition', 'select_available_skill_or_report_gap']),
         ('REFERENCE_STALE', ('视觉引用', 'reference'), ['observe', 'select_current_reference']),
         ('TARGET_AMBIGUOUS', ('不唯一', 'ambiguous', '不同视角', '关联到地面'), ['select_visual_reference']),
         ('TARGET_NOT_FOUND', ('未找到', 'No observed target depth'), ['change_view_or_detector']),
