@@ -12,6 +12,7 @@ __pycache__/
 *$py.class
 *.egg-info/
 .venv/
+.conda/
 venv/
 env/
 
@@ -24,6 +25,7 @@ ov-cache/
 _build/
 _compiler/
 .cache/
+isaac-sim-6.0.1/
 
 # Vision weights / runs
 *.pt
