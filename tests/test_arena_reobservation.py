@@ -57,6 +57,22 @@ def test_label_mapping_does_not_accept_another_physical_object():
         runtime_method()(r, 'body_87')
 
 
+def test_multiview_instance_conflict_retries_sam3_on_primary_view_only():
+    r = runtime(); r.held = None
+    observed = {'ok': True, 'request_id': 'fresh', 'views': [], 'perception_source': 'rgbd'}
+    r.perception.request.side_effect = [observed, observed]
+    r.perception.witness.side_effect = [
+        InstanceConflict('side camera selected the robot base'),
+        ('body_87', {'body_87': 12}),
+    ]
+    points = runtime_method()(r, 'body_87', associate=True, manipulation_target=True)
+    assert points.shape == (5, 3)
+    assert r.perception.capture.call_count == 2
+    assert r.perception.capture.call_args.kwargs['vision_mode'] == 'slow'
+    assert r.perception.capture.call_args.kwargs['slow_provider'] == 'sam3'
+    assert r.perception.capture.call_args.kwargs['cameras'] == ['scene_camera']
+
+
 def test_held_geometry_moves_with_gripper_without_resegmenting_occluded_object():
     points = np.array([[.01, .02, -.04], [-.01, -.02, -.02]])
     pose = np.eye(4); pose[:3, 3] = [.4, -.2, .3]

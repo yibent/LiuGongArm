@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections import Counter
+from copy import deepcopy
+from time import perf_counter
 from dataclasses import dataclass
 from typing import Any, Sequence, Callable
 
@@ -24,6 +26,7 @@ class SelectionConfig:
     table_height_m: float
     max_candidates: int = 128
     max_elongated_axis_error_deg: float = 18.0
+    max_feasible_candidates: int = 0
 
 
 @dataclass(frozen=True)
@@ -45,6 +48,9 @@ def select_grasp(
     local_path_check: Callable[[np.ndarray, np.ndarray, float], bool] | None = None,
     failed_grasps: Sequence[SelectedGrasp] = (),
 ) -> SelectionResult:
+    configure_solver = getattr(motion, "set_grasp_constraints", None)
+    if callable(configure_solver):
+        configure_solver(True)
     rejected: Counter[str] = Counter()
     feasible: list[SelectedGrasp] = []
     diagnostics: list[dict[str, Any]] = []
@@ -69,7 +75,7 @@ def select_grasp(
     ordered = sorted(candidates, key=lambda item: item.score, reverse=True)[: config.max_candidates]
     for candidate_index, candidate in enumerate(ordered):
         diagnostic: dict[str, Any] | None = None
-        if candidate_index < 24:
+        if candidate_index < config.max_candidates:
             diagnostic = {
                 "rank": candidate_index,
                 "backend": candidate.backend,
@@ -83,6 +89,22 @@ def select_grasp(
             if diagnostic is not None:
                 diagnostic["rejection"] = reason
                 diagnostics.append(diagnostic)
+
+        def check(stage: str, pose: np.ndarray, operation: Callable[[], bool]) -> bool:
+            started = perf_counter()
+            passed = bool(operation())
+            # Snapshot immediately: the next pose check overwrites adapter state.
+            detail = deepcopy(getattr(motion, "last_plan_diagnostic", {}))
+            if diagnostic is not None:
+                diagnostic.setdefault("checks", []).append({
+                    "stage": stage, "passed": passed,
+                    "elapsed_ms": (perf_counter() - started) * 1000.0,
+                    "target_world_matrix": pose.tolist(),
+                    "planning": detail,
+                })
+                if not passed:
+                    diagnostic["failed_stage"] = stage
+            return passed
 
         if candidate.observation_sequence != observation.sequence:
             reject("stale_candidate")
@@ -102,7 +124,8 @@ def select_grasp(
                 reject("closing_axis_misaligned")
                 continue
         support_height_constrained = False
-        if float(T_base_grasp_center[2, 2]) < -0.6:
+        if (float(T_base_grasp_center[2, 2]) < -0.6
+                and not candidate.metadata.get("contact_height_scored", False)):
             # Eye-in-hand depth mainly observes the top surface during the
             # final vertical approach.  A learned proposal may consequently
             # place its pinch centre at (or just above) that surface.  Complete
@@ -129,7 +152,8 @@ def select_grasp(
             # the fixed finger, so convert through the adapter's calibrated,
             # width-dependent tool geometry before IK and execution.
             T_base_grasp = np.asarray(
-                ee_pose_for_grasp(T_base_grasp_center, candidate.width_m), dtype=np.float64
+                ee_pose_for_grasp(T_base_grasp_center,
+                    float(candidate.metadata.get("contact_width_m", candidate.width_m))), dtype=np.float64
             )
         if diagnostic is not None:
             diagnostic.update(
@@ -140,6 +164,12 @@ def select_grasp(
                 }
             )
         if T_base_grasp[2, 3] < config.table_height_m + policy.required_table_clearance_m:
+            if diagnostic is not None:
+                diagnostic["clearance"] = {
+                    "ee_z_m": float(T_base_grasp[2, 3]),
+                    "table_z_m": config.table_height_m,
+                    "required_m": policy.required_table_clearance_m,
+                }
             reject("table_clearance")
             continue
         T_grasp_pregrasp = make_transform(translation=np.asarray([0.0, 0.0, -config.pregrasp_distance_m]))
@@ -151,23 +181,32 @@ def select_grasp(
             reject("previous_failed_grasp")
             continue
         if local_path_check is not None and not local_path_check(T_base_pregrasp, T_base_grasp, candidate.width_m):
+            if diagnostic is not None:
+                diagnostic["failed_stage"] = "observed_finger_path"
             reject("observed_finger_collision")
             continue
-        if not motion.is_reachable(T_base_pregrasp) or not motion.is_reachable(T_base_grasp):
+        if not check("pregrasp_reachability", T_base_pregrasp,
+                     lambda: motion.is_reachable(T_base_pregrasp)) or not check(
+                         "grasp_reachability", T_base_grasp,
+                         lambda: motion.is_reachable(T_base_grasp)):
             reject("ik_unreachable")
             continue
-        if not motion.is_collision_free(
+        if not check("pregrasp_collision", T_base_pregrasp, lambda: motion.is_collision_free(
             T_base_pregrasp, margin_m=config.collision_margin_m, allow_target_contact=False
-        ):
+        )):
             reject("pregrasp_collision")
             continue
-        if not motion.is_collision_free(
+        if not check("grasp_collision", T_base_grasp, lambda: motion.is_collision_free(
             T_base_grasp, margin_m=config.collision_margin_m, allow_target_contact=True
-        ):
+        )):
             reject("grasp_collision")
             continue
         transition_check = getattr(motion, "is_grasp_transition_reachable", None)
         if callable(transition_check) and not transition_check(T_base_pregrasp, T_base_grasp):
+            if diagnostic is not None:
+                diagnostic["failed_stage"] = "pregrasp_to_grasp_transition"
+                diagnostic["transition"] = deepcopy(
+                    getattr(motion, "last_transition_diagnostic", {}))
             reject(
                 str(
                     getattr(
@@ -215,10 +254,15 @@ def select_grasp(
         if diagnostic is not None:
             diagnostic["rejection"] = None
             diagnostics.append(diagnostic)
+        # Live motion needs a validated model-ranked grasp, not an exhaustive
+        # ranking after a feasible one is already available. Zero retains the
+        # exhaustive policy for callers that need full benchmark comparisons.
+        if config.max_feasible_candidates > 0 and len(feasible) >= config.max_feasible_candidates:
+            break
     feasible.sort(key=lambda item: item.score, reverse=True)
     return SelectionResult(
         feasible[0] if feasible else None,
         dict(rejected),
-        len(ordered),
+        len(diagnostics),
         tuple(diagnostics),
     )

@@ -1,0 +1,36 @@
+{
+  "date": "2026-09-09",
+  "transport": "BusAgent staged planner -> frozen Gemini grounding -> SAM2/depth reference -> Arena Panda -> AnyPlace",
+  "scene": "assembly",
+  "cases": [
+    {
+      "request": "insert silver metal cylinder into blue socket",
+      "result": "completed",
+      "physical_success": true,
+      "released": true,
+      "destination_contact": true,
+      "axis_xy_error_m": 0.0019314095096078844,
+      "insertion_depth_m": 0.03504288688136921,
+      "settle_displacement_m": 6.757064591056501e-08,
+      "controller_elapsed_s": 43.49585747718811
+    },
+    {
+      "request": "place cyan sleeve over the left peg",
+      "result": "physical placement completed; original list was blocked by an unavailable Florence check replaying place_held",
+      "physical_success": true,
+      "released": true,
+      "destination_contact": true,
+      "axis_xy_error_m": 0.005335560842684815,
+      "insertion_depth_m": 0.06308304835854735,
+      "settle_displacement_m": 7.450580596923828e-09,
+      "follow_up_fix": "An unavailable optional visual check now preserves a passed physical verdict and cannot replay a released action."
+    }
+  ],
+  "validated_changes": [
+    "Contact tasks route directly to image-grounded advanced planning.",
+    "AnyPlace orientations are snapped to observed socket, peg, or hook geometry.",
+    "Full contact paths retry alternate AnyPlace candidates without new inference.",
+    "Sleeves are released after partial engagement so the fingers clear the fixture and contact guides settling.",
+    "Local Arena startup no longer expands the optional Lightwheel cloud asset registry."
+  ]
+}

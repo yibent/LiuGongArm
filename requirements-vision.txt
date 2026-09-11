@@ -12,3 +12,4 @@ uvicorn==0.29.0
 python-multipart==0.0.26
 lap==0.5.12
 scipy>=1.11
+requests>=2.32

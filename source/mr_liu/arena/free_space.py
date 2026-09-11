@@ -94,7 +94,10 @@ def free_support_candidates(support, scene, child, preferred, *, resolution=.006
         elif preference == 'center':
             scores += .4*np.linalg.norm(normalized-.5, axis=1)
         elif preference == 'compact':
-            scores += 2*clearance[ij[:,0], ij[:,1]]
+            # Packing is governed by remaining-space preservation.  TCP travel
+            # is only a tie-breaker; otherwise a far-side gripper position can
+            # turn "compact" back into the ordinary nearest policy.
+            scores = 3*clearance[ij[:,0], ij[:,1]] + .05*distance + .025*abs(yaw)
         elif preference not in ['nearest', 'any']:
             raise ValueError('Unknown placement preference')
         for i in np.argsort(scores)[:max(100, limit)]:

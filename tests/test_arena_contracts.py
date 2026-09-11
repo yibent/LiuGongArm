@@ -27,9 +27,17 @@ class ArenaContractTests(unittest.TestCase):
         np.testing.assert_allclose(tcp[:3, 1], [-1, 0, 0])
         self.assertAlmostEqual(tcp[2, 3], .1034)
 
-    def test_no_implicit_contact_skill_or_invalid_pose(self):
+    def test_contact_relations_always_route_placement_to_anyplace(self):
+        for relation in ('insert', 'sleeve_on_peg', 'hang'):
+            request = ManipulationRequest('part', 'fixture', relation=relation)
+            self.assertEqual(request.route()['placement'], 'anyplace')
         with self.assertRaises(ValueError):
-            ManipulationRequest("cup", "hook", relation="hang")
+            ManipulationRequest('part', relation='hang')
+        with self.assertRaises(ValueError):
+            ManipulationRequest('part', 'fixture', relation='hang',
+                                orientation={'axis_ref':'axis','endpoint':1,'direction':'up'})
+
+    def test_invalid_pose_is_rejected(self):
         with self.assertRaises(ValueError):
             placement_to_tcp(np.zeros((4, 4)), np.eye(4), np.eye(4))
 

@@ -30,6 +30,7 @@ from mr_liu.arena.contracts import ManipulationRequest, model_grasp_to_tcp, plac
 from mr_liu.grasp.backends.graspgenx import ZmqGraspGenXTransport
 from mr_liu.grasp.transforms import invert_transform, transform_points
 from mr_liu.place.anyplace import AnyPlaceClient
+from mr_liu.arena.contact_relations import CONTACT_RELATIONS, contact_pose_candidates
 
 
 
@@ -52,7 +53,9 @@ class ArenaRuntime:
         self.observed_entities = {}
         self.prepared_clouds = {}
         self.body_entities = {name: {'name': name, 'prim_path': body.cfg.prim_path.replace(
-            self.env.scene.env_regex_ns, self.env.scene.env_prim_paths[0])}
+            self.env.scene.env_regex_ns, self.env.scene.env_prim_paths[0]),
+            'manipulable': not bool(getattr(getattr(body.cfg.spawn, 'rigid_props', None),
+                                            'kinematic_enabled', False))}
             for name, body in self.env.scene.rigid_objects.items()}
         self.bus_context = {}
         self.perception = PerceptionBridge(Path(__file__).resolve().parents[3]/'output/perception', config['vision']['service_url'])
@@ -81,9 +84,10 @@ class ArenaRuntime:
         data = self.env.scene[name].data
         return pose_matrix(numpy_data(data.root_pos_w)[0], numpy_data(data.root_quat_w)[0])
 
-    def locate(self, label, **vision_options):
+    def locate(self, label, *, manipulation_target=False, **vision_options):
         """Visual geometry first. Physical IDs are evaluation witnesses only."""
-        points = self.cloud(label, associate=True, **vision_options)
+        points = self.cloud(label, associate=True, manipulation_target=manipulation_target,
+                            **vision_options)
         observation = self.visual_result
         name = observation['physical_witness']['instance_id']
         votes = observation['physical_witness']['votes']
@@ -225,7 +229,9 @@ class ArenaRuntime:
         return {"robot": "franka_panda", "execution": "isaaclab_arena.franka_ik",
                 "skills": ["status", "capabilities", "select_target", "perceive", "grasp", "pick_place", "place_held", "stop", "hold", "home"],
                 "grasp": {"backend": "official_pick_place_or_graspgenx", "ready": True},
-                "placement": {"backend": "official_pick_place_or_anyplace", "relations": ["on"], "place_held": True,
+                "placement": {"backend": "official_pick_place_or_anyplace", "relations": ["on", "inside", "insert", "sleeve_on_peg", "hang"], "place_held": True,
+                    "contact_relations": {"backend": "anyplace_full_pose_plus_observed_contact_motion",
+                        "required_loop": "slow_placement", "physical_verification": True},
                     "selection": ["auto", "center", "free_space"], "preferences": ["nearest", "left", "right", "near", "far", "center", "compact"],
                     "visual_references": True, "region_reference": True,
                     "cell_reference": True, "endpoint_reorientation": True,
@@ -322,13 +328,31 @@ class ArenaRuntime:
                 result = self.vision_worker.poll()
                 expected = self.current or (self.tracking['command_id'] if self.tracking else None)
                 if result and result.get('command_id') == expected:
-                    self.visual_result = result
+                    # Once the grasp is physically verified, scene-camera
+                    # detections of the held label add no evidence. The object
+                    # is often hidden by the hand at this point, so a delayed
+                    # transient result can otherwise relabel the Panda base as
+                    # the held ring and draw a misleading overlay.
+                    held_target_result = (
+                        result.get('transient') and self.held and
+                        self.target_name == self.held
+                    )
+                    if not held_target_result:
+                        self.visual_result = result
                     if self.tracking and not self.current:
                         # One slow recovery per loss episode; keep looking with the fast detector afterwards.
                         self.tracking['lost'] = not result.get('ok', False)
             except Exception as error:
                 self.visual_result = {'ok': False, 'error': str(error), 'views': []}
-            track_label = self.target_name if self.current else (self.tracking['label'] if self.tracking else None)
+            physically_held_target = bool(
+                self.current and self.held and self.target_name == self.held and
+                self.holding_status().get('verified')
+            )
+            track_label = (
+                None if physically_held_target else
+                self.target_name if self.current else
+                self.tracking['label'] if self.tracking else None
+            )
             if (track_label and not self.observing and self.vision_worker.available
                     and self.sequence-self.last_track >= self.config['vision']['track_every_steps']):
                 self.last_track = self.sequence
@@ -345,7 +369,7 @@ class ArenaRuntime:
         print(json.dumps(self.events[-1], ensure_ascii=False), flush=True)
         self.refresh_snapshot()
 
-    def cloud(self, name, *, associate=False, **vision_options):
+    def cloud(self, name, *, associate=False, manipulation_target=False, **vision_options):
         if not vision_options and name in self.prepared_clouds:
             points, self.visual_result = self.prepared_clouds.pop(name)
             return points
@@ -381,15 +405,24 @@ class ArenaRuntime:
                 if associate or name in self.observed_entities:
                     try:
                         witness, votes = self.perception.witness(result, self.body_entities)
+                        if manipulation_target and witness == 'floor':
+                            raise InstanceConflict('可抓目标错误地关联到地面，需要换慢环重新定位。')
+                        if manipulation_target and not self.body_entities[witness].get('manipulable', True):
+                            raise ValueError('观测目标是固定工装，不可作为抓取对象；请跳过或选择可运动物体。')
                         if name in self.observed_entities and witness != name:
                             raise InstanceConflict('观测切换到了另一实例，需要重新识别。')
                         result['physical_witness'] = {'instance_id': witness, 'votes': votes}
                     except InstanceConflict as error:
-                        if recovery or vision_options.get('vision_mode') in {'slow', 'fast'}:
+                        if recovery or vision_options.get('vision_mode') == 'fast':
                             raise
                         self.event('visual_relocalization', reason=str(error),
-                                   previous_observation_ref=result['request_id'], provider='sam3')
-                        vision_options.update(vision_mode='slow', slow_provider='sam3')
+                                   previous_observation_ref=result['request_id'], provider='sam3',
+                                   cameras=['scene_camera'])
+                        # A second open-vocabulary view can lock onto a similar
+                        # robot/base silhouette. Keep the verified primary view
+                        # and use SAM3 there for the one allowed semantic retry.
+                        vision_options.update(vision_mode='slow', slow_provider='sam3',
+                                              cameras=['scene_camera'])
                         continue
                 points, views = self.perception.cloud(result)
                 self.perception.remember_target(result, points, packet.get('visual_ref'))
@@ -485,12 +518,13 @@ class ArenaRuntime:
         return candidates
 
     def prepare_task(self, request):
-        if self.held_context and not self.holding_status()['verified']:
+        if self.held is not None and not self.holding_status()['verified']:
             self.clear_hold()
         if self.held is not None:
             raise ValueError('夹爪仍持有物体，可使用 place_held 指定目的地继续放置。')
         self.gripper = 1.
-        row = self.locate(request.target, **({'visual_ref': request.target_ref} if request.target_ref else {}))
+        row = self.locate(request.target, manipulation_target=True,
+                          **({'visual_ref': request.target_ref} if request.target_ref else {}))
         destination = self.locate_destination(request)
         if destination and destination['name'] == row['name']:
             raise ValueError('抓取对象和支撑对象相同，请指定另一个放置对象。')
@@ -652,6 +686,8 @@ class ArenaRuntime:
         return self._place_held(request, row, destination)
 
     def _place_held(self, request, row, destination):
+        if request.relation in CONTACT_RELATIONS:
+            return self.contact_place_held(request, row, destination)
         if request.orientation:
             return self.oriented_place_held(request, row, destination)
         # Geometry below comes from RGB-D. Simulator object pose is used only by
@@ -722,6 +758,104 @@ class ArenaRuntime:
         return self.task.evaluate(self.env, row["name"], self.initial_z, destination,
                                   released=True, max_lift=self.max_lift, stability=stability)
 
+    def contact_place_held(self, request, row, destination):
+        """Run AnyPlace orientation plus relation-specific measured contact motion."""
+        child = self.held_cloud()
+        tcp = self.tcp_pose()
+        object_input = np.eye(4)
+        object_input[:3, 3] = np.quantile(child, [.02, .98], axis=0).mean(0)
+        tcp_to_object = invert_transform(tcp) @ object_input
+        parent = self.cloud(destination['name'], vision_mode='slow', slow_provider='sam3')
+        cfg = self.config['anyplace']
+        self.event('placement_inference', backend='anyplace', relation=request.relation,
+                   parent_points=len(parent), child_points=len(child))
+        client = AnyPlaceClient(cfg['url'], cfg['timeout_s'])
+        answer = self.infer(client.infer, sequence=self.sequence, parent=parent.tolist(), child=child.tolist(),
+                            candidates=cfg['candidates'], iterations=cfg['iterations'],
+                            input_geometry='partial_multiview_rgbd', init_current_orientation=True)
+        rows = contact_pose_candidates(answer['transforms'], child, parent, object_input,
+                                       tcp_to_object, request.relation, tcp[:3, 3])
+        if not rows:
+            raise RuntimeError('AnyPlace returned no contact-placement candidates')
+        np.savez(self.active_directory/'anyplace_contact_candidates.npz', parent=parent, child=child,
+                 relative=np.asarray(answer['transforms']), poses=np.asarray([item['pose'] for item in rows]))
+        destination.update(requested_relation=request.relation, relation_feature=rows[0]['feature'],
+                           evaluation_points_object=row['evaluation_points_object'])
+        self.event('placement_candidates', backend='anyplace', relation=request.relation, count=len(rows),
+                   feature=rows[0]['feature'], inference_s=answer.get('inference_s'))
+        axis = np.asarray(rows[0]['feature']['axis'])
+        current = self.tcp_pose()[:3, 3]
+
+        def approach(item):
+            pose = item['pose'].copy()
+            if request.relation in {'insert', 'sleeve_on_peg'}:
+                pose[2, 3] += .12
+            else:
+                sign = 1. if np.dot(current-pose[:3, 3], axis) >= 0 else -1.
+                pose[:3, 3] += sign * .10 * axis
+                pose[2, 3] += .018
+            return pose
+
+        selected = None
+        last_error = None
+        for index, candidate in enumerate(rows[:3]):
+            if not self.holding_status()['verified']:
+                raise RuntimeError('接触候选切换前持物发生滑移，未执行释放。')
+            destination['relation_feature'] = candidate['feature']
+            self.event('candidate_attempt', index=index, total=len(rows),
+                       inference_reused=index > 0, phase_scope='contact_full_path')
+            try:
+                self.move(approach(candidate), label='contact_preapproach')
+                self.move(candidate['pose'], label='contact_align')
+                selected = candidate
+                break
+            except RuntimeError as error:
+                if 'Arena IK did not reach' not in str(error):
+                    raise
+                witness = self.task.contact_relation_state(self.env, row['name'], destination)
+                if witness['satisfied'] and self.holding_status()['verified']:
+                    self.event('contact_goal_accepted', reason='relation_seated_before_tcp_goal',
+                               measured_relation=witness)
+                    selected = candidate
+                    break
+                last_error = error
+                self.event('candidate_rejected', index=index, reason=str(error),
+                           measured_relation=witness, retry_scope='full_contact_path')
+                retreat = self.tcp_pose(); retreat[2, 3] += .08
+                self.move(retreat, label='contact_candidate_retreat')
+        if selected is None:
+            raise last_error or RuntimeError('No reachable contact-placement candidate')
+        goal = selected['pose']
+        self.event('selected_placement', pose_world=goal.tolist(), backend='anyplace',
+                   relation=request.relation, proposal_index=selected['proposal_index'])
+        settle = goal.copy()
+        if request.relation in {'insert', 'sleeve_on_peg'}:
+            settle[2, 3] -= .006
+        else:
+            settle[2, 3] -= .010
+        self.move(settle, label='contact_settle', until_contact=lambda:
+                  self.task.support_contact(self.env, row['name'], destination))
+        if not self.holding_status()['verified']:
+            raise RuntimeError('接触运动中持物发生滑移，未执行释放。')
+        self.event('relation_contact', relation=request.relation,
+                   force_world=self.task.support_force(self.env, row['name'], destination).tolist())
+        self.event('release'); self.gripper = 1.
+        for _ in range(55): self.tick()
+        self.clear_hold()
+        retreat = self.tcp_pose()
+        if request.relation in {'insert', 'sleeve_on_peg'}:
+            retreat[2, 3] += .14
+        else:
+            sign = 1. if np.dot(current-goal[:3, 3], axis) >= 0 else -1.
+            retreat[:3, 3] += sign * .12 * axis
+            retreat[2, 3] += .035
+        self.move(retreat, label='contact_retreat')
+        before = self.object_pose(row['name'])[:3, 3]
+        for _ in range(80): self.tick()
+        stability = float(np.linalg.norm(self.object_pose(row['name'])[:3, 3]-before))
+        return self.task.evaluate_contact_relation(self.env, row['name'], self.initial_z, destination,
+            released=True, max_lift=self.max_lift, stability=stability)
+
     def recover_fast(self, request):
         if self.target_name is None:
             return None  # No grasp was started; retain the original localization failure.
@@ -747,7 +881,7 @@ class ArenaRuntime:
     def place_held(self, request, attempts=None):
         measured = self.holding_status()
         if not measured['verified']:
-            if self.held_context:
+            if self.held is not None:
                 self.clear_hold()
             raise RuntimeError('当前没有确认仍在夹爪中的物体，未执行放置。')
         row = self.observed_entities[self.held]
@@ -955,7 +1089,7 @@ class ArenaRuntime:
                 # Do not erase a completed physical action if its new camera
                 # evidence is unavailable; the queue must inspect before advancing.
                 result.update(review_required=True,review_reason='动作后观察不可用：'+str(error))
-        if self.held_context and not self.holding_status()['verified']:
+        if self.held is not None and not self.holding_status()['verified']:
             self.clear_hold()
             if 'held_object' in result: result['held_object'] = None
         result['holding'] = self.holding_status()

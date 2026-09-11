@@ -32,6 +32,7 @@ class LocalSemanticLocator:
     def __init__(self, port=5570, mode="florence_yoloe", timeout_s=45):
         self.url = f"http://127.0.0.1:{int(port)}/locate"
         self.mode, self.timeout_s = mode, timeout_s
+        self.memory_id = None
         self.session = requests.Session()
         self.session.trust_env = False
 
@@ -44,7 +45,8 @@ class LocalSemanticLocator:
         if not ok:
             raise TargetObservationError("image_encode_failed")
         response = self.session.post(self.url, json={"sequence": observation.sequence, "label": label,
-            "mode": self.mode, "jpeg": base64.b64encode(data).decode()}, timeout=self.timeout_s)
+            "mode": self.mode, "memory_id": self.memory_id,
+            "jpeg": base64.b64encode(data).decode()}, timeout=self.timeout_s)
         response.raise_for_status()
         result = response.json()
         if result.get("sequence") != observation.sequence or result.get("protocol") != 1:

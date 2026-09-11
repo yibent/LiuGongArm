@@ -1,311 +1,267 @@
-# 刘工智能 · Arena Panda
+# 刘工智能 · BusAgent + IsaacLab-Arena + Franka Panda
 
 <img src="assets/brand/liugong-logo.png" alt="刘工智能 Logo" width="112">
 
-当前开发入口：[Isaac Sim 6 + Arena + Panda 抓放适配](docs/ARENA_PANDA_ADAPTATION.md)。
-BusAgent 下发目标与目的地，GraspGenX / AnyPlace 提供抓放姿态，Arena 负责 Panda IK、场景、相机与物理评测。
-简单任务优先复用 NVIDIA 官方快速抓放；复杂任务或快速执行失败时升级模型，已成功抓住物体则只升级放置。
-当前示例实测快速抓放约 17–18 秒，相机采用两侧斜视与偏置腕部视角。
-新执行路径不再使用旧的抓取准备确认和重复姿态限制。BusAgent 源码通过 Git 子模块固定版本：
+刘工智能是一套面向工业桌面操作的分层机器人系统。当前主线以 **Isaac Sim 6.0.1、IsaacLab-Arena 和 Franka Panda** 为统一仿真执行底座，以 **BusAgent + Mastra** 管理对话、任务规划、结构化任务队列、上下文、工具调用和异步监督。
 
-```bash
-git submodule update --init BusAgent
+系统的职责边界是：**BusAgent 负责信息传递和任务状态，任务模型负责决定做什么，GraspGenX 负责困难物体怎么抓，AnyPlace 负责复杂关系怎么放，Arena 负责让 Panda 执行并用物理证据验收。**
+
+## 架构
+
+```mermaid
+flowchart LR
+    U[语音或文字] --> STT[Qwen 实时语音]
+    STT --> BUS[BusAgent Event Bus]
+    BUS --> D[对话模型]
+    BUS --> R[快速任务模型]
+    R -->|简单任务| Q[结构化动作队列]
+    R -->|复杂任务| P[高级任务模型 + 当前场景图像]
+    P --> Q
+    Q --> V[YOLOE / SAM3 / Florence / SAM2 + 光流]
+    V --> G[官方快抓放或 GraspGenX + AnyPlace]
+    G --> A[IsaacLab-Arena / Panda IK]
+    A --> E[物理反馈 + 局部视觉监督]
+    E -->|正常| Q
+    E -->|需要新决策| P
 ```
 
-服务器启动：`python3 ops/arena_stack.py start`。端口为 8991（新版工作台）、8993（观察台）、8999（工作台兼容入口）。
-云实例已配置 [开机自启与服务自动恢复](docs/arena/AUTOSTART.md)，沿用上次选择的工业场景配置。
-支持分两次说“拿起齿轮”与“放到蓝色托盘”，也可说“在桌子上随便找个地方放下”；持物续放保留原抓取，桌面空位由当前 RGB-D 选择。
-视觉已接入 [按任务选择的快慢环](docs/FAST_SLOW_LOOPS.md)：YOLOE／SAM2／光流优先，困难概念由 SAM3 定位，Florence 提供场景描述。视觉参考持久保存，图像不进入上层语言模型；Qwen 多模态 API 仍为计划。
-验证结果和当前未完成的能力见上述适配文档及 [视觉链路](docs/ARENA_VISION_PIPELINE.md)。
+一次输入会同时进入对话和任务通道。对话模型负责即时反馈；任务模型只判断是否需要执行，并为明确的简单任务一次生成完整动作序列。整理、装箱、插入、套柱、悬挂、数量选择、姿态约束和空间指代等复杂任务进入高级模型，高级模型读取冻结的当前场景图像并生成分阶段动作列表。
 
-## 原分支实验记录
+任务列表使用 JSON 动作，不用自然语言驱动执行器。一抓一放为一个阶段；阶段可以声明依赖关系、快慢环策略、最大尝试次数和局部监督条件。没有依赖的阶段连续执行，Florence 检查可异步返回；存在依赖时，后续阶段等待当前检查。只有失败、未知状态或最终复查需要重新调用高级模型。
 
-下面保留原抓取分支的历史入口；当前 Arena 路径以顶部文档为准。
+BusAgent 的记忆节点保存事件事实；上下文压缩节点按不同 token 预算生成本地抽取式视图，`model_calls=0`，不会调用云模型。Mastra 提供模型工具调用和结构化决策边界，BusAgent 保留事件路由、幂等、队列、物理状态和审计。
 
-## BusAgent：精细抓取模块交接入口
+## 快慢环
 
-新实验线：[AnyPlace 放置 + 原 GraspGenX 抓取](docs/ANYPLACE_PLACEMENT.md)。
-已加入官方权重推理服务和可选 Isaac 候选接入；模型候选尚未通过物理放置验收。
-默认放置仍走 Florence/RGB-D 几何闭环，抓取保持 GraspGenX。
+| 层级 | 默认能力 | 使用时机 |
+|---|---|---|
+| 视觉快环 | YOLOE 文本/视觉提示、SAM2 Tiny、LK 光流 | 已知或可提示目标的快速定位、分割和持续跟踪 |
+| 视觉慢环 | SAM3 开放词汇定位，Florence-2 描述、框选和局部验收 | 快环置信度不足、陌生目标、关系判断和结果检查 |
+| 视觉语义增强 | 支持原生框选的多模态模型 | 复杂任务中按位置、状态或关系选择具体实例 |
+| 运动快环 | Arena 官方 Panda IK 与快速抓放 | 普通方块、圆柱和明确支撑面 |
+| 运动慢环 | GraspGenX 抓取、AnyPlace 放置 | 陌生物体、杂乱抓取、插入、套柱、悬挂和精确放置 |
 
-新增开发中的 [Florence + RGB-D 非快环放置](docs/FINE_PLACE.md)：
-`scripts\run_fine_place.ps1 -Destination 'blue square'`。
-独立 FinePlace 状态机与安全测试已加入；方块到桌面区域已有多次实际抓放/撤离/多帧验证成功，
-最新桌面回归在释放后撤离失败，托盘和异形物也有未解决的实测失败，不能宣称稳定或通用放置完成；尚未接入 Web place 或真机。
-可用 `scripts\benchmark_fine_place.ps1 -RecordVideo` 运行固定开发对照；
-停稳释放的可选 1 秒策略、逐项失败和耗时拆分见上述文档。
+`fast_only` 失败后直接返回；`fast_then_slow` 先走官方快环，再按失败阶段升级；`slow` 直接调用增强模型。已经确认抓住物体后只升级放置，不重新抓取。物理成功但视觉检查不确定时保留动作结果，通过观察或监督补证，不盲目重放。
 
-新增可选 [标签到完整抓取入口](docs/LABEL_TO_GRASP.md)：
-`scripts\run_label_grasp.ps1 -Label 'red cube' -RecordVideo`。
-Florence/YOLOE 定位 → 真正的 LK 光流 → 经安全检查的粗接近 → 原腕部 FineGrasp；
-实测结果与尚未解决的泛化边界见该文档。
+## 模型与权重
 
-**当前开发线请先读 [当前成果与工程交接](docs/FINE_GRASP_CURRENT_HANDOFF.md)**：
-包含双 RGB-D 分工、主动恢复逻辑、一键 GUI/无头视频、BusAgent 装配与失败处理，
-以及最新 4/5 cm 扰动、杯子/水果/锤子结果。下文保留旧基线背景，不作为最新状态。
+### 本地模型
 
-现有 Web/语音控制链路的抓取接入见 [运行说明](docs/BUSAGENT_GRASP_RUNTIME.md)：
-单物体定位、接近、腕部抓取、抬升验证与中断已接入代码。
-Web 运行时已装配默认双相机辅助，失败后等待对话指令再恢复；当前控制器尚不支持放置。
+| 模型 | 作用 | 默认位置或配置 |
+|---|---|---|
+| YOLOE | 快速开放词汇检测与视觉提示重识别 | `_models/yoloe-26x-seg.pt` |
+| SAM2 Tiny | 当前框精化、分割和跟踪 | `_models/sam2/sam2.1_hiera_tiny.pt` |
+| SAM3 | 慢环开放词汇定位 | `_models/sam3.pt` |
+| Florence-2 | 场景描述、最终定位回退、局部结果验收 | `_models/florence-cache/snapshots/<snapshot>` |
+| MobileCLIP2 | YOLOE 视觉提示编码 | `_models/mobileclip2_b.ts` |
+| GraspGenX | 通用 6DoF 抓取候选 | `_models/graspgenx/checkpoints/release` |
+| AnyPlace | 6DoF 放置候选与接触关系 | 由 `_envs/anyplace` 和 `_vendor/anyplace` 提供 |
 
-新增 `GeneralGraspNode` / `FineGraspSkill`：机械臂靠近目标后，以腕部 RGB-D 持续观测，
-通过 GraspGenX 候选、IK/碰撞筛选和小步伺服完成接近、闭爪、抬升与验证。
-已发布旧基线的头顶相机已升级 RGB-D，但当时尚未参与抓取决策。
+模型目录、虚拟环境和运行输出不提交到 Git。GraspGenX、AnyPlace、视觉服务和 Isaac Sim 使用隔离的 Python 环境，避免 CUDA、Torch 和 Isaac 扩展互相覆盖。
 
-历史抓取开发线 `codex/active-grasp-recovery` 增加了实验性的双 RGB-D 主动恢复：
-失败后检查持物状态、安全退让、腕部多视角重新观察，再生成抓取并闭环执行。
-机制、运行方式、验证证据和安全边界见 [主动恢复开发说明](docs/ACTIVE_GRASP_RECOVERY.md)。
-下文的 `2c7b53f` 状态指已发布的旧基线，不代表新开发线的最新结果。
+### 云端模型角色
 
-**请先读 [BusAgent 接入 README](docs/BUSAGENT_README.md)**：包含已开发内容、
-实际模型评估、环境要求、一键 demo、Python 接入代码、失败处理和后续增强计划。
+模型可以在工作台右上角的“设置 → 模型”中配置，无需改代码。每个 Profile 可设置 Provider、API 地址、模型名、API Key、视觉能力、原生框选能力、首字超时、总超时、思考强度和冷却开关；每个节点可单独指定主模型、备选顺序与回退策略。
 
-已发布旧基线（`2c7b53f`）不是泛化验收通过的发布版。该分支合并前记录：82 项单测和双 RGB-D
-运行检查通过；交接文档增加 2 项示例/链接测试，共 84 项通过（不是合并后全仓库测试数量）。
-旧基线 `2c7b53f` 的 cube 实际抬升约 8 cm，但节点视觉验证失败。
-真实工业工具、咖啡杯、水果的 unseen-object 抓取能力尚未验收。
+当前推荐配置如下：
 
-以下保留原仿真/视觉工程说明。
+| 角色 | 推荐模型 | 说明 |
+|---|---|---|
+| `task` | 快速文本模型或 Gemini Flash | 对单句输入分类；简单任务一次生成完整序列，默认不读图 |
+| `planner` | Gemini 3.7 Flash | 复杂任务读取场景图像、生成阶段和可选 `box_2d` |
+| `visual` | Gemini 3.7 Flash | 仅在本地视觉仍有实例歧义时进行图像框选 |
+| `supervisor` | Gemini 3.7/3.8 Flash | 失败恢复与最终列表复查；日常阶段优先使用物理反馈和 Florence |
+| `dialogue` | Qwen 3.8 Flash | 用户对话；连续失败三次后永久切换到下一备选，直到前端手动切换 |
+| STT/TTS | Qwen 实时语音模型 | 独立语音协议，不随规划模型切换 |
 
-机械臂仿真工程：Isaac Sim 桌面 SO-101 + cuMotion follow-target，接入共享 Florence-2 FIND 与双路独立 YOLOE / OpenCV TRACK，并提供桌面顶视与腕部两路 RGB-D 相机；顶视保留语义分割，支持现有物体定位链路。
+Gemini 3.8 Flash 适合作为同能力备选。DeepSeek 等纯文本模型可以替换快速任务模型、文本监督或对话模型；如果用于高级规划，系统会失去直接看图和原生框选能力，此时目标选择依赖 YOLOE → SAM3 → Florence 以及结构化场景摘要。`same_capability` 策略不会把需要视觉/框选的请求回退到纯文本模型。
 
-合并自：
+不要把密钥写入 README 或提交到仓库。首次启动可用环境变量注入，再在前端保存：
 
-- 仿真：[SQLsleeping/MR_Liu](https://github.com/SQLsleeping/MR_Liu)
-- 视觉：[SQLsleeping/yoloe](https://github.com/SQLsleeping/yoloe)
+```bash
+export GEMINI_PRIMARY_URL=https://provider.example/v1
+export GEMINI_PRIMARY_API_KEY=...
+export GEMINI_SECONDARY_URL=https://backup.example/v1
+export GEMINI_SECONDARY_API_KEY=...
+export QWEN_CHAT_URL=https://provider.example/compatible-mode/v1
+export QWEN_CHAT_API_KEY=...
+export DASHSCOPE_API_KEY=...        # Qwen STT/TTS
+```
 
-本机 `D:\isaac\env_isaaclab` 是 Isaac Sim **5.1 + Isaac Lab**，**不要**用来跑本仓库。NVIDIA 当前公开的 6.x pip 包是 **6.0.1.0**（没有 6.1 轮子），需要 **Python 3.12**。
+BusAgent 的运行配置保存在 `BusAgent/backend/.local/intelligence.json`。前端设置会更新这份配置；可配置项包括：
+
+- `roles`：任务、规划、视觉、监督和对话节点的默认模型；
+- `fallbacks` / `fallbackPolicies`：备选顺序与 `disabled`、`same_capability`、`ordered_compatible`；
+- `nodeFirstTokenTimeouts` / `nodeTimeouts`：各节点首字和总超时；
+- `performance`：预规划、请求预算、工具轮数和 Provider 冷却；
+- `architecture.mode`：`staged` 新架构与 `legacy` 兼容路径；
+- `stageRetryLimit`、`finalReviewLimit`、`supervisorEnabled`：阶段重试和监督策略。
 
 ## 目录
 
-```
-liuGong/
-├── configs/                      # 场景、机器人、规划、相机
-├── assets/robots/so101/          # URDF / XRDF / rmp_flow.yaml
-├── source/mr_liu/                # sim / robot / motion / vision / perception / app
-├── source/find_and_track/        # Florence-2 FIND + YOLOE/CV TRACK + WebUI
-├── BusAgent/                     # 语音指令、任务规划与机器人控制总线
-├── samples/                      # 视觉示例图/视频
-├── scenes/world.usda
-├── scripts/                      # 启动脚本（不含业务逻辑）
-├── tests/                        # 关节名映射等无 GUI 测试
-├── extensions/mr_liu.project/    # Kit 薄扩展
-├── vision_main.py                # 独立视觉 CLI / WebUI
-├── requirements-vision.txt
-└── isaac_env.bat                 # 指向本机 Isaac Sim 6.0.1
+```text
+LiuGongArm/
+├── BusAgent/                   # 独立 Git 子模块：事件总线、Mastra、任务队列和工作台
+├── configs/                   # Panda、相机、视觉、抓取和放置配置
+├── configs/scenes/            # sorting / packing / assembly / machining / tools 等场景
+├── source/mr_liu/arena/       # Arena Panda 控制器、观测、物理验收和视觉引用
+├── source/mr_liu/grasp/       # GraspGenX 接入与抓取执行
+├── source/mr_liu/place/       # AnyPlace 接入、放置几何和接触关系
+├── source/find_and_track/     # YOLOE、SAM2、光流和 Florence
+├── scripts/                   # 服务启动、验证和验收脚本
+├── ops/                       # Supervisor、Nginx、场景切换和开机自启
+└── tests/                     # 无 GUI 单元与集成测试
 ```
 
-## 环境
-
-### 1. Isaac Sim 6.0.1（仿真必需）
-
-```bat
-conda create -y -p D:\isaac\env_isaacsim60 python=3.12
-D:\isaac\env_isaacsim60\python.exe -m pip install torch==2.11.0 --index-url https://download.pytorch.org/whl/cu128
-D:\isaac\env_isaacsim60\python.exe -m pip install isaacsim[all,extscache]==6.0.1.0 --extra-index-url https://pypi.nvidia.com
-```
-
-体积很大（`extscache-kit` 约 5.9 GB + kit-sdk 约 0.7 GB + 其它）。换机器时编辑 `isaac_env.bat` 里的 `ISAAC_ENV`。启动脚本会设置 `OMNI_KIT_ACCEPT_EULA=YES`。
-
-### 2. 独立视觉依赖（CLI / WebUI）
-
-```bat
-powershell -ExecutionPolicy Bypass -File scripts\setup_vision.ps1
-```
-
-安装到本地 `_envs/vision` overlay，复用 Isaac 的 CUDA torch，不修改原环境。
-固定版本权重下载到 `_models/florence2/large` 与 `_models/yoloe`，不进 Git。
-命令、接口、离线测试与能力边界见 [本地视觉支持](docs/LOCAL_VISION_SETUP.md)。
-也兼容主分支的仓库内 `.venv` 环境（不修改 Isaac Sim 的 Python）：
-
-```bat
-conda create -y -p E:\LiuGongArm\.venv python=3.12
-E:\LiuGongArm\.venv\python.exe -m pip install torch torchvision
-E:\LiuGongArm\.venv\python.exe -m pip install -r requirements-vision.txt ultralytics opencv-python
-```
-
-Florence 权重放在 `.cache\huggingface\Florence-2-large`、YOLOE 权重放在仓库根目录后，
-可运行 `scripts\run_florence_local.bat` 启动离线 WebUI；该入口默认使用 Florence + YOLOE，
-缺少 YOLOE 权重时自动回退到 CV 跟踪。
-
-启动时优先选择 `_envs/vision`，缺失时才查找 `.venv`，也可显式设置 `VISION_PYTHON`。
-视觉权重不进 Git。默认优先 `_models`，同时兼容上述旧权重目录；没有权重时，仿真仍可手动拖绿立方体。
-
-Linux/服务器建议把视觉依赖放在仓库自己的 venv 中：
+## 获取代码
 
 ```bash
-python3.12 -m venv .venv
-.venv/bin/python -m pip install -U pip
-.venv/bin/python -m pip install -r requirements-vision.txt
+git clone --recurse-submodules https://github.com/yibent/LiuGongArm.git
+cd LiuGongArm
+git submodule update --init --recursive
 ```
 
-`scripts/run_vision_follow.py` 会先初始化 Isaac Sim，再把 `.venv` 的
-`site-packages` 追加到搜索路径，从而同时使用 Isaac SDK 与 Florence/YOLOE。
-不要把 venv 通过 `PYTHONPATH` 放到 Isaac 自带依赖之前，否则可能覆盖其
-Torch/渲染组件。Florence 权重首次运行时从 Hugging Face 下载，建议将
-`HF_HOME` 指向仓库内可持久化的缓存目录。
+要求：
+
+- NVIDIA GPU 与可用的显示服务；
+- Isaac Sim `6.0.1.0`，Python 3.12；
+- Node.js `>=22.13`、pnpm `11.9`；
+- MariaDB，默认监听 `127.0.0.1:3307`；
+- `_envs/vision`、`_envs/graspgenx`、`_envs/anyplace`、`_envs/arena`；
+- `_vendor/IsaacLab-Arena`、`_vendor/GraspGenX`、`_vendor/anyplace` 和上表权重。
+
+BusAgent 首次构建：
+
+```bash
+cd BusAgent/backend
+pnpm install --frozen-lockfile
+pnpm build
+
+cd ../frontend
+pnpm install --frozen-lockfile
+pnpm build
+cd ../..
+```
 
 ## 启动
 
-FineGrasp 的架构、Isaac 闭环 demo、失败排查和真机前置条件见
-[`docs/FINE_GRASP.md`](docs/FINE_GRASP.md)；模型实测与选型证据见
-[`docs/MODEL_EVALUATION.md`](docs/MODEL_EVALUATION.md)。
-当前开发基线与后续主动观察版本的边界见
-[`docs/FINE_GRASP_BASELINE.md`](docs/FINE_GRASP_BASELINE.md)；尚未通过真实物体泛化验收。
+### 云服务器或完整工作站
 
-| 做什么 | 命令 |
-|---|---|
-| 腕部 RGB-D 精细抓取闭环（默认 GraspGenX，不自动几何回退） | `scripts\run_fine_grasp_demo.bat` |
-| 拖绿立方体，臂跟随（一期） | `scripts\run_follow_target.bat` |
-| 场景相机 → FIND/TRACK → 立方体 → 臂 | `scripts\run_vision_follow.bat` |
-| 只加载桌 + SO-101 | `run_hello_world.bat` |
-| Kit GUI + 工程扩展 | `launch_isaac_sim.bat` |
-| 独立视觉 WebUI（不开仿真，默认 :7860） | `scripts\run_yoloe_webui.bat` |
-| 本地 Florence 离线 WebUI（不开仿真，默认 :7860） | `scripts\run_florence_local.bat` |
-| 关节名自检（无 GUI） | `scripts\run_tests.bat` |
-
-FineGrasp wrapper 在自己启动模型服务时会等待 GraspGenX warmup 返回 `status=ready`，并把
-串行运行结果保存到按秒时间戳的 `output/fine_grasp_runs/<timestamp>_<backend>/`。本机已保存
-早期版本的一次无 fallback 的 GraspGenX Isaac cube 闭环成功证据：模型 687 ms、最终
-3.39 mm/0.15°、腕部视觉验证抬升 82.05 mm、Isaac 刚体实际抬升 82.06 mm。
-这不代表当前基线已通过验收；最新双 RGB-D 基线回归实际抬升 80.24 mm，
-但节点视觉随动验证失败，完整结果和限制见上述基线说明。
-
-双 RGB-D 相机运行时验证（本机 PowerShell；不会执行抓取）：
-
-```powershell
-& D:\isaac\env_isaacsim60\python.exe scripts\verify_cameras.py
-```
-
-输出目录 `output/camera_verify/<timestamp>/` 保存两路 RGB、深度图、带渲染时间及
-OpenCV 光学坐标系位姿的 RGB-D NPZ 和检测报告。脚本验证两路流各自帧号递增，
-不表示跨相机时间同步或双相机融合已完成。
-
-相机运行时验证（Linux）：
+项目提供统一服务管理器。已安装 Supervisor 配置时，以下命令会转交给 Supervisor；否则按独立进程启动服务：
 
 ```bash
-PYTHONEXE="$PWD/.venv/bin/python" /root/isaacsim/python.sh scripts/verify_cameras.py
+cd /path/to/LiuGongArm
+python3 ops/arena_stack.py start
+python3 ops/arena_stack.py status
 ```
 
-桌面物品物理与俯视相机验证（Linux）：
+完整冷启动（包含 MariaDB）和状态检查：
 
 ```bash
-/root/isaacsim/python.sh scripts/verify_tabletop_props.py
+supervisorctl -c ops/arena-supervisord.conf start all
+supervisorctl -c ops/arena-supervisord.conf status
 ```
 
-Play 之后拖动 `/World/TargetCube`，SO-101 用 cuMotion RMPflow 跟随。Stop/Play 会重置控制器。
-
-### 仿真运行中切换视觉目标
-
-双视角视觉跟随默认在 `127.0.0.1:7861` 提供控制页和 JSON API。顶部与腕部画面共享一个 Florence 慢速检测模型，但各自维护独立的 YOLOE 跟踪器；修改提示后两路都会重新 FIND，后续帧恢复快速 TRACK。
-
-```text
-顶部 RGB ─┐                         ┌─ 顶部 YOLOE/BYTETrack
-          ├─ 共享 Florence-2 FIND ─┤
-腕部 RGBD ┘                         └─ 腕部 YOLOE/BYTETrack
-```
+启动指定场景并记住该选择：
 
 ```bash
-/root/isaacsim/python.sh scripts/run_vision_follow.py \
-  --headless --prompt "red cube" --slow-interval 0
-
-# 感知基准模式：仿真继续运行，保留 USD 初始臂姿态且不追随检测框
-/root/isaacsim/python.sh scripts/run_vision_follow.py \
-  --headless --no-follow --prompt "red cube" --slow-interval 0
-
-# 运行中切换目标（支持用分号指定多个目标）
-curl -X POST http://127.0.0.1:7861/api/prompt \
-  -H 'Content-Type: application/json' \
-  -d '{"prompt":"power drill"}'
-
-# 不改提示，要求两路立即重新 FIND
-curl -X POST http://127.0.0.1:7861/api/find \
-  -H 'Content-Type: application/json' -d '{}'
-
-curl http://127.0.0.1:7861/api/status
-
-# BusAgent 使用的统一语义控制接口
-curl -X POST http://127.0.0.1:7861/api/command \
-  -H 'Content-Type: application/json' \
-  -d '{"command_id":"demo-1","skill":"select_target","params":{"category":"power drill"}}'
+python3 ops/arena_stack.py --config configs/scenes/packing.json start arena
 ```
 
-远程查看控制页可建立 SSH 隧道：`ssh -L 7861:127.0.0.1:7861 -p 30133 root@183.147.142.40`，然后打开 `http://127.0.0.1:7861`。接口还提供 `/api/frame/scene.jpg` 与 `/api/frame/wrist.jpg` 两路实时标注快照。
-
-### 目标记忆与恢复
-
-完整的模块关系、状态转换、记忆文件格式、线程边界和接入 API 见 [视觉记忆方案说明](docs/VISION_MEMORY_ARCHITECTURE.md)。
-
-视觉链路按“YOLOE 先试、Florence 慢环兜底、CV 持续跟踪”的策略运行。YOLOE 先使用文本标签库和置信度尝试定位；置信度不足时才调用 Florence。Florence 的框会同时初始化 CV 和 YOLOE 视觉提示。CV 丢失达到 `lost_patience` 后，系统再次调用 Florence，并用新框重建 YOLOE 提示后恢复 CV 跟踪。
-
-记忆保存在 `runs/memories/`，每条记忆包含标签、时间、多视角裁剪图和原始框坐标。机械臂运行时可通过统一控制接口采集和回放：
+停止或重启单个服务：
 
 ```bash
-# 采集当前顶部与腕部快照；重复使用同一个 memory_id 可追加新的视角
-curl -X POST http://127.0.0.1:7861/api/command \
-  -H 'Content-Type: application/json' \
-  -d '{"skill":"remember","params":{"label":"red mug"}}'
-
-# 回放记忆：下一帧直接用记忆图片建立 YOLOE visual prompt
-curl -X POST http://127.0.0.1:7861/api/command \
-  -H 'Content-Type: application/json' \
-  -d '{"skill":"recall","params":{"memory_id":"<memory_id>","view":"wrist"}}'
-
-curl http://127.0.0.1:7861/api/status
-curl -X POST http://127.0.0.1:7861/api/command \
-  -H 'Content-Type: application/json' \
-  -d '{"skill":"forget","params":{"memory_id":"<memory_id>"}}'
+python3 ops/arena_stack.py stop arena busagent
+supervisorctl -c ops/arena-supervisord.conf restart vision
+supervisorctl -c ops/arena-supervisord.conf restart busagent
 ```
 
-记忆采集与回放也分别提供 `/api/memory`、`/api/recall`、`/api/memories` 和 `/api/forget` 接口。`memory_id` 回放时不要求 Florence 首次重新圈定，YOLOE 无法恢复时仍会回退到 Florence。
+服务启动顺序和默认端口：
 
-`--slow-interval 0` 表示只在首次检测、目标丢失、提示词变化或手动请求时
-运行 Florence；设置为正数则按相应帧数周期重新 FIND。`--no-follow` 只关闭
-检测框到机械臂目标的映射，物理仿真、双相机和推理仍正常运行。
+| 服务 | 端口 | 启动入口 |
+|---|---:|---|
+| MariaDB | 3307 | Supervisor `database` |
+| 视觉链路 | 5570 | `scripts/run_arena_vision.sh` |
+| GraspGenX | 5556 | `scripts/run_graspgenx_server.sh` |
+| AnyPlace | 5590 | `scripts/run_anyplace_server.sh` |
+| Arena + Panda | 7861 | `scripts/run_arena_panda.sh --viz kit` |
+| BusAgent Backend | 3100 | `node BusAgent/backend/dist/main.js` |
+| 刘工智能工作台 | 8991 | Nginx，配置见 `ops/arena-nginx.conf` |
+| Isaac 观察页 | 8993 | Nginx 只读预览 |
+| 工作台备用入口 | 8999 | Nginx 镜像入口 |
 
-### 接入 BusAgent 语音控制
+### 手动分服务启动
 
-先保持上述 `run_vision_follow.py` 运行，再启动独立仓库 `BusAgent/backend` 和 Web 前端。BusAgent 会把语音指令转换为结构化技能，通过 `/api/command` 下发；当前支持目标识别、跟随、基础运动和已接入控制器的单物体抓取，放置未实现。视觉记忆已提供控制 API，但尚未接入 BusAgent 的记忆语音意图，不能仅凭接口存在就宣称支持语音记忆。实际能力以 `/api/capabilities` 为准，详见 [BusAgent 说明](docs/BUSAGENT_README.md)。
+调试时按顺序在不同终端运行：
 
-### 验证结果
+```bash
+bash scripts/run_arena_vision.sh
+bash scripts/run_graspgenx_server.sh
+bash scripts/run_anyplace_server.sh
+bash scripts/run_arena_panda.sh --viz kit
 
-在 Isaac Sim 6.0.1、CUDA 和 `yoloe-26x-seg.pt` 下实测：
-
-- 初始 `red cube`：顶部与腕部均完成慢 FIND 并进入快 TRACK；
-- 运行中切换到 `power drill`：两路在同一视觉周期重新 FIND，分别耗时
-  278.1 ms 和 275.4 ms；
-- 稳态 YOLOE TRACK：顶部约 25 ms/帧，腕部约 24–26 ms/帧；
-- 连续运行超过 5000 个视觉帧后，两路仍能正确追踪电钻；
-- `python -m unittest discover -s tests -v`：17 项测试全部通过。
-
-独立视觉 CLI：
-
-```bat
-scripts\run_vision.bat --source samples\bus.jpg --prompt "bus"
-scripts\run_vision.bat --webui --host 127.0.0.1 --port 7860
+cd BusAgent/backend
+BUSAGENT_PORT=3100 BUSAGENT_ROBOT=franka_panda node dist/main.js
 ```
 
-`--prompt` 多个目标用分号分隔；`--fast yoloe|cv`。
+前端生产文件由 Nginx 从 `BusAgent/frontend/dist` 提供。本地前端开发可运行：
 
-## 资产与配置
+```bash
+cd BusAgent/frontend
+BUSAGENT_PROXY_TARGET=http://127.0.0.1:3100 pnpm dev
+```
 
-- 桌子：`Isaac/Props/Mounts/SeattleLabTable/table_instanceable.usd`
-- 机械臂 USD：`Isaac/Robots/RobotStudio/so101_new_calib/so101_new_calib.usd`
-- 规划：`assets/robots/so101/robot.urdf` + `robot.xrdf`
-- 基座通过 `/World/SO101Mount` Fixed Joint 焊在桌面
-- 机械臂根节点默认绕世界 Z 轴逆时针旋转 90°，使前半周工作区朝向桌面操作区域
-- 目标：`/World/TargetCube`（`configs/scene.yaml`）
-- 桌面可操作物品：官方红色积木、YCB 电钻、Factory M20 螺栓/螺母与小齿轮，外加程序化复合刚体扳手
-- 所有桌面物品位于 `/World/TabletopProps`，带质量、碰撞和 `class` 语义标签
+远程服务器建议通过 SSH 隧道映射到本机：
 
-| 文件 | 内容 |
-|---|---|
-| `configs/scene.yaml` | 桌、臂、灯光、TargetCube、桌面物品及其质量/位姿 |
-| `configs/robot_so101.yaml` | 关节名 / 初始姿态 |
-| `configs/motion.yaml` | physics dt、device、RMPflow |
-| `configs/cameras.yaml` | 场景相机 / 腕部相机 |
+```bash
+ssh -N \
+  -L 18991:127.0.0.1:8991 \
+  -L 18993:127.0.0.1:8993 \
+  -L 18999:127.0.0.1:8999 \
+  -p <ssh-port> <user>@<server>
+```
 
-相机 rig 默认启用：`/World/Cameras/TableTopRGB` 位于桌面正上方并输出 RGB 与米制深度（保留旧 prim 路径兼容已有消费者）；
-`/World/SO101/gripper/WristRGBD` 挂载在夹爪节点下，随机械臂运动并输出 RGB 与米制深度。
+随后打开 `http://127.0.0.1:18991/?workspace=1`。场景切换会停止执行、清空当前场景的任务/记忆/视觉运行数据并从初始状态加载新场景；前端会在切换前要求确认。
 
-BusAgent 自主规划、任务队列与模型设置：[使用说明](docs/arena/BUSAGENT_INTELLIGENCE.md)。
+### 开机自启
+
+云实例使用 `ops/arena-cloud-boot.conf` 启动项目专用 Supervisor。安装方式、进程恢复、日志位置和注意事项见 [云服务器自启](docs/arena/AUTOSTART.md)。Supervisor 管理业务服务，Nginx 和桌面显示继续由云平台提供。
+
+## 验证
+
+```bash
+# Python
+PYTHONPATH=source python3 -m pytest -q
+
+# BusAgent Backend
+cd BusAgent/backend
+pnpm test
+pnpm build
+
+# BusAgent Frontend
+cd ../frontend
+pnpm test
+pnpm build
+```
+
+工业场景端到端验收入口：
+
+```bash
+PYTHONPATH=source python3 scripts/run_industrial_acceptance.py \
+  --arena http://127.0.0.1:7861 \
+  --bus http://127.0.0.1:3100
+```
+
+当前代码支持普通抓放、独立抓取后续放置、自由表面放置、分格容器空格选择、紧凑装盘，以及由 AnyPlace 驱动的 `insert`、`sleeve_on_peg` 和 `hang` 接触关系。最终结果必须以当前测试报告和物理反馈为准；“接口支持”不代表任意几何与任意初始姿态都能一次成功。
+
+## 相关文档
+
+- [Arena Panda 适配](docs/ARENA_PANDA_ADAPTATION.md)
+- [快慢环](docs/FAST_SLOW_LOOPS.md)
+- [视觉链路](docs/ARENA_VISION_PIPELINE.md)
+- [云服务器自启](docs/arena/AUTOSTART.md)
+- [BusAgent Backend 架构](BusAgent/backend/README.md)
+- [AnyPlace 放置](docs/ANYPLACE_PLACEMENT.md)
+- [GraspGenX 服务](docs/GRASPGENX_SERVER.md)
+
+历史 SO-101、FineGrasp 和早期 Florence/YOLOE 实验仍保留在 `docs/`，但不再作为当前主线的启动或能力说明。

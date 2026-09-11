@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import time
+import json
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Callable
 
@@ -16,6 +18,7 @@ from isaacsim.robot_motion.cumotion.impl.utils import isaac_sim_to_cumotion_tran
 
 from mr_liu.config import robot_config
 from mr_liu.grasp.contracts import GripperState, RobotState, SelectedGrasp
+from mr_liu.grasp.motion_diagnostics import endpoint_error_chain
 from mr_liu.grasp.transforms import (
     axis_alignment_error,
     invert_transform,
@@ -131,11 +134,16 @@ class IsaacCumotionExecutor:
             tuple[float, ...], tuple[np.ndarray, float]
         ] = {}
         self.last_transition_rejection_reason = "approach_disconnected"
+        self.last_transition_diagnostic = {}
+        self._transition_diagnostic_cache = {}
         self._active_waypoints: list[np.ndarray] = []
         self._active_waypoint_index = 0
         self._fk_reported = False
         self.last_plan_diagnostic = {}
+        self._plan_diagnostic_cache = {}
         self.last_collision_reason = None
+        self.last_collision_diagnostic = None
+        self._fine_grasp_constraints = False
 
         stage = stage_utils.get_current_stage()
         if not stage.GetPrimAtPath(target_prim_path).IsValid():
@@ -217,7 +225,7 @@ class IsaacCumotionExecutor:
         T_ee_center = np.eye(4, dtype=np.float64)
         T_ee_center[0, 3] = (
             self.pinch_center_x_per_width * float(width_m)
-            - self.fixed_finger_center_offset_m
+            - (0.0 if self._fine_grasp_constraints else self.fixed_finger_center_offset_m)
         )
         T_base_ee = center @ invert_transform(T_ee_center)
         self._grasp_center_specs[self._pose_key(T_base_ee)] = (
@@ -282,6 +290,12 @@ class IsaacCumotionExecutor:
         self._active_grasp_pose = None
         self._plan_cache.clear()
         self._transition_cache.clear()
+
+    def set_grasp_constraints(self, enabled: bool):
+        if self._fine_grasp_constraints != enabled:
+            self._fine_grasp_constraints = enabled
+            self._plan_cache.clear()
+            self._transition_cache.clear()
 
     def is_observation_path_safe(self, target, points_base, finger):
         """Check fingers along the actual joint path in addition to world IK.
@@ -360,13 +374,23 @@ class IsaacCumotionExecutor:
         self.last_transition_rejection_reason = "approach_disconnected"
         pair = (self._pose_key(T_base_pregrasp), self._pose_key(T_base_grasp))
         if pair in self._transition_cache:
+            self.last_transition_diagnostic = deepcopy(self._transition_diagnostic_cache.get(
+                pair, {"reason": "cached_diagnostic_unavailable"}))
+            self.last_transition_diagnostic["cache_hit"] = True
             return self._transition_cache[pair] is not None
+        if not self._transition_cache:
+            self._transition_diagnostic_cache.clear()
+        # Store a fresh object per pair so cached failures never borrow later diagnostics.
+        self.last_transition_diagnostic = {"cache_hit": False, "reason": "approach_disconnected"}
+        self._transition_diagnostic_cache[pair] = self.last_transition_diagnostic
         if self._plan(T_base_pregrasp) is None or self._plan(T_base_grasp) is None:
+            self.last_transition_diagnostic["planning"] = deepcopy(self.last_plan_diagnostic)
             self._transition_cache[pair] = None
             return False
         q_pregrasp = self._ik_seed_cache.get(pair[0])
         q_grasp = self._ik_seed_cache.get(pair[1])
         if q_pregrasp is None or q_grasp is None:
+            self.last_transition_diagnostic["reason"] = "missing_joint_solution"
             self._transition_cache[pair] = None
             return False
         center_spec = self._grasp_center_specs.get(pair[1])
@@ -380,7 +404,7 @@ class IsaacCumotionExecutor:
                 goal_rotation[:, 0]
                 * (
                     self.pinch_center_x_per_width * width_m
-                    - self.fixed_finger_center_offset_m
+                    - (0.0 if self._fine_grasp_constraints else self.fixed_finger_center_offset_m)
                 )
             )
             base_position, base_orientation = (
@@ -394,11 +418,17 @@ class IsaacCumotionExecutor:
             # a five-DOF arm.  Reject poses whose reachable yaw would move the
             # fixed-finger gripper's physical pinch centre off the object.
             if center_error_m > 0.006:
+                self.last_transition_diagnostic.update(
+                    reason="pinch_center_mismatch", center_error_mm=center_error_m * 1000,
+                    tolerance_mm=6.0)
                 self.last_transition_rejection_reason = "pinch_center_mismatch"
                 self._transition_cache[pair] = None
                 return False
         path = self._linear_cspace_path(q_pregrasp, q_grasp)
         if path is None:
+            self.last_transition_diagnostic.update(
+                reason=self.last_collision_reason or "path_blocked",
+                collision=deepcopy(self.last_collision_diagnostic))
             self._transition_cache[pair] = None
             return False
         waypoints = [
@@ -406,6 +436,7 @@ class IsaacCumotionExecutor:
             for index in range(path.get_waypoints_count())
         ]
         self._transition_cache[pair] = waypoints
+        self.last_transition_diagnostic["reason"] = "reachable"
         return True
 
     def is_reachable(self, T_base_ee: np.ndarray) -> bool:
@@ -449,16 +480,29 @@ class IsaacCumotionExecutor:
 
     def move_to(self, T_base_ee: np.ndarray, *, speed_scale: float) -> bool:
         self._stopped = False
+        self.last_motion_diagnostic = None
+        self.last_waypoint_diagnostic = None
         self.controller.set_track_orientation(self.plan_orientation)
         path = self._plan(T_base_ee)
         if path is None:
+            self.last_motion_diagnostic = dict(reason="planning_failed")
             return False
         # Graph waypoints guarantee collision-free global transit. Ramp each
         # one through the articulation drive rather than teleporting joints.
-        if not self._execute_plan(path, speed_scale=speed_scale, max_steps=self.max_move_steps):
+        executed = self._execute_plan(
+            path, speed_scale=speed_scale, max_steps=self.max_move_steps,
+            endpoint_check=lambda: self._target_reached(T_base_ee))
+        reached = self._target_reached(T_base_ee)
+        self.last_motion_diagnostic.update(
+            trajectory_completed=bool(executed), endpoint_passed=bool(reached),
+            plan_type=type(path).__name__, speed_scale=float(speed_scale),
+            waypoint=getattr(self, "last_waypoint_diagnostic", None))
+        print("GRASP_MOTION_ENDPOINT " + json.dumps(self.last_motion_diagnostic), flush=True)
+        if not executed:
+            self.last_motion_diagnostic.update(reason="trajectory_not_completed")
             return False
         self._plan_cache.clear()
-        return self._target_reached(T_base_ee)
+        return reached
 
     def move_place_step(self, T_base_ee: np.ndarray, *, speed_scale: float) -> bool:
         """Execute a prechecked local placement step with measurable progress.
@@ -515,36 +559,83 @@ class IsaacCumotionExecutor:
         return follows_validated_branch or self._target_reached(T_base_ee)
 
     def lift_from_grasp(self, T_base_ee: np.ndarray, *, speed_scale: float) -> bool:
-        """Retrace the validated insertion branch before extending the lift.
+        """Lift the payload without changing the established finger contacts.
 
-        A grasped object changes the local collision/dynamics state and compact
-        five-axis arms are often near a singularity at contact.  The reverse of
-        the already checked pregrasp-to-grasp path is the safest deterministic
-        escape.  Only the remaining lift distance is handed back to IK.
+        Approach-axis IK is appropriate for finding a five-axis grasp, but its
+        unconstrained closing-axis rotation can twist the jaws during lift.
+        Likewise, reversing an insertion path pulls sideways before clearing
+        the support. Plan a vertical, full-orientation continuation from the
+        measured contact pose instead. If it cannot be continued, keep holding.
         """
         self._stopped = False
         self.controller.set_track_orientation(self.plan_orientation)
-        if self._active_waypoints:
-            q_current = self._arm_values(self.articulation.get_dof_positions)
-            q_pregrasp = self._active_waypoints[0]
-            reverse_path = self._linear_cspace_path(q_current, q_pregrasp)
-            if reverse_path is None or not self._execute_plan(
-                reverse_path,
-                speed_scale=speed_scale,
-                max_steps=self.max_move_steps,
-            ):
-                return False
-            self._plan_cache.clear()
-        if self._target_reached(T_base_ee):
-            return True
-        path = self._plan(T_base_ee)
-        if path is None:
+        paths = self._plan_payload_lift(T_base_ee)
+        if paths is None:
+            print("GRASP_PAYLOAD_LIFT " + json.dumps(self.last_lift_diagnostic), flush=True)
             return False
-        completed = self._execute_plan(
-            path, speed_scale=speed_scale, max_steps=self.max_move_steps
-        )
+        for index, path in enumerate(paths):
+            completed = self._execute_plan(
+                path, speed_scale=speed_scale, max_steps=self.max_move_steps)
+            actual = self.arm.T_base_ee()
+            all_q = self.articulation.get_dof_positions()
+            if hasattr(all_q, "numpy"):
+                all_q = all_q.numpy()
+            print("GRASP_PAYLOAD_LIFT " + json.dumps(dict(
+                segment=index, completed=completed,
+                tool_world_matrix=actual.tolist(),
+                joint_positions_rad=np.asarray(all_q).reshape(-1).tolist())), flush=True)
+            if not completed:
+                return False
         self._plan_cache.clear()
-        return completed and self._target_reached(T_base_ee)
+        actual = self.arm.T_base_ee()
+        return self._target_reached(T_base_ee) and all(
+            axis_alignment_error(actual[:3, axis], T_base_ee[:3, axis]) <= np.deg2rad(3)
+            for axis in (0, 2))
+
+    def _plan_payload_lift(self, target):
+        """Collision-check every <= 5 mm segment before any payload motion."""
+        self.controller.synchronize_world()
+        q = self._arm_values(self.articulation.get_dof_positions)
+        start = self._world_ee_pose_from_joints(q)
+        kinematics = self.controller.cumotion_robot.kinematics
+        lower = np.array([kinematics.cspace_coord_limits(i).lower for i in range(len(q))])
+        upper = np.array([kinematics.cspace_coord_limits(i).upper for i in range(len(q))])
+        distance = float(np.linalg.norm(target[:3, 3] - start[:3, 3]))
+        steps = max(1, int(np.ceil(distance / 0.005)))
+        paths = []
+        self.last_lift_diagnostic = {"reason": "planning", "segments": []}
+        for index in range(1, steps + 1):
+            desired = start.copy()
+            desired[:3, 3] += (target[:3, 3] - start[:3, 3]) * index / steps
+            seed = q.copy()
+            def residual(trial):
+                pose = self._world_ee_pose_from_joints(trial)
+                return np.concatenate((
+                    (pose[:3, 3] - desired[:3, 3]) / 0.003,
+                    (pose[:3, 0] - desired[:3, 0]) / 0.05,
+                    (pose[:3, 2] - desired[:3, 2]) / 0.05,
+                    0.005 * (trial - seed)))
+            solved = least_squares(residual, np.clip(seed, lower+1e-6, upper-1e-6),
+                bounds=(lower, upper), max_nfev=100,
+                ftol=1e-9, xtol=1e-9, gtol=1e-9)
+            pose = self._world_ee_pose_from_joints(solved.x)
+            position_error = float(np.linalg.norm(pose[:3, 3] - desired[:3, 3]))
+            angle_error = max(axis_alignment_error(pose[:3, i], start[:3, i]) for i in (0, 2))
+            self.last_lift_diagnostic["segments"].append(dict(
+                segment=index, position_error_mm=position_error*1000,
+                orientation_error_deg=float(np.rad2deg(angle_error)),
+                joints_deg=np.rad2deg(solved.x).tolist()))
+            if position_error > 0.003 or angle_error > np.deg2rad(3):
+                self.last_lift_diagnostic["reason"] = "payload_orientation_unreachable"
+                return None
+            path = self._linear_cspace_path(q, solved.x)
+            if path is None:
+                self.last_lift_diagnostic["reason"] = self.last_collision_reason or "payload_path_blocked"
+                return None
+            paths.append(path)
+            q = solved.x
+        self.last_lift_diagnostic["reason"] = "reachable"
+        return paths
 
     def stop(self) -> None:
         self._stopped = True
@@ -558,7 +649,14 @@ class IsaacCumotionExecutor:
     def _plan(self, T_base_ee: np.ndarray):
         key = self._pose_key(T_base_ee)
         if key in self._plan_cache:
+            self.last_plan_diagnostic = deepcopy(self._plan_diagnostic_cache.get(
+                key, {"reason": "cached_diagnostic_unavailable"}))
+            self.last_plan_diagnostic["cache_hit"] = True
             return self._plan_cache[key]
+        if not self._plan_cache:
+            self._plan_diagnostic_cache.clear()
+        started = time.perf_counter()
+        self.last_plan_diagnostic = {"reason": "planner_no_path"}
         self.controller.synchronize_world()
         current = self.articulation.get_dof_positions()
         if hasattr(current, "numpy"):
@@ -577,6 +675,16 @@ class IsaacCumotionExecutor:
         else:
             path = self.planner.plan_to_translation_target(q, target[:3, 3])
         self._plan_cache[key] = path
+        self.last_plan_diagnostic.update(
+            cache_hit=False, reachable=path is not None,
+            elapsed_ms=(time.perf_counter() - started) * 1000.0,
+            orientation_mode=self.orientation_mode,
+            start_joints_deg=np.rad2deg(q).tolist(),
+            joint_names=list(self.controller.cumotion_robot.controlled_joint_names),
+            target_world_matrix=target.tolist())
+        if path is not None:
+            self.last_plan_diagnostic["reason"] = "reachable"
+        self._plan_diagnostic_cache[key] = deepcopy(self.last_plan_diagnostic)
         return path
 
     @staticmethod
@@ -678,7 +786,11 @@ class IsaacCumotionExecutor:
         solve.  Franka has seven arm joints, so keep the same task objective
         while allowing its redundant wrist joints to regularize smoothly.
         """
-        self.last_plan_diagnostic = {"reason": "ik_no_solution"}
+        attempts = []
+        self.last_plan_diagnostic = {
+            "reason": "ik_no_solution", "attempts": attempts,
+            "position_tolerance_mm": 3.0, "axis_tolerance_deg": 5.0,
+        }
         self.controller.synchronize_world()
         base_position, base_orientation = (
             self.controller.world_binding.get_world_interface().get_world_to_robot_base_transform()
@@ -716,6 +828,7 @@ class IsaacCumotionExecutor:
             [kinematics.cspace_coord_limits(i).upper for i in range(len(q))], dtype=np.float64
         )
         full_orientation = self.orientation_mode == "full"
+        fine_contact = self._fine_grasp_constraints
         if full_orientation:
             regularization = np.full(len(q), .005, dtype=np.float64)
         else:
@@ -728,7 +841,18 @@ class IsaacCumotionExecutor:
             if len(q) >= 5:
                 regularization[4:] = .05
                 regularization[-1] = .25
-        closing_axis_weight = 1.0 if full_orientation else 0.30
+        # Normalize the two required constraints by their acceptance scales.
+        # Yaw/current-posture preferences must not outweigh approach alignment
+        # and create a rejected compromise despite a feasible five-DOF pose.
+        if fine_contact and not full_orientation:
+            regularization = np.full(len(q), .002, dtype=np.float64)
+            if len(q) >= 4:
+                regularization[3] = .003
+            if len(q) >= 5:
+                regularization[4:] = .005
+        closing_axis_weight = 1.0 if full_orientation else 0.05 if fine_contact else 0.30
+        position_scale = 0.003 if fine_contact else 0.01
+        axis_scale = np.sin(np.deg2rad(5.0)) if fine_contact else 1.0
 
         def residual(q_trial: np.ndarray) -> np.ndarray:
             pose = kinematics.pose(q_trial, tool_frame)
@@ -736,8 +860,8 @@ class IsaacCumotionExecutor:
             closing_axis = np.asarray(pose.rotation.matrix(), dtype=np.float64)[:, 0]
             return np.concatenate(
                 (
-                    (np.asarray(pose.translation) - position_base) / 0.01,
-                    axis - approach_axis_base,
+                    (np.asarray(pose.translation) - position_base) / position_scale,
+                    (axis - approach_axis_base) / axis_scale,
                     closing_axis_weight * (closing_axis - closing_axis_base),
                     regularization * (q_trial - q),
                 )
@@ -764,8 +888,8 @@ class IsaacCumotionExecutor:
             )
             return np.vstack(
                 (
-                    position_jacobian / 0.01,
-                    axis_jacobian,
+                    position_jacobian / position_scale,
+                    axis_jacobian / axis_scale,
                     closing_axis_weight * closing_axis_jacobian,
                     np.diag(regularization),
                 )
@@ -780,8 +904,8 @@ class IsaacCumotionExecutor:
         self._observation_suggestion_key = target_key
         defaults = robot_config()["default_joint_positions"]
         home_seed = np.array([defaults[name] for name in self.controller.cumotion_robot.controlled_joint_names])
-        seeds = [q, *(seed for _key, seed in cached_seeds[:6]), home_seed]
-        for seed in seeds:
+        seeds = [q, *(seed for _key, seed in cached_seeds[:2 if fine_contact else 6]), home_seed]
+        for seed_index, seed in enumerate(seeds):
             result = least_squares(
                 residual,
                 np.clip(seed, lower + 1e-6, upper - 1e-6),
@@ -805,8 +929,20 @@ class IsaacCumotionExecutor:
                 self._observation_pose_suggestions.append(self._world_ee_pose_from_joints(q_goal))
             position_error = float(np.linalg.norm(goal_position-position_base))
             axis_error = float(axis_alignment_error(goal_axis, approach_axis_base))
-            self.last_plan_diagnostic = dict(reason="ik_tolerance", position_error_mm=position_error*1000,
-                                             axis_error_deg=float(np.rad2deg(axis_error)))
+            attempt = dict(
+                seed_index=seed_index, seed_joints_deg=np.rad2deg(seed).tolist(),
+                solution_joints_deg=np.rad2deg(q_goal).tolist(),
+                joint_limit_margin_deg=np.rad2deg(np.minimum(q_goal-lower, upper-q_goal)).tolist(),
+                position_error_mm=position_error*1000,
+                axis_error_deg=float(np.rad2deg(axis_error)),
+                closing_axis_error_deg=float(np.rad2deg(axis_alignment_error(
+                    np.asarray(goal_pose.rotation.matrix())[:, 0], closing_axis_base))),
+                solver_status=int(result.status), solver_evaluations=int(result.nfev),
+                reason="ik_tolerance")
+            attempts.append(attempt)
+            self.last_plan_diagnostic.update(
+                reason="ik_tolerance", position_error_mm=position_error*1000,
+                axis_error_deg=float(np.rad2deg(axis_error)))
             if (
                 float(np.linalg.norm(goal_position - position_base)) > 0.003
                 or axis_alignment_error(goal_axis, approach_axis_base) > np.deg2rad(5.0)
@@ -816,12 +952,15 @@ class IsaacCumotionExecutor:
                 continue
             path = self._linear_cspace_path(q, q_goal)
             if path is not None:
+                attempt["reason"] = "reachable"
                 self.last_plan_diagnostic["reason"] = "reachable"
                 self._ik_seed_cache[target_key] = q_goal
                 if len(self._ik_seed_cache) > 64:
                     self._ik_seed_cache.pop(next(iter(self._ik_seed_cache)))
                 return path
             self.last_plan_diagnostic["reason"] = self.last_collision_reason or "path_blocked"
+            attempt["reason"] = self.last_plan_diagnostic["reason"]
+            attempt["collision"] = deepcopy(self.last_collision_diagnostic)
         return None
 
     def propose_observation_pose(self, requested):
@@ -856,6 +995,7 @@ class IsaacCumotionExecutor:
         """
         q0 = np.asarray(q_initial, dtype=np.float64).reshape(-1)
         self.last_collision_reason = None
+        self.last_collision_diagnostic = None
         q1 = np.asarray(q_final, dtype=np.float64).reshape(-1)
         max_delta = float(np.max(np.abs(q1 - q0)))
         collision_samples = max(1, int(np.ceil(max_delta / collision_step_rad)))
@@ -864,16 +1004,25 @@ class IsaacCumotionExecutor:
             q = q0 + alpha * (q1 - q0)
             if self._collision_inspector.in_self_collision(q):
                 self.last_collision_reason = "self_collision"
+                self.last_collision_diagnostic = dict(
+                    reason=self.last_collision_reason, sample_index=index,
+                    total_samples=collision_samples + 1, path_fraction=alpha,
+                    joints_deg=np.rad2deg(q).tolist())
                 return None
             if self._collision_inspector.in_collision_with_obstacle(q):
                 self.last_collision_reason = "obstacle_collision"
+                self.last_collision_diagnostic = dict(
+                    reason=self.last_collision_reason, sample_index=index,
+                    total_samples=collision_samples + 1, path_fraction=alpha,
+                    joints_deg=np.rad2deg(q).tolist())
                 return None
         waypoint_count = max(1, int(np.ceil(max_delta / waypoint_step_rad)))
         return _JointWaypointPath(
             tuple(q0 + index / waypoint_count * (q1 - q0) for index in range(waypoint_count + 1))
         )
 
-    def _execute_plan(self, plan, *, speed_scale: float, max_steps: int) -> bool:
+    def _execute_plan(self, plan, *, speed_scale: float, max_steps: int,
+                      endpoint_check: Callable[[], bool] | None = None) -> bool:
         if isinstance(plan, _JointStepPlan):
             return self._drive_joint_waypoint(
                 plan.q_target,
@@ -888,7 +1037,8 @@ class IsaacCumotionExecutor:
                 # guarantees that the command was physically acted upon; the
                 # outer loop owns the strict 5 mm / three-frame final test.
                 minimum_cartesian_progress_m=0.0001,
-                accept_partial_cartesian_progress=True,
+                accept_partial_cartesian_progress=endpoint_check is None,
+                endpoint_check=endpoint_check,
             )
         if isinstance(plan, _JointWaypointPath):
             # This path was produced by dense collision checks of a straight
@@ -896,13 +1046,15 @@ class IsaacCumotionExecutor:
             # that same segment, so stopping at every sampled collision point
             # only injects oscillation and latency.
             return self._drive_joint_waypoint(
-                plan.waypoints[-1], speed_scale=speed_scale, max_steps=max_steps
+                plan.waypoints[-1], speed_scale=speed_scale, max_steps=max_steps,
+                endpoint_check=endpoint_check,
             )
         if hasattr(plan, "get_waypoints_count"):
             for waypoint_index in range(1, plan.get_waypoints_count()):
                 waypoint = plan.get_waypoint_by_index(waypoint_index)
                 if not self._drive_joint_waypoint(
-                    waypoint, speed_scale=speed_scale, max_steps=max_steps
+                    waypoint, speed_scale=speed_scale, max_steps=max_steps,
+                    endpoint_check=endpoint_check if waypoint_index == plan.get_waypoints_count()-1 else None,
                 ):
                     return False
             return True
@@ -925,19 +1077,42 @@ class IsaacCumotionExecutor:
             if trajectory_time >= duration:
                 endpoint = np.asarray(state.joints.positions.numpy(), dtype=np.float64).reshape(-1)
                 return self._drive_joint_waypoint(
-                    endpoint, speed_scale=speed_scale, max_steps=max_steps
+                    endpoint, speed_scale=speed_scale, max_steps=max_steps,
+                    endpoint_check=endpoint_check,
                 )
         return False
 
     def _target_reached(self, target: np.ndarray) -> bool:
         current = self.arm.T_base_ee()
         translation, rotation = pose_error(current, target)
-        if float(np.linalg.norm(translation)) > max(self.position_tolerance_m * 2.0, 0.003):
+        position_error = float(np.linalg.norm(translation))
+        position_limit = max(self.position_tolerance_m * 2.0, 0.003)
+        axis_error = float(axis_alignment_error(current[:3, 2], target[:3, 2]))
+        rotation_error = float(np.linalg.norm(rotation))
+        self.last_motion_diagnostic = dict(
+            reason="endpoint_check", position_error_mm=position_error * 1000,
+            position_tolerance_mm=position_limit * 1000,
+            approach_axis_error_deg=float(np.rad2deg(axis_error)),
+            approach_axis_tolerance_deg=5.0 if self.orientation_mode == "approach_axis" else None,
+            rotation_error_deg=float(np.rad2deg(rotation_error)),
+            rotation_tolerance_deg=2.0 if self.orientation_mode == "full" else None,
+            measured_position_world_m=current[:3, 3].tolist(),
+            target_position_world_m=target[:3, 3].tolist(),
+        )
+        waypoint = getattr(self, "last_waypoint_diagnostic", None)
+        if waypoint is not None:
+            # Read fresh q without stepping simulation or changing any target.
+            q = self._arm_values(self.articulation.get_dof_positions)
+            fk_world = self._world_ee_pose_from_joints(q)[:3, 3]
+            planned = self._world_ee_pose_from_joints(np.asarray(waypoint["target_q_rad"]))[:3, 3]
+            self.last_motion_diagnostic["error_chain"] = endpoint_error_chain(
+                target[:3, 3], planned, fk_world, current[:3, 3])
+        if position_error > position_limit:
             return False
         if self.orientation_mode == "approach_axis":
-            return axis_alignment_error(current[:3, 2], target[:3, 2]) <= np.deg2rad(5.0)
+            return axis_error <= np.deg2rad(5.0)
         if self.orientation_mode == "full":
-            return float(np.linalg.norm(rotation)) <= np.deg2rad(2.0)
+            return rotation_error <= np.deg2rad(2.0)
         return True
 
     def _set_target_pose(self, T_base_ee: np.ndarray) -> None:
@@ -974,6 +1149,7 @@ class IsaacCumotionExecutor:
         cartesian_tolerance_m: float | None = 0.0035,
         minimum_cartesian_progress_m: float = 0.0,
         accept_partial_cartesian_progress: bool = False,
+        endpoint_check: Callable[[], bool] | None = None,
     ) -> bool:
         target = np.asarray(waypoint, dtype=np.float64).reshape(-1)
         tolerance = self.joint_tolerance_rad if tolerance_rad is None else float(tolerance_rad)
@@ -995,11 +1171,32 @@ class IsaacCumotionExecutor:
             float(minimum_cartesian_progress_m), 0.5 * initial_cartesian_error
         )
         pose_stable_frames = 0
+        def record_waypoint(outcome, steps):
+            self.last_waypoint_diagnostic = {
+                "outcome": outcome, "steps": steps,
+                "joint_names": list(self.controller.cumotion_robot.controlled_joint_names),
+                "target_q_rad": target.tolist(), "measured_q_rad": q.tolist(),
+                "commanded_q_rad": command.tolist(),
+                "max_joint_error_rad": float(np.max(np.abs(delta))),
+                "joint_tolerance_rad": tolerance,
+                "joint_criterion_passed": bool(float(np.max(np.abs(delta))) <= tolerance),
+                "cartesian_criterion_passed": bool(cartesian_reached),
+                "planned_fk_error_mm": float(np.linalg.norm(target_xyz-current_xyz)*1000),
+                "cartesian_tolerance_mm": None if cartesian_tolerance_m is None else cartesian_tolerance_m*1000,
+                "velocity_rad_s": velocity.tolist(),
+                "velocity_tolerance_rad_s": velocity_tolerance_rad_s,
+                "pose_stable_frames": pose_stable_frames,
+                "command_remaining_rad": float(np.max(np.abs(target-command))),
+                "command_complete": bool(command_complete),
+                "requested_endpoint_passed": endpoint_passed,
+                "effort": self._arm_values(self.articulation.get_dof_efforts).tolist(),
+            }
+            print("GRASP_WAYPOINT_RESULT " + json.dumps(self.last_waypoint_diagnostic), flush=True)
         # ``max_steps`` budgets the commanded motion.  The loaded arm may only
         # enter the Cartesian tolerance near the end of that budget, especially
         # during lift. Keep commanding the fixed endpoint for a bounded settling
         # window and require both pose and velocity convergence before success.
-        for _ in range(int(max_steps) + self.waypoint_settle_steps):
+        for step_index in range(int(max_steps) + self.waypoint_settle_steps):
             if self._stopped:
                 return False
             current = self.articulation.get_dof_positions()
@@ -1024,10 +1221,16 @@ class IsaacCumotionExecutor:
                 # Panda endpoint must satisfy orientation before returning.
                 pose_reached = cartesian_reached and angle <= np.deg2rad(1.)
             progress_reached = cartesian_progress + 1e-6 >= progress_required
-            pose_stable_frames = pose_stable_frames + 1 if pose_reached and progress_reached else 0
+            # A small measured error is not evidence that the commanded ramp
+            # has reached its endpoint. Never abandon its remaining increments.
+            command_complete = float(np.max(np.abs(target-command))) <= 1e-9
+            endpoint_passed = None
+            if command_complete and pose_reached and progress_reached:
+                endpoint_passed = bool(endpoint_check()) if endpoint_check is not None else True
+            ready = command_complete and pose_reached and progress_reached and endpoint_passed is True
+            pose_stable_frames = pose_stable_frames + 1 if ready else 0
             if (
-                pose_reached
-                and progress_reached
+                ready
                 # PhysX can report a non-zero instantaneous joint velocity at
                 # a force-limited equilibrium even while the sampled Cartesian
                 # pose remains inside tolerance. Accept a sustained in-tolerance
@@ -1037,6 +1240,7 @@ class IsaacCumotionExecutor:
                     or pose_stable_frames >= 30
                 )
             ):
+                record_waypoint("accepted", step_index)
                 return True
             # Advance the commanded trajectory independently of tracking lag.
             # Re-anchoring every target to the measured q limits the position
@@ -1046,6 +1250,7 @@ class IsaacCumotionExecutor:
             command += np.clip(target - command, -max_delta_per_step, max_delta_per_step)
             self.articulation.set_dof_position_targets(command, dof_indices=self.arm_dof_indices)
             self.advance_frame()
+        record_waypoint("budget_exhausted", int(max_steps) + self.waypoint_settle_steps)
         print(
             "[mr_liu] joint waypoint did not converge: "
             f"max_error_rad={np.max(np.abs(delta)):.6f} "
@@ -1065,7 +1270,7 @@ class IsaacCumotionExecutor:
         # faithful to visual servoing than discarding the observation and
         # replanning from stale geometry.  Global moves and lift never enable
         # this path and therefore still require endpoint convergence.
-        if accept_partial_cartesian_progress:
+        if accept_partial_cartesian_progress and endpoint_check is None and command_complete:
             final_error = float(np.linalg.norm(target_xyz - current_xyz))
             final_progress = initial_cartesian_error - final_error
             if (

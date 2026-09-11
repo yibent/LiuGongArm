@@ -1,0 +1,76 @@
+{
+  "date": "2026-09-09",
+  "environment": {
+    "server": "GPUFree RTX 4090",
+    "scene": "assembly",
+    "entry": "BusAgent WebSocket user.text",
+    "direct_controller_commands": false
+  },
+  "tests": [
+    {
+      "instruction": "把红色方块放到桌面空处",
+      "terminal_state": "completed",
+      "elapsed_ms": 80049,
+      "model_calls": 2,
+      "physical_completed_steps": 1
+    },
+    {
+      "instruction": "把绿色支架放进蓝色暂存盘里",
+      "terminal_state": "completed",
+      "elapsed_ms": 45204,
+      "model_calls": 2,
+      "physical_completed_steps": 1
+    },
+    {
+      "instruction": "把金属圆柱和青色轴套都放进蓝色暂存盘里",
+      "terminal_state": "blocked",
+      "elapsed_ms": 102047,
+      "model_calls": 5,
+      "physical_completed_steps": 1,
+      "failure": "青色轴套放置时蓝色暂存盘没有足够可见空位",
+      "defect_found": "续规划错误要求stage重新从1编号",
+      "fix": "保留已完成阶段编号并由系统连续分配后续编号"
+    },
+    {
+      "instruction": "把垫圈放到桌面上空着的地方",
+      "terminal_state": "blocked",
+      "elapsed_ms": 74840,
+      "model_calls": 3,
+      "physical_completed_steps": 1,
+      "defect_found": "最终复核在物理成功后错误追加重复抓取",
+      "fix": "简单列表的物理成功和释放证据禁止最终复核重复驱动同一物体"
+    },
+    {
+      "instruction": "把青色轴套放到桌面上空着的地方",
+      "terminal_state": "blocked",
+      "elapsed_ms": 120330,
+      "model_calls": 4,
+      "physical_completed_steps": 1,
+      "defect_found": "恢复规划把原始simple列表改成complex，绕过重复执行保护",
+      "fix": "列表保存initial_mode，恢复不得覆盖原始复杂度"
+    },
+    {
+      "instruction": "把蓝色暂存盘里的绿色支架放到桌面空处",
+      "terminal_state": "completed",
+      "elapsed_ms": 55547,
+      "model_calls": 3,
+      "physical_completed_steps": 1,
+      "recovery": "首次多视角实例冲突后重新规划一次",
+      "post_fix_duplicate_execution": false
+    }
+  ],
+  "read_only_complex_planning": {
+    "instruction": "帮我收拾桌面，把零件按类别放到合适的料箱",
+    "task_router_calls": 1,
+    "advanced_image_planner_calls": 1,
+    "advanced_first_token_ms": 20632,
+    "generated_stages": 4,
+    "unnecessary_dependencies": 0,
+    "physical_commands": 0
+  },
+  "final_state": {
+    "arena_phase": "idle",
+    "holding": false,
+    "active_tasks": 0
+  }
+}

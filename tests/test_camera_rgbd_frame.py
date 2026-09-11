@@ -14,6 +14,20 @@ from mr_liu.perception.camera import SceneCamera
 
 
 class CameraRGBDFrameTests(unittest.TestCase):
+    def test_wrist_pose_uses_live_fabric_not_authored_usd(self):
+        from mr_liu.grasp.transforms import quaternion_wxyz_to_matrix
+        camera = SceneCamera("wrist")
+        camera._cam = Mock()
+        camera._fabric_world_pose = Mock(return_value=(np.array([.4, -.2, 1.1]), np.array([1., 0., 0., 0.])))
+        position, orientation = camera.world_pose(camera_axes="ros")
+        np.testing.assert_allclose(position, [.4, -.2, 1.1])
+        np.testing.assert_allclose(quaternion_wxyz_to_matrix(orientation), np.diag([1., -1., -1.]), atol=1e-12)
+        camera._cam.get_world_pose.assert_not_called()
+        _, usd = camera.world_pose(camera_axes="usd")
+        np.testing.assert_allclose(quaternion_wxyz_to_matrix(usd), np.eye(3))
+        _, world = camera.world_pose(camera_axes="world")
+        np.testing.assert_allclose(quaternion_wxyz_to_matrix(world), [[0,-1,0],[0,0,1],[-1,0,0]], atol=1e-12)
+
     def setUp(self):
         self.camera = SceneCamera("scene")
         self.camera.resolution = (3, 2)

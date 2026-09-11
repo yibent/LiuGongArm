@@ -33,8 +33,12 @@ class ManipulationRequest:
             raise ValueError("mode must be auto, basic or enhanced")
         if self.placement_selection not in {'auto', 'center', 'free_space'}:
             raise ValueError('placement_selection must be auto, center or free_space')
-        if self.relation not in {"on", "inside"}:
-            raise ValueError("Insertion and hanging require contact skills that are not yet available")
+        if self.relation not in {"on", "inside", "insert", "sleeve_on_peg", "hang"}:
+            raise ValueError("Unsupported placement relation")
+        if self.relation in {"insert", "sleeve_on_peg", "hang"} and self.destination is None:
+            raise ValueError("Contact placement requires a destination")
+        if self.relation in {"insert", "sleeve_on_peg", "hang"} and self.orientation is not None:
+            raise ValueError("Contact placement orientation is selected by AnyPlace")
         if self.orientation is not None:
             if self.orientation.get('endpoint') not in (0, 1) or self.orientation.get('direction', 'up') not in {'up', 'down'}:
                 raise ValueError('orientation requires observed endpoint 0/1 and direction up/down')
@@ -51,7 +55,8 @@ class ManipulationRequest:
         return {
             "decision": "busagent",
             "grasp": "graspgenx" if self.enhanced else "official_pick_place",
-            "placement": ("anyplace" if self.enhanced else "official_pick_place") if self.destination else None,
+            "placement": ("anyplace" if self.enhanced or self.relation in {"insert", "sleeve_on_peg", "hang"}
+                          else "official_pick_place") if self.destination else None,
             "execution": "isaaclab_arena.franka_ik",
             "robot": "franka_panda",
         }

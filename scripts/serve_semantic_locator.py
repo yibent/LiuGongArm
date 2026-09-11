@@ -39,7 +39,21 @@ def locate(body):
     pipe = FindTrackPipeline()
     try:
         pipe.load("yoloe" if mode == "florence_yoloe" else "cv")
-        found = pipe.florence.find(frame, [label])
+        if body.get("memory_id"):
+            from find_and_track.memory import ObjectMemoryStore
+            from find_and_track.pipeline import imread_unicode
+            memory = ObjectMemoryStore(ROOT / "runs" / "memories").get(body["memory_id"])
+            if memory is None or not memory.views:
+                raise ValueError("Requested object memory is unavailable")
+            sample = next((v for v in reversed(memory.views) if v.view == "scene"), memory.views[-1])
+            crop = imread_unicode(sample.image)
+            if crop is None:
+                raise ValueError("Object memory image is unavailable")
+            pipe.yoloe.load()
+            pipe.yoloe.set_image_prompt(crop, label)
+            found = pipe.yoloe.detect(frame)
+        else:
+            found = pipe.florence.find(frame, [label])
         slow_boxes = [d.xyxy.tolist() for d in found]
         if found and mode == "florence_yoloe":
             pipe.yoloe.set_visual_prompt(frame, found)

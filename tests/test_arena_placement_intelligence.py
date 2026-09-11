@@ -54,6 +54,49 @@ def test_references_bind_scene_frame_not_configured_names(tmp_path):
     with pytest.raises(ValueError):load_reference(tmp_path,'../../.env','current')
 
 
+def test_manipulation_target_rejects_floor_witness_before_motion():
+    method = runtime_method('cloud')
+    result = {'ok':True,'request_id':'a'*32,'perception_source':'test','views':[]}
+    perception = SimpleNamespace(
+        capture=lambda *args, **kwargs:{'request_id':'a'*32},
+        request=lambda packet:result,
+        witness=lambda observed, entities:('floor',{'floor':99}),
+        cloud=lambda observed:(np.zeros((64,3)),{}),
+    )
+    runtime = SimpleNamespace(
+        prepared_clouds={}, observed_entities={}, perception=perception,
+        execution_policy={'loop':'fast_then_slow'}, observing=False,
+        vision_worker=SimpleNamespace(available=True), tick=lambda *args, **kwargs:None,
+        event=Mock(), infer=lambda fn,*args,**kwargs:fn(*args,**kwargs),
+        body_entities={'floor':{}}, held=None, sequence=1, last_track=0,
+        visual_result=None, config={'camera':{'render_interval':1}},
+    )
+    with pytest.raises(Exception, match='地面'):
+        method(runtime,'metal cylinder',associate=True,manipulation_target=True)
+    assert any(call.args[0] == 'visual_relocalization' for call in runtime.event.call_args_list)
+
+
+def test_manipulation_target_rejects_a_physical_fixed_fixture():
+    method = runtime_method('cloud')
+    result = {'ok':True,'request_id':'a'*32,'perception_source':'test','views':[]}
+    perception = SimpleNamespace(
+        capture=lambda *args, **kwargs:{'request_id':'a'*32},
+        request=lambda packet:result,
+        witness=lambda observed, entities:('fixture',{'fixture':99}),
+        cloud=lambda observed:(np.zeros((64,3)),{}),
+    )
+    runtime = SimpleNamespace(
+        prepared_clouds={}, observed_entities={}, perception=perception,
+        execution_policy={'loop':'slow'}, observing=False,
+        vision_worker=SimpleNamespace(available=True), tick=lambda *args, **kwargs:None,
+        event=Mock(), infer=lambda fn,*args,**kwargs:fn(*args,**kwargs),
+        body_entities={'fixture':{'manipulable':False}}, held=None, sequence=1,
+        last_track=0, visual_result=None, config={'camera':{'render_interval':1}},
+    )
+    with pytest.raises(ValueError, match='固定工装'):
+        method(runtime,'grey block',associate=True,manipulation_target=True)
+
+
 def test_precontact_ik_failure_reuses_next_candidate_and_stop_never_retries():
     r=SimpleNamespace(event=Mock(),holding_status=lambda:{'verified':True},
                       move=Mock(side_effect=[RuntimeError('Arena IK did not reach pregrasp'),None]))

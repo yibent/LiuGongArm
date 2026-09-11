@@ -31,7 +31,15 @@ isaac-sim-6.0.1/
 *.pt
 *.ts
 runs/
-/_models/
+# Keep only the paired GraspGenX release YAMLs; weights/caches stay local.
+/_models/**
+!/_models/graspgenx/
+!/_models/graspgenx/checkpoints/
+!/_models/graspgenx/checkpoints/release/
+!/_models/graspgenx/checkpoints/release/gen/
+!/_models/graspgenx/checkpoints/release/dis/
+!/_models/graspgenx/checkpoints/release/gen/config.yaml
+!/_models/graspgenx/checkpoints/release/dis/config.yaml
 /_envs/
 /_vendor/
 
