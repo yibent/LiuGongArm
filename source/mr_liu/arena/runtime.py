@@ -31,6 +31,7 @@ from mr_liu.grasp.backends.graspgenx import ZmqGraspGenXTransport
 from mr_liu.grasp.transforms import invert_transform, transform_points
 from mr_liu.place.anyplace import AnyPlaceClient
 from mr_liu.arena.contact_relations import CONTACT_RELATIONS, contact_pose_candidates
+from mr_liu.arena.truth_grounding import IsaacWorldTruthProvider
 
 
 
@@ -57,6 +58,7 @@ class ArenaRuntime:
             'manipulable': not bool(getattr(getattr(body.cfg.spawn, 'rigid_props', None),
                                             'kinematic_enabled', False))}
             for name, body in self.env.scene.rigid_objects.items()}
+        self.truth_provider = IsaacWorldTruthProvider(lambda name: self.env.scene[name])
         self.bus_context = {}
         self.perception = PerceptionBridge(Path(__file__).resolve().parents[3]/'output/perception', config['vision']['service_url'])
         self.vision_worker = VisionWorker(self.perception.request)
@@ -83,6 +85,10 @@ class ArenaRuntime:
     def object_pose(self, name):
         data = self.env.scene[name].data
         return pose_matrix(numpy_data(data.root_pos_w)[0], numpy_data(data.root_quat_w)[0])
+
+    def truth_target(self, name):
+        """Return an exact world pose for diagnostics/tests; never used by default."""
+        return self.truth_provider.locate(name)
 
     def locate(self, label, *, manipulation_target=False, **vision_options):
         """Visual geometry first. Physical IDs are evaluation witnesses only."""

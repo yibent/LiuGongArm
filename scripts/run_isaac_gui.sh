@@ -2,7 +2,8 @@
 # GPUFree desktop launcher; uses Isaac's libpython before system libraries.
 set -euo pipefail
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-isaac_dir="${ISAAC_SIM_PATH:-/root/isaacsim}"
+repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+isaac_dir="${ISAAC_SIM_PATH:-$repo_root/isaac-sim-6.0.1}"
 export DISPLAY="${DISPLAY:-:20}"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/runtime-xdg}"
 export OMNI_KIT_ALLOW_ROOT=1

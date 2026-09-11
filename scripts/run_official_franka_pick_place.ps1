@@ -32,5 +32,5 @@ if($NoHeadless){$args+='--no-headless'}
 if($RecordVideo){$args+='--record-video'}
 if($IndustrialScene){$args+='--industrial-scene'}
 $env:OMNI_KIT_ACCEPT_EULA='YES'
-& 'D:\isaac\env_isaacsim60\python.exe' @args
+& (Join-Path (Split-Path -Parent $PSScriptRoot) 'isaac-sim-6.0.1\python.bat') @args
 exit $LASTEXITCODE

@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PYTHON = Path(r"D:\isaac\env_isaacsim60\python.exe")
+PYTHON = Path(__file__).resolve().parents[1] / "isaac-sim-6.0.1" / "python.bat"
 RUNNER = ROOT / "scripts" / "run_official_franka_shape_pick_place.py"
 OUT = ROOT / "output" / "franka" / "official_shapes_20260906_a"
 cases = [

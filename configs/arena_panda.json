@@ -60,6 +60,7 @@
     ]
   },
   "vision": {
+    "truth_mode": false,
     "service_url": "http://127.0.0.1:5570/observe",
     "track_every_steps": 8,
     "vocabulary": [

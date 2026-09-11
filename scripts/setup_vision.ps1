@@ -1,5 +1,5 @@
 param(
-    [string]$BasePython = 'D:\isaac\env_isaacsim60\python.exe',
+    [string]$BasePython = (Join-Path (Split-Path -Parent $PSScriptRoot) 'isaac-sim-6.0.1\python.bat'),
     [switch]$SkipModels
 )
 $ErrorActionPreference = 'Stop'

@@ -9,7 +9,8 @@ import faulthandler
 import signal
 
 faulthandler.enable()
-faulthandler.register(signal.SIGUSR1, all_threads=True)
+if hasattr(signal, "SIGUSR1") and hasattr(faulthandler, "register"):
+    faulthandler.register(signal.SIGUSR1, all_threads=True)
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "source"))
@@ -24,6 +25,7 @@ parser.add_argument("--smoke-fault", choices=["miss_grasp", "after_lift"],
 parser.add_argument("--mode", choices=["basic", "enhanced", "auto"], default="basic")
 parser.add_argument("--target", default="red block")
 parser.add_argument("--destination", default="blue pad")
+parser.add_argument("--truth-target", help="Read one rigid body pose directly from Isaac Sim and exit")
 parser.add_argument("--port", type=int, default=7861)
 AppLauncher.add_app_launcher_args(parser)
 parser.set_defaults(rendering_mode="performance")
@@ -50,6 +52,13 @@ try:
     config = json.loads(args.config.read_text())
     env, task = build_environment(config, device=args.device)
     runtime = ArenaRuntime(env, task, config, args.output)
+    if args.truth_target:
+        target = runtime.truth_target(args.truth_target)
+        print(json.dumps({"ok": True, "truth_mode": True, "target": target.entity_name,
+                          "position_world_m": target.position_world_m,
+                          "quaternion_world_xyzw": target.quaternion_world_xyzw,
+                          "source": target.source}, ensure_ascii=False), flush=True)
+        raise SystemExit(0)
     if args.smoke:
         if args.smoke_fault:
             from arena_smoke_faults import inject_once

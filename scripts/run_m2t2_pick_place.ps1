@@ -82,7 +82,7 @@ try {
         if($CaseJson){$baselineArgs+=@('-CaseJson',$CaseJson)}
         & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'run_fine_grasp_demo.ps1') @baselineArgs
     } else {
-        & 'D:\isaac\env_isaacsim60\python.exe' @m2Args
+        & (Join-Path (Split-Path -Parent $PSScriptRoot) 'isaac-sim-6.0.1\python.bat') @m2Args
     }
     $m2Exit=$LASTEXITCODE
     $report=Join-Path $Output 'place_report.json'

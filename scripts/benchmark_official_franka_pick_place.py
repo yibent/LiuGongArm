@@ -19,7 +19,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--isaac-python", type=Path,
-                        default=Path(r"D:\isaac\env_isaacsim60\python.exe"))
+                        default=Path(__file__).resolve().parents[1] / "isaac-sim-6.0.1" / "python.bat")
     parser.add_argument("--limit", type=int)
     parser.add_argument("--start-index", type=int, default=1,
                         help="One-based manifest case index")
