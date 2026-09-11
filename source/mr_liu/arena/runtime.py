@@ -58,6 +58,8 @@ class ArenaRuntime:
             'manipulable': not bool(getattr(getattr(body.cfg.spawn, 'rigid_props', None),
                                             'kinematic_enabled', False))}
             for name, body in self.env.scene.rigid_objects.items()}
+        self.truth_metadata = {row.get('name'): row for key in ('entities', 'objects', 'destinations')
+                               for row in config.get(key, []) if row.get('name')}
         self.truth_provider = IsaacWorldTruthProvider(lambda name: self.env.scene[name])
         self.bus_context = {}
         self.perception = PerceptionBridge(Path(__file__).resolve().parents[3]/'output/perception', config['vision']['service_url'])
@@ -90,8 +92,84 @@ class ArenaRuntime:
         """Return an exact world pose for diagnostics/tests; never used by default."""
         return self.truth_provider.locate(name)
 
+    def _truth_enabled(self):
+        vision = self.config.get('vision', {})
+        return vision.get('grounding_mode') == 'truth' or vision.get('truth_mode') is True
+
+    def _truth_name(self, label):
+        query = str(label or '').strip().casefold()
+        if query in self.body_entities:
+            return query
+        for name, row in self.truth_metadata.items():
+            values = (name, row.get('label'), row.get('shape'))
+            if any(query == str(value).strip().casefold() for value in values if value):
+                return name
+            label_text = str(row.get('label', ''))
+            translated = query
+            for source, target in (('red', '红'), ('green', '绿'), ('blue', '蓝'),
+                                   ('yellow', '黄'), ('orange', '橙'), ('block', '方块'),
+                                   ('cube', '方块'), ('cylinder', '圆柱'), ('tray', '料盘'),
+                                   ('pad', '料盘')):
+                translated = translated.replace(source, target)
+            if translated and translated in label_text:
+                return name
+        aliases = {
+            'cuboid': ('block', 'box', 'cube', '方块'),
+            'cylinder': ('cylinder', 'shaft', 'bolt', 'pin', '圆柱'),
+            'tray': ('tray', 'pad', '盘', '料盘'),
+        }
+        colors = ('red', 'green', 'blue', 'yellow', 'orange', 'purple', '红', '绿', '蓝', '黄', '橙')
+        candidates = []
+        for name, row in self.truth_metadata.items():
+            shape = str(row.get('shape', '')).casefold()
+            shape_match = any(token in query for token in aliases.get(shape, ()))
+            rgb = np.asarray(row.get('color', []), dtype=float)
+            color_match = False
+            if rgb.size >= 3:
+                color = colors[int(np.argmax(rgb[:3]))]
+                color_match = color in query
+            if shape_match or color_match:
+                candidates.append((name, shape_match, color_match))
+        narrowed = [name for name, shape, color in candidates if shape and color] or [name for name, shape, color in candidates if shape]
+        if len(narrowed) == 1:
+            return narrowed[0]
+        raise LocalizationFailure(f'真值模式未找到明确的物体标签：{label}')
+
+    def _truth_cloud(self, name, pose):
+        row = self.truth_metadata.get(name, {})
+        size = np.asarray(row.get('size', [.04, .04, .04]), dtype=float)[:3]
+        size = np.pad(size, (0, max(0, 3-size.size)), constant_values=.04)
+        if 'cylinder' in str(row.get('shape', 'cuboid')).casefold():
+            radius, height = size[0] / 2., size[2]
+            angles = np.linspace(0., 2*np.pi, 32, endpoint=False)
+            local = np.array([[radius*np.cos(a), radius*np.sin(a), z]
+                              for z in np.linspace(-height/2., height/2., 8) for a in angles])
+        else:
+            axes = [np.linspace(-size[i]/2., size[i]/2., 7) for i in range(3)]
+            local = np.array([[x, y, z] for x in axes[0] for y in axes[1] for z in axes[2]])
+        return transform_points(pose, local)
+
+    def _truth_observe(self, label):
+        name = self._truth_name(label)
+        target = self.truth_provider.locate(name)
+        points = self._truth_cloud(name, self.object_pose(name))
+        metadata = self.truth_metadata.get(name, {})
+        observation = {'ok': True, 'request_id': f'truth-{uuid4().hex}',
+                       'label': metadata.get('label', label), 'object_id': name,
+                       'perception_source': 'isaac_world_truth', 'views': [],
+                       'references': [{'kind': 'object', 'ref': f'truth:{name}'}],
+                       'physical_witness': {'instance_id': name, 'votes': {'isaac_world_truth': 1}},
+                       'truth_target': {'position_world_m': list(target.position_world_m),
+                                        'quaternion_world_xyzw': list(target.quaternion_world_xyzw)}}
+        return points, observation
+
+    def _truth_scene_cloud(self):
+        clouds = [self._truth_cloud(name, self.object_pose(name)) for name in self.truth_metadata
+                  if name in self.body_entities]
+        return np.concatenate(clouds) if clouds else np.empty((0, 3))
+
     def locate(self, label, *, manipulation_target=False, **vision_options):
-        """Visual geometry first. Physical IDs are evaluation witnesses only."""
+        """Locate through the selected provider; truth mode never invokes vision."""
         points = self.cloud(label, associate=True, manipulation_target=manipulation_target,
                             **vision_options)
         observation = self.visual_result
@@ -108,7 +186,8 @@ class ArenaRuntime:
         self.prepared_clouds[name] = (points, observation)
         self.event('instance_observed', label=row['label'], instance_id=name,
                    observation_ref=observation['request_id'], witness_votes=votes,
-                   association_source='model_mask_to_rendered_physical_instance')
+                   association_source=('isaac_world_truth' if self._truth_enabled()
+                                       else 'model_mask_to_rendered_physical_instance'))
         return row
 
     def locate_destination(self, request):
@@ -123,6 +202,10 @@ class ArenaRuntime:
         return self.locate(request.destination, **options)
 
     def placement_options(self, request):
+        if self._truth_enabled():
+            if request.region_ref or request.cell_ref:
+                raise PlacementSpaceUnavailable('真值模式不使用视觉区域/格位引用，请选择容器标签或自由空间。')
+            return {'preference': request.placement_preference, 'view': None, 'region': None}
         with np.load(self.perception.root/self.visual_result['request_id']/'frames.npz', allow_pickle=False) as frames:
             camera = next((key[:-2] for key in frames.files if key.endswith('_K')), None)
             view = {'K': frames[camera+'_K'].copy(), 'T': frames[camera+'_T'].copy()} if camera else None
@@ -135,6 +218,8 @@ class ArenaRuntime:
         return {'preference': request.placement_preference, 'view': view, 'region': region}
 
     def placement_support(self, request, destination, child, preferred):
+        if self._truth_enabled() and request.cell_ref:
+            raise PlacementSpaceUnavailable('真值模式暂不使用视觉格位引用，请选择容器标签或自由空间。')
         parent = self.cloud(destination['name'])
         centre = np.r_[np.quantile(parent[:, :2], [.02, .98], axis=0).mean(axis=0), np.quantile(parent[:, 2], .95)]
         destination['yaw_delta_rad'] = 0.
@@ -167,7 +252,7 @@ class ArenaRuntime:
                 footprint_radius_m=float(np.linalg.norm(cell['interior_size_m'])/2), source=grid['source'])
             return centre
         if request.placement_selection == 'center': return centre
-        scene = self.perception.scene_cloud(self.visual_result)
+        scene = self._truth_scene_cloud() if self._truth_enabled() else self.perception.scene_cloud(self.visual_result)
         try:
             tool_offset = self.tcp_pose()[:2, 3]-np.quantile(child[:, :2], [.02, .98], axis=0).mean(0) if self.holding_status()['verified'] else None
             centre, details = choose_free_support(parent, scene, child, preferred, tool_offset=tool_offset, **self.placement_options(request))
@@ -376,6 +461,15 @@ class ArenaRuntime:
         self.refresh_snapshot()
 
     def cloud(self, name, *, associate=False, manipulation_target=False, **vision_options):
+        if self._truth_enabled():
+            points, observation = self._truth_observe(name)
+            self.visual_result = observation
+            resolved = observation['physical_witness']['instance_id']
+            self.prepared_clouds[resolved] = (points, observation)
+            self.event('truth_observation', target=resolved,
+                       position_world_m=observation['truth_target']['position_world_m'],
+                       source='isaac_world_truth')
+            return points
         if not vision_options and name in self.prepared_clouds:
             points, self.visual_result = self.prepared_clouds.pop(name)
             return points
@@ -707,7 +801,7 @@ class ArenaRuntime:
         parent = self.cloud(destination["name"], vision_mode='slow', slow_provider='sam3',
                             **({'inspect':'grid'} if request.cell_ref else {}))
         free_patch = None
-        scene = self.perception.scene_cloud(self.visual_result)
+        scene = self._truth_scene_cloud() if self._truth_enabled() else self.perception.scene_cloud(self.visual_result)
         if request.cell_ref or request.placement_selection in {'auto', 'free_space'}:
             self.prepared_clouds[destination['name']] = (parent, self.visual_result)
             centre = self.placement_support(request, destination, child, self.tcp_pose()[:3, 3])
