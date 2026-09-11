@@ -137,6 +137,7 @@ def main():
     parser.add_argument("--operation", required=True)
     parser.add_argument("--scene", required=True)
     parser.add_argument("--epoch", required=True)
+    parser.add_argument("--grounding-mode", choices=("visual", "truth"), default="visual")
     args = parser.parse_args()
     if not re.fullmatch(r"[a-f0-9-]{32,40}", args.operation):
         parser.error("invalid operation id")
@@ -148,6 +149,7 @@ def main():
         "epoch": args.epoch,
         "phase": "stopping",
         "message": "正在停止当前任务和仿真…",
+        "grounding_mode": args.grounding_mode,
         "started_at": time.time(),
     }
     try:
@@ -163,7 +165,7 @@ def main():
             remove_runtime(path)
         profile = ROOT / "output/services/arena-scene.json"
         profile.parent.mkdir(parents=True, exist_ok=True)
-        profile.write_text(json.dumps({"config": str(config)}))
+        profile.write_text(json.dumps({"config": str(config), "grounding_mode": args.grounding_mode}))
         update(
             operation,
             "starting",

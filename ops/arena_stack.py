@@ -24,12 +24,13 @@ def scene_environment(env, config=None):
     profile_file = STATE / 'arena-scene.json'
     previous = json.loads(profile_file.read_text()) if profile_file.exists() else {}
     profile = config or env.get('ARENA_PANDA_CONFIG') or previous.get('config')
+    grounding_mode = previous.get('grounding_mode', 'visual')
     if profile:
         path = Path(profile)
         path = path if path.is_absolute() else ROOT / path
-        env = {**env, 'ARENA_PANDA_CONFIG': str(path)}
+        env = {**env, 'ARENA_PANDA_CONFIG': str(path), 'ARENA_GROUNDING_MODE': grounding_mode}
         STATE.mkdir(parents=True, exist_ok=True)
-        profile_file.write_text(json.dumps({'config': str(path)}))
+        profile_file.write_text(json.dumps({'config': str(path), 'grounding_mode': grounding_mode}))
     return env
 
 

@@ -41,6 +41,7 @@ def status():
         "epoch": journal.get("epoch", "initial"),
         "operation": journal.get("operation"),
         "scene_id": active_scene(),
+        "grounding_mode": "truth" if read_json(PROFILE, {}).get("grounding_mode") == "truth" else "visual",
         "scenes": read_json(CATALOG, []),
     }
 

@@ -50,6 +50,10 @@ try:
     from mr_liu.arena.service import serve
     print("[Arena Panda] imports complete", flush=True)
     config = json.loads(args.config.read_text())
+    config.setdefault("vision", {})["grounding_mode"] = (
+        "truth" if os.environ.get("ARENA_GROUNDING_MODE") == "truth" else "visual"
+    )
+    config["vision"]["truth_mode"] = config["vision"]["grounding_mode"] == "truth"
     env, task = build_environment(config, device=args.device)
     runtime = ArenaRuntime(env, task, config, args.output)
     if args.truth_target:
